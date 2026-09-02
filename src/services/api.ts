@@ -1,0 +1,897 @@
+import {
+  ApiResponse,
+  Area,
+  CNEApplication,
+  CNERecord,
+  CNEReportStats,
+  ChairpersonMessageData,
+  Employee,
+  GalleryItem,
+  NewsEventItem,
+  QuickLinkItem,
+  RoleMapping,
+  SessionUser,
+  UpcomingClass,
+  UserRole
+} from '../types';
+import {
+  INITIAL_AREAS,
+  INITIAL_CHAIRPERSON_MESSAGE,
+  INITIAL_CNE_RECORDS,
+  INITIAL_GALLERY,
+  INITIAL_NEWS_EVENTS,
+  INITIAL_OFFICERS,
+  INITIAL_QUICK_LINKS,
+  INITIAL_ROLES,
+  INITIAL_UPCOMING_CLASSES,
+  INITIAL_USER_CREDS
+} from './initialData';
+
+const STORAGE_KEYS = {
+  AREAS: 'cne_areas',
+  OFFICERS: 'cne_officers',
+  ROLES: 'cne_roles',
+  USER_CREDS: 'cne_user_creds',
+  CNE_RECORDS: 'cne_records',
+  UPCOMING_CLASSES: 'cne_upcoming_classes',
+  APPLICATIONS: 'cne_applications',
+  GALLERY: 'cne_gallery',
+  NEWS_EVENTS: 'cne_news_events',
+  CHAIRPERSON_MESSAGE: 'cne_chairperson_message',
+  QUICK_LINKS: 'cne_quick_links',
+  SESSION: 'cne_session_user',
+  API_URL: 'CNE_CUSTOM_APPS_SCRIPT_URL',
+  ENV_MODE: 'CNE_ENVIRONMENT_MODE' // 'production' | 'sandbox'
+};
+
+export class ApiService {
+  /**
+   * Initialize Local Storage for Sandbox/Test Mode only
+   */
+  static initLocalStorage() {
+    if (!localStorage.getItem(STORAGE_KEYS.OFFICERS)) {
+      localStorage.setItem(STORAGE_KEYS.OFFICERS, JSON.stringify(INITIAL_OFFICERS));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.AREAS)) {
+      localStorage.setItem(STORAGE_KEYS.AREAS, JSON.stringify(INITIAL_AREAS));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.ROLES)) {
+      localStorage.setItem(STORAGE_KEYS.ROLES, JSON.stringify(INITIAL_ROLES));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.USER_CREDS)) {
+      localStorage.setItem(STORAGE_KEYS.USER_CREDS, JSON.stringify(INITIAL_USER_CREDS));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.CNE_RECORDS)) {
+      localStorage.setItem(STORAGE_KEYS.CNE_RECORDS, JSON.stringify(INITIAL_CNE_RECORDS));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.UPCOMING_CLASSES)) {
+      localStorage.setItem(STORAGE_KEYS.UPCOMING_CLASSES, JSON.stringify(INITIAL_UPCOMING_CLASSES));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.GALLERY)) {
+      localStorage.setItem(STORAGE_KEYS.GALLERY, JSON.stringify(INITIAL_GALLERY));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.APPLICATIONS)) {
+      localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify([]));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.NEWS_EVENTS)) {
+      localStorage.setItem(STORAGE_KEYS.NEWS_EVENTS, JSON.stringify(INITIAL_NEWS_EVENTS));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.CHAIRPERSON_MESSAGE)) {
+      localStorage.setItem(STORAGE_KEYS.CHAIRPERSON_MESSAGE, JSON.stringify(INITIAL_CHAIRPERSON_MESSAGE));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.QUICK_LINKS)) {
+      localStorage.setItem(STORAGE_KEYS.QUICK_LINKS, JSON.stringify(INITIAL_QUICK_LINKS));
+    }
+  }
+
+  /**
+   * Environment Mode: 'production' (Strict Google Sheets) vs 'sandbox' (Local dev simulation)
+   */
+  static getEnvironmentMode(): 'production' | 'sandbox' {
+    const saved = localStorage.getItem(STORAGE_KEYS.ENV_MODE);
+    if (saved === 'sandbox') return 'sandbox';
+    return 'production'; // Production is default
+  }
+
+  static setEnvironmentMode(mode: 'production' | 'sandbox') {
+    localStorage.setItem(STORAGE_KEYS.ENV_MODE, mode);
+  }
+
+  /**
+   * Get configured Google Apps Script Web App URL
+   */
+  static isLiveBackendConnected(): boolean {
+    return !!this.getAppsScriptUrl();
+  }
+
+  static getAppsScriptUrl(): string {
+    const fromStorage = localStorage.getItem(STORAGE_KEYS.API_URL);
+    if (fromStorage && fromStorage.trim() !== '') {
+      return fromStorage.trim();
+    }
+    const envUrl = (import.meta as any).env?.VITE_APPS_SCRIPT_URL;
+    if (envUrl && envUrl.trim() !== '') {
+      return envUrl.trim();
+    }
+    return '';
+  }
+
+  static setAppsScriptUrl(url: string) {
+    if (url && url.trim() !== '') {
+      localStorage.setItem(STORAGE_KEYS.API_URL, url.trim());
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.API_URL);
+    }
+  }
+
+  /**
+   * Central Action Executor:
+   * In Production mode: Exclusively connects to Google Apps Script. If unavailable, fails cleanly.
+   * In Sandbox mode: Runs offline local simulation for testing.
+   */
+  static async executeAction<T = any>(
+    action: string,
+    params: Record<string, any> = {}
+  ): Promise<ApiResponse<T>> {
+    const mode = this.getEnvironmentMode();
+    const apiUrl = this.getAppsScriptUrl();
+    const session = this.getSessionUser();
+    const payload = {
+      action,
+      ...params,
+      token: session?.token,
+      loggedInEmployeeId: session?.employeeId
+    };
+
+    // If in Production Mode
+    if (mode === 'production') {
+      if (!apiUrl) {
+        return {
+          success: false,
+          errorCode: 'BACKEND_NOT_CONFIGURED',
+          message: 'Backend connection is unavailable. Please configure the Google Apps Script Web App URL in Setup.'
+        };
+      }
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15-second timeout
+
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/plain;charset=utf-8'
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          const result = await response.json();
+          // Check for session expiry/invalid token
+          if (result.errorCode === 'UNAUTHORIZED' && session) {
+            this.logout();
+          }
+          return result as ApiResponse<T>;
+        } else {
+          return {
+            success: false,
+            errorCode: 'HTTP_ERROR',
+            message: `Server returned HTTP error status ${response.status}. Please check Google Apps Script deployment.`
+          };
+        }
+      } catch (err: any) {
+        console.error(`[CNE Service] Error executing ${action} against ${apiUrl}:`, err);
+        const isTimeout = err?.name === 'AbortError';
+        return {
+          success: false,
+          errorCode: 'BACKEND_UNAVAILABLE',
+          message: isTimeout
+            ? 'Backend connection timed out (15s). Please check your internet connection or Google Apps Script performance.'
+            : 'Backend connection is unavailable. Please check your network and Google Apps Script configuration.'
+        };
+      }
+    }
+
+    // Sandbox / Test Mode simulation
+    this.initLocalStorage();
+    return this.executeLocalAction<T>(action, payload);
+  }
+
+  /**
+   * Test Connection with Diagnostics
+   */
+  static async testConnection(url: string): Promise<{ success: boolean; message: string; latencyMs?: number }> {
+    const cleanUrl = url.trim();
+    if (!cleanUrl) {
+      return { success: false, message: 'URL is required.' };
+    }
+
+    const start = performance.now();
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+      const res = await fetch(cleanUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'ping' }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+      const latencyMs = Math.round(performance.now() - start);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          return {
+            success: true,
+            message: `Connected successfully (${latencyMs}ms). ${data.message || 'Google Sheets backend active.'}`,
+            latencyMs
+          };
+        } else {
+          return {
+            success: false,
+            message: data.message || 'Apps Script returned an unsuccessful response.'
+          };
+        }
+      } else {
+        return {
+          success: false,
+          message: `HTTP Error ${res.status}: ${res.statusText}. Verify Web App is deployed with Access: Anyone.`
+        };
+      }
+    } catch (e: any) {
+      return {
+        success: false,
+        message: e?.name === 'AbortError'
+          ? 'Connection timed out. Please check the URL and deployment.'
+          : (e?.message || 'Network request failed. Ensure CORS and Web App permissions are set to Anyone.')
+      };
+    }
+  }
+
+  /**
+   * Initialize All Sheet Tabs
+   */
+  static async initializeSheets(): Promise<ApiResponse> {
+    return this.executeAction('initializeSheets');
+  }
+
+  /**
+   * Authentication
+   */
+  static async login(employeeId: string, password: string): Promise<ApiResponse<SessionUser>> {
+    const res = await this.executeAction<SessionUser>('login', { employeeId, password });
+    if (res.success && res.data) {
+      this.saveSessionUser(res.data);
+    }
+    return res;
+  }
+
+  static async changePassword(newPassword: string): Promise<ApiResponse> {
+    return this.executeAction('changePassword', { newPassword });
+  }
+
+  static async resetPassword(employeeId: string, doj: string, newPassword: string): Promise<ApiResponse> {
+    return this.executeAction('resetPassword', { employeeId, dateOfJoining: doj, doj, newPassword });
+  }
+
+  static async adminResetPassword(targetEmployeeId: string): Promise<ApiResponse> {
+    return this.executeAction('adminResetPassword', { targetEmployeeId });
+  }
+
+  static logout() {
+    localStorage.removeItem(STORAGE_KEYS.SESSION);
+  }
+
+  static getSessionUser(): SessionUser | null {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.SESSION);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (e) {
+      console.error('Failed to parse session user', e);
+    }
+    return null;
+  }
+
+  static getCurrentUser(): SessionUser {
+    const user = this.getSessionUser();
+    if (user) return user;
+    
+    // In sandbox mode without session, return default admin demo
+    if (this.getEnvironmentMode() === 'sandbox') {
+      return {
+        employeeId: '100062',
+        name: 'Sathish Kumar ANS',
+        designation: 'Assistant Nursing Superintendent',
+        email: 'sathish.ans@aiimsrishikesh.edu.in',
+        role: 'ADMIN',
+        token: '100062:' + new Date().getTime() + ':sandbox'
+      };
+    }
+
+    // Default guest session for unauthenticated state
+    return {
+      employeeId: '',
+      name: 'Guest User',
+      designation: 'Nursing Officer',
+      role: 'EMPLOYEE',
+      token: ''
+    };
+  }
+
+  static saveSessionUser(user: SessionUser) {
+    localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(user));
+  }
+
+  /**
+   * Master Data APIs
+   */
+  static async getOfficersDropdown(): Promise<ApiResponse<Employee[]>> {
+    return this.executeAction<Employee[]>('getOfficersDropdown');
+  }
+
+  static async getAreas(): Promise<ApiResponse<Area[]>> {
+    return this.executeAction<Area[]>('getAreas');
+  }
+
+  static async addArea(name: string): Promise<ApiResponse> {
+    return this.executeAction('addArea', { name });
+  }
+
+  static async updateArea(oldName: string, name: string, status: 'ACTIVE' | 'INACTIVE'): Promise<ApiResponse> {
+    return this.executeAction('updateArea', { oldName, name, status });
+  }
+
+  static async getRoles(): Promise<ApiResponse<RoleMapping[]>> {
+    return this.executeAction<RoleMapping[]>('getRoles');
+  }
+
+  static async updateRole(employeeId: string, role: UserRole, name?: string, designation?: string): Promise<ApiResponse> {
+    return this.executeAction('updateRole', { employeeId, role, name, designation });
+  }
+
+  /**
+   * CNE Records APIs
+   */
+  static async getCNERecords(): Promise<ApiResponse<CNERecord[]>> {
+    return this.executeAction<CNERecord[]>('getCNERecords');
+  }
+
+  static async addCNE(record: Partial<CNERecord>): Promise<ApiResponse<{ dataId: string }>> {
+    return this.executeAction<{ dataId: string }>('addCNE', record);
+  }
+
+  static async updateCNE(dataId: string, record: Partial<CNERecord>): Promise<ApiResponse> {
+    return this.executeAction('updateCNE', { dataId, ...record });
+  }
+
+  static async deleteCNE(dataId: string): Promise<ApiResponse> {
+    return this.executeAction('deleteCNE', { dataId });
+  }
+
+  /**
+   * Upcoming Classes & Applications
+   */
+  static async getUpcomingClasses(): Promise<ApiResponse<UpcomingClass[]>> {
+    return this.executeAction<UpcomingClass[]>('getUpcomingClasses');
+  }
+
+  static async addUpcomingClass(classData: Partial<UpcomingClass>): Promise<ApiResponse<{ classId: string }>> {
+    return this.executeAction<{ classId: string }>('addUpcomingClass', classData);
+  }
+
+  static async updateUpcomingClass(classId: string, classData: Partial<UpcomingClass>): Promise<ApiResponse> {
+    return this.executeAction('updateUpcomingClass', { classId, ...classData });
+  }
+
+  static async applyForClass(classId: string, remarks?: string): Promise<ApiResponse<CNEApplication>> {
+    return this.executeAction<CNEApplication>('applyForClass', { classId, remarks });
+  }
+
+  static async getMyApplications(): Promise<ApiResponse<CNEApplication[]>> {
+    return this.executeAction<CNEApplication[]>('getMyApplications');
+  }
+
+  static async getAllApplications(): Promise<ApiResponse<CNEApplication[]>> {
+    return this.executeAction<CNEApplication[]>('getAllApplications');
+  }
+
+  static async updateApplicationStatus(
+    applicationId: string,
+    status: CNEApplication['status'],
+    remarks?: string
+  ): Promise<ApiResponse> {
+    return this.executeAction('updateApplicationStatus', { applicationId, status, remarks });
+  }
+
+  /**
+   * Gallery & Drive Images
+   */
+  static async getGallery(): Promise<ApiResponse<GalleryItem[]>> {
+    return this.executeAction<GalleryItem[]>('getGallery');
+  }
+
+  static async uploadImage(
+    base64Image: string,
+    title: string,
+    description?: string,
+    date?: string
+  ): Promise<ApiResponse<{ id: string; imageUrl: string; fileId?: string }>> {
+    return this.executeAction('uploadImage', { base64Image, title, description, date });
+  }
+
+  static async updateGalleryItem(id: string, data: Partial<GalleryItem>): Promise<ApiResponse> {
+    return this.executeAction('updateGalleryItem', { id, ...data });
+  }
+
+  /**
+   * News & Events APIs
+   */
+  static async getNewsEvents(): Promise<ApiResponse<NewsEventItem[]>> {
+    return this.executeAction<NewsEventItem[]>('getNewsEvents');
+  }
+
+  static async addNewsEvent(item: Partial<NewsEventItem>): Promise<ApiResponse<{ id: string }>> {
+    return this.executeAction<{ id: string }>('addNewsEvent', item);
+  }
+
+  static async deleteNewsEvent(id: string): Promise<ApiResponse> {
+    return this.executeAction('deleteNewsEvent', { id });
+  }
+
+  /**
+   * Chairperson Message & Institutional Content
+   */
+  static async getChairpersonMessage(): Promise<ApiResponse<ChairpersonMessageData>> {
+    return this.executeAction<ChairpersonMessageData>('getChairpersonMessage');
+  }
+
+  static async updateChairpersonMessage(
+    data: Partial<ChairpersonMessageData> & { base64Image?: string }
+  ): Promise<ApiResponse<{ photoUrl?: string; driveFileId?: string; driveUrl?: string }>> {
+    return this.executeAction<{ photoUrl?: string; driveFileId?: string; driveUrl?: string }>('updateChairpersonMessage', data);
+  }
+
+  /**
+   * Quick Links
+   */
+  static async getQuickLinks(): Promise<ApiResponse<QuickLinkItem[]>> {
+    return this.executeAction<QuickLinkItem[]>('getQuickLinks');
+  }
+
+  /**
+   * Dashboard & Analytics
+   */
+  static async getDashboardStats(): Promise<ApiResponse<CNEReportStats>> {
+    return this.executeAction<CNEReportStats>('getDashboardStats');
+  }
+
+  /**
+   * Local Simulation Mock Engine (Sandbox / Test Mode Only)
+   */
+  private static executeLocalAction<T>(
+    action: string,
+    params: Record<string, any>
+  ): ApiResponse<T> {
+    try {
+      switch (action) {
+        case 'ping':
+          return { success: true, message: 'Sandbox Offline Simulation Active' } as any;
+
+        case 'login': {
+          const empId = (params.employeeId || '').trim();
+          const password = (params.password || '').trim();
+
+          const officers: Employee[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.OFFICERS) || '[]');
+          const officer = officers.find(
+            (o) => o.employeeId.toLowerCase() === empId.toLowerCase()
+          );
+
+          if (!officer) {
+            return { success: false, message: 'Employee ID not found in institutional roster.' };
+          }
+
+          const creds = JSON.parse(localStorage.getItem(STORAGE_KEYS.USER_CREDS) || '{}');
+          const savedPass = creds[officer.employeeId];
+
+          let isValid = false;
+          let isFirstLogin = false;
+
+          if (savedPass) {
+            isValid = savedPass === password;
+          } else {
+            // Initial First-Time Login: Default password is pass1234
+            if (password === 'pass1234') {
+              isValid = true;
+              isFirstLogin = true;
+            }
+          }
+
+          if (!isValid) {
+            return {
+              success: false,
+              message: 'Invalid credentials. Default initial password is pass1234'
+            };
+          }
+
+          const roles: RoleMapping[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.ROLES) || '[]');
+          const roleEntry = roles.find((r) => r.employeeId.toLowerCase() === empId.toLowerCase());
+          const role: UserRole = roleEntry ? roleEntry.role : 'EMPLOYEE';
+
+          const sessionUser: SessionUser = {
+            employeeId: officer.employeeId,
+            name: officer.name,
+            designation: officer.designation,
+            email: officer.email,
+            role,
+            token: `${officer.employeeId}:${Date.now()}:sandbox`,
+            isFirstLogin
+          };
+
+          return { success: true, data: sessionUser as any, message: 'Login successful' };
+        }
+
+        case 'changePassword': {
+          const creds = JSON.parse(localStorage.getItem(STORAGE_KEYS.USER_CREDS) || '{}');
+          const empId = params.loggedInEmployeeId;
+          if (empId) {
+            creds[empId] = params.newPassword;
+            localStorage.setItem(STORAGE_KEYS.USER_CREDS, JSON.stringify(creds));
+          }
+          return { success: true, message: 'Password updated in local sandbox.' } as any;
+        }
+
+        case 'resetPassword': {
+          const empId = (params.employeeId || '').trim();
+          const doj = (params.dateOfJoining || params.doj || '').trim();
+          const officers: Employee[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.OFFICERS) || '[]');
+          const officer = officers.find((o) => o.employeeId.toLowerCase() === empId.toLowerCase());
+          if (!officer) return { success: false, message: 'Employee not found.' };
+
+          const normInput = doj.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          const normDoj = (officer.doj || officer.dob || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          if (normInput !== '' && normInput !== normDoj && doj !== officer.doj && doj !== officer.dob) {
+            return { success: false, message: 'Date of Joining (DOJ) verification failed.' };
+          }
+
+          const creds = JSON.parse(localStorage.getItem(STORAGE_KEYS.USER_CREDS) || '{}');
+          creds[officer.employeeId] = params.newPassword;
+          localStorage.setItem(STORAGE_KEYS.USER_CREDS, JSON.stringify(creds));
+          return { success: true, message: 'Password reset successfully.' } as any;
+        }
+
+        case 'adminResetPassword': {
+          const targetEmpId = (params.targetEmployeeId || params.employeeId || '').trim();
+          const officers: Employee[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.OFFICERS) || '[]');
+          const officer = officers.find((o) => o.employeeId.toLowerCase() === targetEmpId.toLowerCase());
+          if (!officer) return { success: false, message: 'Employee not found in roster.' };
+
+          const creds = JSON.parse(localStorage.getItem(STORAGE_KEYS.USER_CREDS) || '{}');
+          creds[officer.employeeId] = 'pass1234';
+          localStorage.setItem(STORAGE_KEYS.USER_CREDS, JSON.stringify(creds));
+          return {
+            success: true,
+            message: `Password for ${officer.name} (${officer.employeeId}) has been reset to pass1234.`
+          } as any;
+        }
+
+        case 'getOfficersDropdown': {
+          const raw: Employee[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.OFFICERS) || '[]');
+          const sanitized = raw.map((o) => ({
+            employeeId: o.employeeId,
+            name: o.name,
+            designation: o.designation
+          }));
+          return { success: true, data: sanitized as any };
+        }
+
+        case 'getAreas': {
+          const areas: Area[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.AREAS) || '[]');
+          return { success: true, data: areas as any };
+        }
+
+        case 'addArea': {
+          const areas: Area[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.AREAS) || '[]');
+          const newArea: Area = {
+            id: `AREA-${areas.length + 1}`,
+            name: params.name,
+            status: 'ACTIVE',
+            createdAt: new Date().toISOString()
+          };
+          areas.push(newArea);
+          localStorage.setItem(STORAGE_KEYS.AREAS, JSON.stringify(areas));
+          return { success: true, message: 'Area added in sandbox.' } as any;
+        }
+
+        case 'updateArea': {
+          const areas: Area[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.AREAS) || '[]');
+          const idx = areas.findIndex((a) => a.name.toLowerCase() === params.oldName.toLowerCase());
+          if (idx !== -1) {
+            areas[idx].name = params.name || areas[idx].name;
+            areas[idx].status = params.status || areas[idx].status;
+            localStorage.setItem(STORAGE_KEYS.AREAS, JSON.stringify(areas));
+            return { success: true, message: 'Area updated in sandbox.' } as any;
+          }
+          return { success: false, message: 'Area not found' };
+        }
+
+        case 'getRoles': {
+          const roles: RoleMapping[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.ROLES) || '[]');
+          return { success: true, data: roles as any };
+        }
+
+        case 'updateRole': {
+          const roles: RoleMapping[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.ROLES) || '[]');
+          const idx = roles.findIndex((r) => r.employeeId.toLowerCase() === params.employeeId.toLowerCase());
+          if (idx !== -1) {
+            roles[idx].role = params.role;
+            roles[idx].updatedAt = new Date().toISOString();
+          } else {
+            roles.push({
+              employeeId: params.employeeId,
+              name: params.name || params.employeeId,
+              designation: params.designation || 'Staff',
+              role: params.role,
+              updatedAt: new Date().toISOString()
+            });
+          }
+          localStorage.setItem(STORAGE_KEYS.ROLES, JSON.stringify(roles));
+          return { success: true, message: 'Role updated in sandbox.' } as any;
+        }
+
+        case 'getCNERecords': {
+          const records: CNERecord[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.CNE_RECORDS) || '[]');
+          const user = this.getSessionUser();
+          const isAdmin = user?.role === 'ADMIN';
+          const loggedInId = (user?.employeeId || '').toLowerCase().trim();
+
+          // Privacy filtering
+          const filtered = records.filter((r) => {
+            if (isAdmin) return true;
+            const isRp = r.resourcePersonEmpId.toLowerCase() === loggedInId;
+            const isStaff = (r.staffEmpIds || []).some((s) => s.toLowerCase() === loggedInId);
+            return isRp || isStaff;
+          }).map((r) => {
+            if (isAdmin) return r;
+            const isStaff = (r.staffEmpIds || []).some((s) => s.toLowerCase() === loggedInId);
+            return {
+              ...r,
+              staffEmpIds: isStaff ? [user?.employeeId || ''] : []
+            };
+          });
+
+          return { success: true, data: filtered as any };
+        }
+
+        case 'addCNE': {
+          const records: CNERecord[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.CNE_RECORDS) || '[]');
+          const dataId = `CNE-${new Date().getFullYear()}-${('00000' + (records.length + 1)).slice(-5)}`;
+          const staffArr = Array.isArray(params.staffEmpIds) ? params.staffEmpIds : [];
+          const newRec: CNERecord = {
+            dataId,
+            area: params.area || '',
+            fromDate: params.fromDate || '',
+            toDate: params.toDate || params.fromDate || '',
+            duration: params.duration || '1:00:00',
+            topic: params.topic || '',
+            resourcePersonEmpId: params.resourcePersonEmpId || '',
+            modeOfTeaching: params.modeOfTeaching || 'Lecture Cum Discussion',
+            staffEmpIds: staffArr,
+            staffCount: staffArr.length,
+            remarks: params.remarks || '',
+            createdAt: new Date().toISOString()
+          };
+          records.unshift(newRec);
+          localStorage.setItem(STORAGE_KEYS.CNE_RECORDS, JSON.stringify(records));
+          return { success: true, message: 'CNE record added in sandbox.', data: { dataId } as any };
+        }
+
+        case 'updateCNE': {
+          const records: CNERecord[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.CNE_RECORDS) || '[]');
+          const idx = records.findIndex((r) => r.dataId === params.dataId);
+          if (idx !== -1) {
+            records[idx] = { ...records[idx], ...params, updatedAt: new Date().toISOString() };
+            localStorage.setItem(STORAGE_KEYS.CNE_RECORDS, JSON.stringify(records));
+            return { success: true, message: 'CNE record updated in sandbox.' } as any;
+          }
+          return { success: false, message: 'Record not found' };
+        }
+
+        case 'deleteCNE': {
+          let records: CNERecord[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.CNE_RECORDS) || '[]');
+          records = records.filter((r) => r.dataId !== params.dataId);
+          localStorage.setItem(STORAGE_KEYS.CNE_RECORDS, JSON.stringify(records));
+          return { success: true, message: 'CNE record deleted in sandbox.' } as any;
+        }
+
+        case 'getUpcomingClasses': {
+          const list: UpcomingClass[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.UPCOMING_CLASSES) || '[]');
+          return { success: true, data: list as any };
+        }
+
+        case 'addUpcomingClass': {
+          const list: UpcomingClass[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.UPCOMING_CLASSES) || '[]');
+          const classId = `CLS-${new Date().getFullYear()}-${('0000' + (list.length + 1)).slice(-4)}`;
+          const newClass: UpcomingClass = {
+            classId,
+            topic: params.topic || '',
+            area: params.area || '',
+            date: params.date || '',
+            time: params.time || '14:00',
+            duration: params.duration || '1:00:00',
+            resourcePersonEmpId: params.resourcePersonEmpId || '',
+            modeOfTeaching: params.modeOfTeaching || 'Lecture Cum Discussion',
+            description: params.description || '',
+            maxParticipants: params.maxParticipants || 50,
+            status: 'OPEN',
+            createdAt: new Date().toISOString()
+          };
+          list.unshift(newClass);
+          localStorage.setItem(STORAGE_KEYS.UPCOMING_CLASSES, JSON.stringify(list));
+          return { success: true, message: 'Class added in sandbox.', data: { classId } as any };
+        }
+
+        case 'applyForClass': {
+          const apps: CNEApplication[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.APPLICATIONS) || '[]');
+          const user = this.getSessionUser();
+          const appId = `APP-${new Date().getFullYear()}-${('00000' + (apps.length + 1)).slice(-5)}`;
+          const newApp: CNEApplication = {
+            applicationId: appId,
+            classId: params.classId,
+            employeeId: user?.employeeId || '100062',
+            employeeName: user?.name || 'Staff User',
+            appliedAt: new Date().toISOString(),
+            status: 'Applied',
+            remarks: params.remarks || ''
+          };
+          apps.unshift(newApp);
+          localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(apps));
+          return { success: true, message: 'Application submitted in sandbox.', data: newApp as any };
+        }
+
+        case 'getMyApplications': {
+          const apps: CNEApplication[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.APPLICATIONS) || '[]');
+          const user = this.getSessionUser();
+          const myApps = apps.filter((a) => a.employeeId.toLowerCase() === (user?.employeeId || '').toLowerCase());
+          return { success: true, data: myApps as any };
+        }
+
+        case 'getAllApplications': {
+          const apps: CNEApplication[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.APPLICATIONS) || '[]');
+          return { success: true, data: apps as any };
+        }
+
+        case 'updateApplicationStatus': {
+          const apps: CNEApplication[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.APPLICATIONS) || '[]');
+          const idx = apps.findIndex((a) => a.applicationId === params.applicationId);
+          if (idx !== -1) {
+            apps[idx].status = params.status;
+            if (params.remarks) apps[idx].remarks = params.remarks;
+            localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(apps));
+            return { success: true, message: 'Application status updated.' } as any;
+          }
+          return { success: false, message: 'Application not found' };
+        }
+
+        case 'getGallery': {
+          const list: GalleryItem[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.GALLERY) || '[]');
+          return { success: true, data: list.filter((i) => i.isActive) as any };
+        }
+
+        case 'uploadImage': {
+          const list: GalleryItem[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.GALLERY) || '[]');
+          const id = `IMG-${new Date().getFullYear()}-${('0000' + (list.length + 1)).slice(-4)}`;
+          const newItem: GalleryItem = {
+            id,
+            title: params.title || 'CNE Activity',
+            description: params.description || '',
+            date: params.date || new Date().toISOString().split('T')[0],
+            imageUrl: params.base64Image,
+            uploadedAt: new Date().toISOString(),
+            isActive: true
+          };
+          list.unshift(newItem);
+          localStorage.setItem(STORAGE_KEYS.GALLERY, JSON.stringify(list));
+          return { success: true, message: 'Image uploaded in sandbox.', data: { id, imageUrl: params.base64Image } as any };
+        }
+
+        case 'getNewsEvents': {
+          const list: NewsEventItem[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.NEWS_EVENTS) || '[]');
+          return { success: true, data: list as any };
+        }
+
+        case 'addNewsEvent': {
+          const list: NewsEventItem[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.NEWS_EVENTS) || '[]');
+          const id = `NEWS-${new Date().getFullYear()}-${('000' + (list.length + 1)).slice(-3)}`;
+          const newItem: NewsEventItem = {
+            id,
+            title: params.title || 'CNE Update',
+            date: params.date || new Date().toISOString().split('T')[0],
+            category: params.category || 'Update',
+            summary: params.summary || '',
+            content: params.content || '',
+            venue: params.venue || '',
+            speaker: params.speaker || '',
+            isImportant: !!params.isImportant
+          };
+          list.unshift(newItem);
+          localStorage.setItem(STORAGE_KEYS.NEWS_EVENTS, JSON.stringify(list));
+          return { success: true, message: 'News item published.', data: { id } as any };
+        }
+
+        case 'deleteNewsEvent': {
+          let list: NewsEventItem[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.NEWS_EVENTS) || '[]');
+          list = list.filter((n) => n.id !== params.id);
+          localStorage.setItem(STORAGE_KEYS.NEWS_EVENTS, JSON.stringify(list));
+          return { success: true, message: 'News item deleted.' } as any;
+        }
+
+        case 'getChairpersonMessage': {
+          const data: ChairpersonMessageData = JSON.parse(
+            localStorage.getItem(STORAGE_KEYS.CHAIRPERSON_MESSAGE) || JSON.stringify(INITIAL_CHAIRPERSON_MESSAGE)
+          );
+          return { success: true, data: data as any };
+        }
+
+        case 'updateChairpersonMessage': {
+          const existing: ChairpersonMessageData = JSON.parse(
+            localStorage.getItem(STORAGE_KEYS.CHAIRPERSON_MESSAGE) || JSON.stringify(INITIAL_CHAIRPERSON_MESSAGE)
+          );
+          
+          let driveFileId = existing.driveFileId;
+          let driveUrl = existing.driveUrl;
+          let photoUrl = params.photoUrl || existing.photoUrl;
+
+          // If base64 image or data URL provided, simulate Google Drive upload
+          if (params.base64Image || (params.photoUrl && params.photoUrl.startsWith('data:image'))) {
+            driveFileId = `DRIVE-CNO-${Date.now()}`;
+            photoUrl = params.base64Image || params.photoUrl;
+            driveUrl = `https://drive.google.com/file/d/${driveFileId}/view`;
+          }
+
+          const updated: ChairpersonMessageData = {
+            ...existing,
+            ...params,
+            photoUrl,
+            driveFileId,
+            driveUrl
+          };
+          localStorage.setItem(STORAGE_KEYS.CHAIRPERSON_MESSAGE, JSON.stringify(updated));
+          return {
+            success: true,
+            message: driveFileId
+              ? 'CNO photo successfully saved to Google Drive and leadership profile updated.'
+              : 'CNO profile updated successfully.',
+            data: {
+              photoUrl,
+              driveFileId,
+              driveUrl
+            }
+          } as any;
+        }
+
+        case 'getQuickLinks': {
+          const data: QuickLinkItem[] = JSON.parse(
+            localStorage.getItem(STORAGE_KEYS.QUICK_LINKS) || JSON.stringify(INITIAL_QUICK_LINKS)
+          );
+          return { success: true, data: data as any };
+        }
+
+        case 'initializeSheets':
+          return { success: true, message: 'Sandbox storage initialized.' } as any;
+
+        default:
+          return { success: false, message: `Unknown sandbox action: ${action}` };
+      }
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Error processing sandbox action' };
+    }
+  }
+}
