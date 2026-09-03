@@ -62,61 +62,54 @@ export function formatDurationValue(rawValue: any, displayValue?: any): string {
       const durMatch = disp.match(/^(\d+):([0-5]?\d)(?::([0-5]?\d))?$/);
       if (durMatch) {
         if (durMatch[3] !== undefined) {
-          return disp;
+          const m1 = durMatch[2].length === 1 ? '0' + durMatch[2] : durMatch[2];
+          const s1 = durMatch[3].length === 1 ? '0' + durMatch[3] : durMatch[3];
+          return `${durMatch[1]}:${m1}:${s1}`;
         }
         const m = durMatch[2].length === 1 ? '0' + durMatch[2] : durMatch[2];
-        return durMatch[1] + ':' + m + ':00';
+        return `${durMatch[1]}:${m}:00`;
       }
     }
   }
 
-  // 2. Check rawValue
-  if (rawValue === null || rawValue === undefined || rawValue === '') {
-    return '1:00:00';
-  }
-
-  // If rawValue is a string
-  if (typeof rawValue === 'string') {
-    const str = rawValue.trim();
-    const durMatchStr = str.match(/^(\d+):([0-5]?\d)(?::([0-5]?\d))?$/);
-    if (durMatchStr) {
-      if (durMatchStr[3] !== undefined) {
-        return str;
-      }
-      const m2 = durMatchStr[2].length === 1 ? '0' + durMatchStr[2] : durMatchStr[2];
-      return durMatchStr[1] + ':' + m2 + ':00';
-    }
-    
-    // If rawValue is a Date string (e.g. "Sat Dec 30 1899 01:30:00 GMT..." or ISO string)
-    const timeMatch = str.match(/(?:^|\s|T)(\d{1,2}):([0-5]\d):([0-5]\d)(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2}|\s|$)/);
-    if (timeMatch) {
-      const hrsPart = parseInt(timeMatch[1], 10);
-      return hrsPart + ':' + timeMatch[2] + ':' + timeMatch[3];
-    }
-  }
-
-  // If rawValue is a Date object (Google Sheets returns Date for time/duration formatted cells under 24 hrs)
-  if (Object.prototype.toString.call(rawValue) === '[object Date]' || (rawValue instanceof Date)) {
-    const d = rawValue as Date;
-    if (!isNaN(d.getTime())) {
-      const dHours = d.getHours();
-      const dMinutes = d.getMinutes();
-      const dSeconds = d.getSeconds();
-      return dHours + ':' + (dMinutes < 10 ? '0' : '') + dMinutes + ':' + (dSeconds < 10 ? '0' : '') + dSeconds;
-    }
-  }
-
-  // If rawValue is a numeric day serial value (e.g. 1/24 = 0.041666666666666664, 1.5/24 = 0.0625)
+  // 2. Safe numeric day-fraction conversion (Google Sheets serial value)
   if (typeof rawValue === 'number' && !isNaN(rawValue)) {
     const totalSeconds = Math.round(rawValue * 86400);
     if (totalSeconds >= 0) {
       const nHours = Math.floor(totalSeconds / 3600);
       const nMinutes = Math.floor((totalSeconds % 3600) / 60);
       const nSeconds = totalSeconds % 60;
-      return nHours + ':' + (nMinutes < 10 ? '0' : '') + nMinutes + ':' + (nSeconds < 10 ? '0' : '') + nSeconds;
+      return `${nHours}:${nMinutes < 10 ? '0' : ''}${nMinutes}:${nSeconds < 10 ? '0' : ''}${nSeconds}`;
     }
   }
 
+  // If rawValue is a duration string (e.g. "1:30:00" or "25:00:00")
+  if (typeof rawValue === 'string') {
+    const str = rawValue.trim();
+    const durMatchStr = str.match(/^(\d+):([0-5]?\d)(?::([0-5]?\d))?$/);
+    if (durMatchStr) {
+      if (durMatchStr[3] !== undefined) {
+        const m2 = durMatchStr[2].length === 1 ? '0' + durMatchStr[2] : durMatchStr[2];
+        const s2 = durMatchStr[3].length === 1 ? '0' + durMatchStr[3] : durMatchStr[3];
+        return `${durMatchStr[1]}:${m2}:${s2}`;
+      }
+      const m3 = durMatchStr[2].length === 1 ? '0' + durMatchStr[2] : durMatchStr[2];
+      return `${durMatchStr[1]}:${m3}:00`;
+    }
+  }
+
+  // If rawValue is an 1899 Date object (Google Sheets returns Date for time-formatted cells under 24 hrs when read without display value)
+  if (Object.prototype.toString.call(rawValue) === '[object Date]' || (rawValue instanceof Date)) {
+    const d = rawValue as Date;
+    if (!isNaN(d.getTime())) {
+      const dHours = d.getHours();
+      const dMinutes = d.getMinutes();
+      const dSeconds = d.getSeconds();
+      return `${dHours}:${dMinutes < 10 ? '0' : ''}${dMinutes}:${dSeconds < 10 ? '0' : ''}${dSeconds}`;
+    }
+  }
+
+  // 3. Safe fallback handling
   return '1:00:00';
 }
 
@@ -508,14 +501,7 @@ export class ApiService {
    * CNE Records APIs
    */
   static async getCNERecords(): Promise<ApiResponse<CNERecord[]>> {
-    const res = await this.executeAction<CNERecord[]>('getCNERecords');
-    if (res.success && Array.isArray(res.data)) {
-      res.data = res.data.map((r) => ({
-        ...r,
-        duration: formatDurationValue(r.duration, r.duration)
-      }));
-    }
-    return res;
+    return this.executeAction<CNERecord[]>('getCNERecords');
   }
 
   static async addCNE(record: Partial<CNERecord>): Promise<ApiResponse<{ dataId: string }>> {
@@ -839,19 +825,17 @@ export class ApiService {
           const isAdmin = user?.role === 'ADMIN';
           const loggedInId = (user?.employeeId || '').toLowerCase().trim();
 
-          // Privacy filtering & duration normalization
+          // Privacy filtering
           const filtered = records.filter((r) => {
             if (isAdmin) return true;
             const isRp = r.resourcePersonEmpId.toLowerCase() === loggedInId;
             const isStaff = (r.staffEmpIds || []).some((s) => s.toLowerCase() === loggedInId);
             return isRp || isStaff;
           }).map((r) => {
-            const normalizedDuration = formatDurationValue(r.duration, r.duration);
-            if (isAdmin) return { ...r, duration: normalizedDuration };
+            if (isAdmin) return r;
             const isStaff = (r.staffEmpIds || []).some((s) => s.toLowerCase() === loggedInId);
             return {
               ...r,
-              duration: normalizedDuration,
               staffEmpIds: isStaff ? [user?.employeeId || ''] : []
             };
           });

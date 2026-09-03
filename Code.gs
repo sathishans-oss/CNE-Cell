@@ -1262,9 +1262,9 @@ function handleUpdateArea(params, session) {
  * Helper: Safely normalize Duration to standard HH:MM:SS duration string.
  * Duration in Google Sheets can be returned as:
  * 1. Formatted display string from getDisplayValues() (e.g. "1:00:00", "1:30:00", "0:30:00", "15:00:00")
- * 2. Date object from getValues() (e.g. Sat Dec 30 1899 01:30:00 GMT+...)
- * 3. Numeric serial fraction of a day (e.g. 1/24 = 0.041666... for 1 hr, 1.5/24 = 0.0625 for 1.5 hrs)
- * 4. Existing string representation or ISO/Date string
+ * 2. Numeric serial fraction of a day (e.g. 1/24 = 0.041666... for 1 hr, 1.5/24 = 0.0625 for 1.5 hrs, 25/24 for 25 hrs)
+ * 3. Formatted duration string (e.g. "1:30:00", "25:00:00")
+ * 4. Date object from getValues() (e.g. Sat Dec 30 1899 01:30:00 GMT+...)
  * Note: Duration can exceed 24 hours (e.g. 25:00:00, 120:00:00). It must NEVER be converted to a JavaScript Date object.
  */
 function formatDurationValue(rawValue, displayValue) {
@@ -1275,7 +1275,9 @@ function formatDurationValue(rawValue, displayValue) {
       var durMatch = disp.match(/^(\d+):([0-5]?\d)(?::([0-5]?\d))?$/);
       if (durMatch) {
         if (durMatch[3] !== undefined) {
-          return disp;
+          var m1 = durMatch[2].length === 1 ? '0' + durMatch[2] : durMatch[2];
+          var s1 = durMatch[3].length === 1 ? '0' + durMatch[3] : durMatch[3];
+          return durMatch[1] + ':' + m1 + ':' + s1;
         }
         var m = durMatch[2].length === 1 ? '0' + durMatch[2] : durMatch[2];
         return durMatch[1] + ':' + m + ':00';
@@ -1283,42 +1285,7 @@ function formatDurationValue(rawValue, displayValue) {
     }
   }
 
-  // 2. Check rawValue
-  if (rawValue === null || rawValue === undefined || rawValue === '') {
-    return '1:00:00';
-  }
-
-  // If rawValue is a string
-  if (typeof rawValue === 'string') {
-    var str = rawValue.trim();
-    var durMatchStr = str.match(/^(\d+):([0-5]?\d)(?::([0-5]?\d))?$/);
-    if (durMatchStr) {
-      if (durMatchStr[3] !== undefined) {
-        return str;
-      }
-      var m2 = durMatchStr[2].length === 1 ? '0' + durMatchStr[2] : durMatchStr[2];
-      return durMatchStr[1] + ':' + m2 + ':00';
-    }
-    
-    // If rawValue is a Date string (e.g. "Sat Dec 30 1899 01:30:00 GMT..." or ISO string)
-    var timeMatch = str.match(/(?:^|\s|T)(\d{1,2}):([0-5]\d):([0-5]\d)(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2}|\s|$)/);
-    if (timeMatch) {
-      var hrsPart = parseInt(timeMatch[1], 10);
-      return hrsPart + ':' + timeMatch[2] + ':' + timeMatch[3];
-    }
-  }
-
-  // If rawValue is a Date object (Google Sheets returns Date for time/duration formatted cells under 24 hrs)
-  if (Object.prototype.toString.call(rawValue) === '[object Date]' || (rawValue instanceof Date)) {
-    if (!isNaN(rawValue.getTime())) {
-      var dHours = rawValue.getHours();
-      var dMinutes = rawValue.getMinutes();
-      var dSeconds = rawValue.getSeconds();
-      return dHours + ':' + (dMinutes < 10 ? '0' : '') + dMinutes + ':' + (dSeconds < 10 ? '0' : '') + dSeconds;
-    }
-  }
-
-  // If rawValue is a numeric day serial value (e.g. 1/24 = 0.041666666666666664, 1.5/24 = 0.0625)
+  // 2. Safe numeric day-fraction conversion (Google Sheets serial value)
   if (typeof rawValue === 'number' && !isNaN(rawValue)) {
     var totalSeconds = Math.round(rawValue * 86400);
     if (totalSeconds >= 0) {
@@ -1329,7 +1296,56 @@ function formatDurationValue(rawValue, displayValue) {
     }
   }
 
+  // If rawValue is a duration string (e.g. "1:30:00" or "25:00:00")
+  if (typeof rawValue === 'string') {
+    var str = rawValue.trim();
+    var durMatchStr = str.match(/^(\d+):([0-5]?\d)(?::([0-5]?\d))?$/);
+    if (durMatchStr) {
+      if (durMatchStr[3] !== undefined) {
+        var m2 = durMatchStr[2].length === 1 ? '0' + durMatchStr[2] : durMatchStr[2];
+        var s2 = durMatchStr[3].length === 1 ? '0' + durMatchStr[3] : durMatchStr[3];
+        return durMatchStr[1] + ':' + m2 + ':' + s2;
+      }
+      var m3 = durMatchStr[2].length === 1 ? '0' + durMatchStr[2] : durMatchStr[2];
+      return durMatchStr[1] + ':' + m3 + ':00';
+    }
+  }
+
+  // If rawValue is an 1899 Date object (Google Sheets returns Date for time-formatted cells under 24 hrs when read without display value)
+  if (Object.prototype.toString.call(rawValue) === '[object Date]' || (rawValue instanceof Date)) {
+    if (!isNaN(rawValue.getTime())) {
+      var dHours = rawValue.getHours();
+      var dMinutes = rawValue.getMinutes();
+      var dSeconds = rawValue.getSeconds();
+      return dHours + ':' + (dMinutes < 10 ? '0' : '') + dMinutes + ':' + (dSeconds < 10 ? '0' : '') + dSeconds;
+    }
+  }
+
+  // 3. Safe fallback handling
   return '1:00:00';
+}
+
+/**
+ * Helper: Convert duration input (string "HH:MM:SS" or "HH:MM", or numeric day fraction) to day-fraction number.
+ * e.g. "1:00:00" -> 1/24 (0.041666666666666664)
+ *      "1:30:00" -> 1.5/24 (0.0625)
+ *      "0:30:00" -> 0.5/24 (0.020833333333333332)
+ *      "25:00:00" -> 25/24 (1.0416666666666667)
+ * Returns number (day fraction), or null if unparseable.
+ */
+function parseDurationToDayFraction(val) {
+  if (val === null || val === undefined || val === '') return null;
+  if (typeof val === 'number' && !isNaN(val) && val >= 0) return val;
+  var str = String(val).trim();
+  var match = str.match(/^(\d+):([0-5]?\d)(?::([0-5]?\d))?$/);
+  if (match) {
+    var hrs = parseInt(match[1], 10);
+    var mins = parseInt(match[2], 10);
+    var secs = match[3] !== undefined ? parseInt(match[3], 10) : 0;
+    var totalSeconds = hrs * 3600 + mins * 60 + secs;
+    return totalSeconds / 86400;
+  }
+  return null;
 }
 
 /**
@@ -1488,12 +1504,15 @@ function handleAddCNE(params, session) {
     }
     var dataId = 'CNE-' + curYear + '-' + ('00000' + nextNum).slice(-6);
     
+    var durNum = parseDurationToDayFraction(params.duration);
+    var durationValueToStore = durNum !== null ? durNum : (1 / 24);
+    
     sheet.appendRow([
       dataId,
       area,
       fromDate,
       toDate,
-      sanitizeCellInput(formatDurationValue(params.duration, params.duration)),
+      durationValueToStore,
       topic,
       rpEmpId,
       sanitizeCellInput(params.modeOfTeaching || 'Lecture Cum Discussion'),
@@ -1503,6 +1522,19 @@ function handleAddCNE(params, session) {
       new Date().toISOString(),
       session.employeeId || ''
     ]);
+    
+    // Preserve Duration cell number format on newly appended row if not already formatted
+    var lastRow = sheet.getLastRow();
+    var durCell = sheet.getRange(lastRow, 5);
+    var curFmt = durCell.getNumberFormat();
+    if (!curFmt || curFmt === '@' || curFmt === 'General' || (curFmt.indexOf('h') === -1 && curFmt.indexOf('H') === -1 && curFmt.indexOf(':') === -1)) {
+      var sampleFmt = sheet.getRange(2, 5).getNumberFormat();
+      if (sampleFmt && (sampleFmt.indexOf('h') !== -1 || sampleFmt.indexOf('H') !== -1 || sampleFmt.indexOf(':') !== -1)) {
+        durCell.setNumberFormat(sampleFmt);
+      } else {
+        durCell.setNumberFormat('[h]:mm:ss');
+      }
+    }
     
     logAuditAction('ADD_CNE', session.employeeId, 'Created Data ID: ' + dataId + ' (' + topic + ')', 'SUCCESS');
     return { success: true, message: 'CNE activity recorded successfully.', data: { dataId: dataId } };
@@ -1539,7 +1571,24 @@ function handleUpdateCNE(params, session) {
         if (params.area !== undefined) sheet.getRange(r + 1, 2).setValue(sanitizeCellInput(params.area));
         if (params.fromDate !== undefined) sheet.getRange(r + 1, 3).setValue(params.fromDate);
         if (params.toDate !== undefined) sheet.getRange(r + 1, 4).setValue(params.toDate);
-        if (params.duration !== undefined) sheet.getRange(r + 1, 5).setValue(sanitizeCellInput(formatDurationValue(params.duration, params.duration)));
+        if (params.duration !== undefined) {
+          var updateDurNum = parseDurationToDayFraction(params.duration);
+          var editDurCell = sheet.getRange(r + 1, 5);
+          if (updateDurNum !== null) {
+            editDurCell.setValue(updateDurNum);
+            var editFmt = editDurCell.getNumberFormat();
+            if (!editFmt || editFmt === '@' || editFmt === 'General' || (editFmt.indexOf('h') === -1 && editFmt.indexOf('H') === -1 && editFmt.indexOf(':') === -1)) {
+              var sampleFmtEdit = sheet.getRange(2, 5).getNumberFormat();
+              if (sampleFmtEdit && (sampleFmtEdit.indexOf('h') !== -1 || sampleFmtEdit.indexOf('H') !== -1 || sampleFmtEdit.indexOf(':') !== -1)) {
+                editDurCell.setNumberFormat(sampleFmtEdit);
+              } else {
+                editDurCell.setNumberFormat('[h]:mm:ss');
+              }
+            }
+          } else {
+            editDurCell.setValue(sanitizeCellInput(params.duration));
+          }
+        }
         if (params.topic !== undefined) sheet.getRange(r + 1, 6).setValue(sanitizeCellInput(params.topic));
         
         if (params.resourcePersonEmpId !== undefined) {
