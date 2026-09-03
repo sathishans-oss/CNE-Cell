@@ -6,7 +6,8 @@ import {
   CheckCircle2,
   AlertCircle,
   RefreshCw,
-  KeyRound
+  KeyRound,
+  Loader2
 } from 'lucide-react';
 import { Employee, RoleConfig, SessionUser, UserRole } from '../types';
 import { ApiService } from '../services/api';
@@ -22,6 +23,7 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [resettingId, setResettingId] = useState<string | null>(null);
+  const [updatingEmpId, setUpdatingEmpId] = useState<string | null>(null);
 
   const { success, error } = useToast();
 
@@ -58,19 +60,35 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
   };
 
   const handleRoleChange = async (empId: string, newRole: UserRole) => {
+    const normId = empId.toLowerCase();
+    const previousRole = rolesMap[normId] || 'EMPLOYEE';
+    if (previousRole === newRole || updatingEmpId) return;
+
+    setUpdatingEmpId(empId);
     try {
       const res = await ApiService.updateRole(empId, newRole);
       if (res.success) {
         success(`Role for ${empId} updated to ${newRole}.`, 'Role Updated');
         setRolesMap((prev) => ({
           ...prev,
-          [empId.toLowerCase()]: newRole
+          [normId]: newRole
         }));
       } else {
         error(res.message || 'Failed to update role.');
+        // Ensure state retains previousRole
+        setRolesMap((prev) => ({
+          ...prev,
+          [normId]: previousRole
+        }));
       }
     } catch (e: any) {
-      error('Error updating role.');
+      error(e?.message || 'Error updating role.');
+      setRolesMap((prev) => ({
+        ...prev,
+        [normId]: previousRole
+      }));
+    } finally {
+      setUpdatingEmpId(null);
     }
   };
 
@@ -187,29 +205,39 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
                       </td>
 
                       <td className="py-3 px-4">
-                        <select
-                          value={role}
-                          onChange={(e) => handleRoleChange(officer.employeeId, e.target.value as UserRole)}
-                          className={`px-3 py-1 text-xs font-bold rounded-lg border focus:outline-hidden ${
-                            role === 'ADMIN'
-                              ? 'bg-purple-50 text-purple-900 border-purple-300'
-                              : 'bg-slate-100 text-slate-800 border-slate-300'
-                          }`}
-                        >
-                          <option value="EMPLOYEE">EMPLOYEE (Default User)</option>
-                          <option value="ADMIN">ADMIN (Full Control)</option>
-                        </select>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={role}
+                            disabled={updatingEmpId === officer.employeeId}
+                            onChange={(e) => handleRoleChange(officer.employeeId, e.target.value as UserRole)}
+                            className={`px-3 py-1 text-xs font-bold rounded-lg border focus:outline-hidden disabled:opacity-60 cursor-pointer ${
+                              role === 'ADMIN'
+                                ? 'bg-purple-50 text-purple-900 border-purple-300'
+                                : 'bg-slate-100 text-slate-800 border-slate-300'
+                            }`}
+                          >
+                            <option value="EMPLOYEE">EMPLOYEE (Default User)</option>
+                            <option value="ADMIN">ADMIN (Full Control)</option>
+                          </select>
+                          {updatingEmpId === officer.employeeId && (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-700 shrink-0" />
+                          )}
+                        </div>
                       </td>
 
                       <td className="py-3 px-4 text-right whitespace-nowrap">
                         <button
                           type="button"
                           onClick={() => handleAdminResetPassword(officer.employeeId, officer.name)}
-                          disabled={isResetting}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors"
+                          disabled={isResetting || updatingEmpId === officer.employeeId}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors disabled:opacity-50"
                           title="Reset employee password to default pass1234"
                         >
-                          <KeyRound className="w-3 h-3 text-amber-600" />
+                          {isResetting ? (
+                            <Loader2 className="w-3 h-3 animate-spin text-amber-600" />
+                          ) : (
+                            <KeyRound className="w-3 h-3 text-amber-600" />
+                          )}
                           <span>{isResetting ? 'Resetting...' : 'Reset to pass1234'}</span>
                         </button>
                       </td>

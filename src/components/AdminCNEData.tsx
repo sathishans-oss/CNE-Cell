@@ -12,7 +12,9 @@ import {
   Download,
   Users,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  Loader2,
+  UserCheck
 } from 'lucide-react';
 import { Area, CNERecord, Employee, SessionUser } from '../types';
 import { ApiService } from '../services/api';
@@ -47,19 +49,32 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
   const [formToDate, setFormToDate] = useState(new Date().toISOString().split('T')[0]);
   const [formDuration, setFormDuration] = useState('1:00:00');
   const [formTopic, setFormTopic] = useState('');
-  const [formRpEmpId, setFormRpEmpId] = useState('');
+  const [selectedRpEmpIds, setSelectedRpEmpIds] = useState<string[]>([]);
+  const [rpSearchQuery, setRpSearchQuery] = useState('');
   const [formMode, setFormMode] = useState('Lecture Cum Discussion');
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
   const [staffSearchQuery, setStaffSearchQuery] = useState('');
   const [formRemarks, setFormRemarks] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Inline Edit State
-  const [editingDataId, setEditingDataId] = useState<string | null>(null);
-  const [inlineForm, setInlineForm] = useState<Partial<CNERecord>>({});
+  // Edit CNE Modal State (Replacing Inline Edit)
+  const [editingRecord, setEditingRecord] = useState<CNERecord | null>(null);
+  const [editArea, setEditArea] = useState('');
+  const [editFromDate, setEditFromDate] = useState('');
+  const [editToDate, setEditToDate] = useState('');
+  const [editDuration, setEditDuration] = useState('1:00:00');
+  const [editTopic, setEditTopic] = useState('');
+  const [editRpEmpIds, setEditRpEmpIds] = useState<string[]>([]);
+  const [editRpSearchQuery, setEditRpSearchQuery] = useState('');
+  const [editMode, setEditMode] = useState('Lecture Cum Discussion');
+  const [editStaffIds, setEditStaffIds] = useState<string[]>([]);
+  const [editStaffSearchQuery, setEditStaffSearchQuery] = useState('');
+  const [editRemarks, setEditRemarks] = useState('');
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
 
   // Delete Confirm Modal State
   const [deletingRecord, setDeletingRecord] = useState<CNERecord | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const { success, error } = useToast();
 
@@ -86,30 +101,34 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
     }
   };
 
-  // Filtered list
+  // Sort by date (newest first)
+  const sortedRecords = useMemo(() => {
+    return [...records].sort((a, b) => (b.fromDate || '').localeCompare(a.fromDate || ''));
+  }, [records]);
+
+  // Filtered list based on sorted records
   const filteredRecords = useMemo(() => {
-    return records.filter((rec) => {
+    return sortedRecords.filter((rec) => {
       if (selectedArea && rec.area !== selectedArea) return false;
       if (startDate && rec.fromDate < startDate) return false;
       if (endDate && rec.fromDate > endDate) return false;
 
       if (searchTerm.trim()) {
         const q = searchTerm.toLowerCase();
-        const matchId = rec.dataId.toLowerCase().includes(q);
-        const matchTopic = rec.topic.toLowerCase().includes(q);
-        const matchArea = rec.area.toLowerCase().includes(q);
-        const matchRp = (rec.resourcePersonName || rec.resourcePersonEmpId).toLowerCase().includes(q);
+        const matchTopic = (rec.topic || '').toLowerCase().includes(q);
+        const matchArea = (rec.area || '').toLowerCase().includes(q);
+        const matchRp = (rec.resourcePersonName || rec.resourcePersonEmpId || '').toLowerCase().includes(q);
         const matchRemarks = (rec.remarks || '').toLowerCase().includes(q);
         const matchStaff = (rec.staffEmpIds || []).some((s) => s.toLowerCase().includes(q));
 
-        if (!matchId && !matchTopic && !matchArea && !matchRp && !matchRemarks && !matchStaff) {
+        if (!matchTopic && !matchArea && !matchRp && !matchRemarks && !matchStaff) {
           return false;
         }
       }
 
       return true;
     });
-  }, [records, selectedArea, startDate, endDate, searchTerm]);
+  }, [sortedRecords, selectedArea, startDate, endDate, searchTerm]);
 
   // Pagination
   const totalPages = Math.ceil(filteredRecords.length / itemsPerPage) || 1;
@@ -118,11 +137,11 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
     return filteredRecords.slice(start, start + itemsPerPage);
   }, [filteredRecords, currentPage]);
 
-  // Handle Add CNE
+  // Handle Add CNE Activity
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formTopic.trim() || !formArea.trim() || !formFromDate.trim() || !formRpEmpId.trim()) {
-      error('Please complete all required fields (Topic, Area, Date, Resource Person).');
+    if (!formTopic.trim() || !formArea.trim() || !formFromDate.trim() || selectedRpEmpIds.length === 0) {
+      error('Please complete all required fields (Topic, Area, Date, at least one Resource Person).');
       return;
     }
 
@@ -131,7 +150,11 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
       return;
     }
 
-    const rp = officers.find((o) => o.employeeId === formRpEmpId);
+    // Build resource person names
+    const rpNames = selectedRpEmpIds.map((id) => {
+      const off = officers.find((o) => o.employeeId === id);
+      return off ? off.name : id;
+    });
 
     setIsSubmitting(true);
     try {
@@ -141,8 +164,8 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
         toDate: formToDate || formFromDate,
         duration: formDuration || '1:00:00',
         topic: formTopic.trim(),
-        resourcePersonEmpId: formRpEmpId,
-        resourcePersonName: rp ? rp.name : formRpEmpId,
+        resourcePersonEmpId: selectedRpEmpIds.join(', '),
+        resourcePersonName: rpNames.join(', '),
         modeOfTeaching: formMode,
         staffEmpIds: selectedStaffIds,
         staffCount: selectedStaffIds.length,
@@ -155,8 +178,11 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
         setIsAddModalOpen(false);
         // Reset form
         setFormTopic('');
+        setSelectedRpEmpIds([]);
         setSelectedStaffIds([]);
         setFormRemarks('');
+        setRpSearchQuery('');
+        setStaffSearchQuery('');
       } else {
         error(res.message || 'Failed to save CNE record.');
       }
@@ -167,42 +193,91 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
     }
   };
 
-  // Inline Edit Start
-  const startInlineEdit = (rec: CNERecord) => {
-    setEditingDataId(rec.dataId);
-    setInlineForm({ ...rec });
+  // Open Edit Modal
+  const openEditModal = (rec: CNERecord) => {
+    setEditingRecord(rec);
+    setEditArea(rec.area || '');
+    setEditFromDate(rec.fromDate || '');
+    setEditToDate(rec.toDate || rec.fromDate || '');
+    setEditDuration(rec.duration || '1:00:00');
+    setEditTopic(rec.topic || '');
+    setEditMode(rec.modeOfTeaching || 'Lecture Cum Discussion');
+    setEditRemarks(rec.remarks || '');
+
+    // Parse RP IDs
+    const parsedRp = (rec.resourcePersonEmpId || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    setEditRpEmpIds(parsedRp);
+
+    // Staff IDs
+    setEditStaffIds(rec.staffEmpIds ? [...rec.staffEmpIds] : []);
+    setEditRpSearchQuery('');
+    setEditStaffSearchQuery('');
   };
 
-  const cancelInlineEdit = () => {
-    setEditingDataId(null);
-    setInlineForm({});
-  };
+  // Save Edit Modal
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingRecord) return;
 
-  const saveInlineEdit = async (dataId: string) => {
+    if (!editTopic.trim() || !editArea.trim() || !editFromDate.trim() || editRpEmpIds.length === 0) {
+      error('Please complete all required fields (Topic, Area, Date, at least one Resource Person).');
+      return;
+    }
+
+    if (editToDate && editToDate < editFromDate) {
+      error('To Date cannot be earlier than From Date.');
+      return;
+    }
+
+    const rpNames = editRpEmpIds.map((id) => {
+      const off = officers.find((o) => o.employeeId === id);
+      return off ? off.name : id;
+    });
+
+    const updatedData: Partial<CNERecord> = {
+      area: editArea,
+      fromDate: editFromDate,
+      toDate: editToDate || editFromDate,
+      duration: editDuration || '1:00:00',
+      topic: editTopic.trim(),
+      resourcePersonEmpId: editRpEmpIds.join(', '),
+      resourcePersonName: rpNames.join(', '),
+      modeOfTeaching: editMode,
+      staffEmpIds: editStaffIds,
+      staffCount: editStaffIds.length,
+      remarks: editRemarks.trim()
+    };
+
+    setIsEditSubmitting(true);
     try {
-      const res = await ApiService.updateCNE(dataId, inlineForm);
-
+      const res = await ApiService.updateCNE(editingRecord.dataId, updatedData);
       if (res.success) {
         success('CNE record updated successfully.', 'Record Updated');
         setRecords((prev) =>
-          prev.map((r) => (r.dataId === dataId ? { ...r, ...inlineForm } as CNERecord : r))
+          prev.map((r) => (r.dataId === editingRecord.dataId ? ({ ...r, ...updatedData } as CNERecord) : r))
         );
-        cancelInlineEdit();
+        setEditingRecord(null);
       } else {
         error(res.message || 'Failed to update record.');
       }
     } catch (err: any) {
       error(err?.message || 'Error updating record.');
+    } finally {
+      setIsEditSubmitting(false);
     }
   };
 
   // Delete action
   const confirmDelete = async () => {
-    if (!deletingRecord) return;
+    if (!deletingRecord || isDeleting) return;
+    setIsDeleting(true);
     try {
       const res = await ApiService.deleteCNE(deletingRecord.dataId);
       if (res.success) {
-        success('CNE record deleted successfully.', 'Record Deleted');
+        success('CNE activity deleted successfully.', 'Record Deleted');
         setRecords((prev) => prev.filter((r) => r.dataId !== deletingRecord.dataId));
         setDeletingRecord(null);
       } else {
@@ -210,15 +285,17 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
       }
     } catch (err: any) {
       error(err?.message || 'Error deleting record.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   // Export CSV
   const handleExportCsv = () => {
     if (records.length === 0) return;
-    const headers = ['Data ID', 'Ward Name / Area', 'From Date', 'To Date', 'Duration', 'Topic', 'Resource Person Emp Id', 'Mode of Teaching', 'Staff Emp ID', 'Staff Count', 'Remarks'];
-    const rows = records.map((r) => [
-      `"${r.dataId}"`,
+    const headers = ['Sr. No.', 'Ward Name / Area', 'From Date', 'To Date', 'Duration', 'Topic', 'Resource Person Emp Id', 'Mode of Teaching', 'Staff Emp ID', 'Staff Count', 'Remarks'];
+    const rows = sortedRecords.map((r, i) => [
+      `"${i + 1}"`,
       `"${r.area}"`,
       `"${r.fromDate}"`,
       `"${r.toDate || ''}"`,
@@ -253,7 +330,24 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
 
   const activeAreas = areas.filter((a) => a.status === 'ACTIVE');
 
-  // Filter officers for staff multi-select
+  // Filter officers for RP multi-select (Add modal)
+  const filteredRpOptions = officers.filter((o) => {
+    if (!rpSearchQuery.trim()) return true;
+    const q = rpSearchQuery.toLowerCase();
+    return (
+      (o.name || '').toLowerCase().includes(q) ||
+      (o.employeeId || '').toLowerCase().includes(q) ||
+      (o.designation || '').toLowerCase().includes(q)
+    );
+  });
+
+  const toggleRpSelection = (empId: string) => {
+    setSelectedRpEmpIds((prev) =>
+      prev.includes(empId) ? prev.filter((id) => id !== empId) : [...prev, empId]
+    );
+  };
+
+  // Filter officers for Staff multi-select (Add modal)
   const filteredStaffOptions = officers.filter((o) => {
     if (!staffSearchQuery.trim()) return true;
     const q = staffSearchQuery.toLowerCase();
@@ -270,6 +364,40 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
     );
   };
 
+  // Filter officers for RP multi-select (Edit modal)
+  const filteredEditRpOptions = officers.filter((o) => {
+    if (!editRpSearchQuery.trim()) return true;
+    const q = editRpSearchQuery.toLowerCase();
+    return (
+      (o.name || '').toLowerCase().includes(q) ||
+      (o.employeeId || '').toLowerCase().includes(q) ||
+      (o.designation || '').toLowerCase().includes(q)
+    );
+  });
+
+  const toggleEditRpSelection = (empId: string) => {
+    setEditRpEmpIds((prev) =>
+      prev.includes(empId) ? prev.filter((id) => id !== empId) : [...prev, empId]
+    );
+  };
+
+  // Filter officers for Staff multi-select (Edit modal)
+  const filteredEditStaffOptions = officers.filter((o) => {
+    if (!editStaffSearchQuery.trim()) return true;
+    const q = editStaffSearchQuery.toLowerCase();
+    return (
+      (o.name || '').toLowerCase().includes(q) ||
+      (o.employeeId || '').toLowerCase().includes(q) ||
+      (o.designation || '').toLowerCase().includes(q)
+    );
+  });
+
+  const toggleEditStaffSelection = (empId: string) => {
+    setEditStaffIds((prev) =>
+      prev.includes(empId) ? prev.filter((id) => id !== empId) : [...prev, empId]
+    );
+  };
+
   return (
     <div className="space-y-6 pb-12">
       {/* Header Bar */}
@@ -282,7 +410,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Complete institutional repository of all Continuing Nursing Education sessions, training hours, and staff participant attendance.
+            Institutional repository of Continuing Nursing Education sessions, training hours, and staff participant attendance (Sorted newest first).
           </p>
         </div>
 
@@ -290,7 +418,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
           <button
             onClick={loadAllData}
             disabled={loading}
-            className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+            className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors cursor-pointer disabled:opacity-50"
             title="Refresh from Google Sheets"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -299,7 +427,8 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
           <button
             id="btn-admin-export-csv"
             onClick={handleExportCsv}
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-semibold transition-colors"
+            disabled={records.length === 0}
+            className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
           >
             <Download className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Export CSV</span>
@@ -319,12 +448,12 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
       {/* Filter Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-          {/* Search */}
+          {/* Search (Data ID hidden from placeholder) */}
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
             <input
               type="text"
-              placeholder="Search topic, Data ID, instructor, staff ID..."
+              placeholder="Search topic, area, instructor, staff ID..."
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
@@ -384,7 +513,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
 
         <div className="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
           <span>
-            Showing {filteredRecords.length} of {records.length} records
+            Showing {filteredRecords.length} of {records.length} records (Sorted newest first)
           </span>
           {(searchTerm || selectedArea || startDate || endDate) && (
             <button
@@ -395,7 +524,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                 setEndDate('');
                 setCurrentPage(1);
               }}
-              className="text-xs text-rose-600 hover:underline"
+              className="text-xs text-rose-600 hover:underline cursor-pointer font-medium"
             >
               Reset Filters
             </button>
@@ -403,7 +532,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table (Data ID is completely hidden from UI) */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         {loading ? (
           <div className="py-20 text-center text-xs text-slate-400">Loading CNE records...</div>
@@ -419,116 +548,54 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[11px]">
-                    <th className="py-3 px-3 w-28">Data ID</th>
-                    <th className="py-3 px-3">Date</th>
-                    <th className="py-3 px-3">Ward / Area</th>
+                    <th className="py-3 px-3 text-center w-12">#</th>
+                    <th className="py-3 px-3 w-24">Date</th>
+                    <th className="py-3 px-3 w-40">Ward / Area</th>
                     <th className="py-3 px-3 min-w-[200px]">Topic / Subject</th>
-                    <th className="py-3 px-3">Resource Person</th>
+                    <th className="py-3 px-3 min-w-[150px]">Resource Person(s)</th>
                     <th className="py-3 px-3">Mode</th>
-                    <th className="py-3 px-3 text-center">Participants</th>
-                    <th className="py-3 px-3 text-center">Duration</th>
-                    <th className="py-3 px-3 text-right">Actions</th>
+                    <th className="py-3 px-3 text-center w-24">Participants</th>
+                    <th className="py-3 px-3 text-center w-24">Duration</th>
+                    <th className="py-3 px-3 text-right w-24">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {paginatedRecords.map((rec) => {
-                    const isEditing = editingDataId === rec.dataId;
-
+                  {paginatedRecords.map((rec, idx) => {
+                    const rowNumber = (currentPage - 1) * itemsPerPage + idx + 1;
                     return (
-                      <tr key={rec.dataId} className={`hover:bg-slate-50 ${isEditing ? 'bg-amber-50/50' : ''}`}>
-                        {/* Data ID (Read-only) */}
-                        <td className="py-3 px-3 font-mono font-bold text-slate-700 whitespace-nowrap">
-                          {rec.dataId}
+                      <tr key={rec.dataId} className="hover:bg-slate-50">
+                        {/* Sr. No. (Replacing Data ID) */}
+                        <td className="py-3 px-3 text-center font-medium text-slate-400">
+                          {rowNumber}
                         </td>
 
                         {/* Date */}
-                        <td className="py-3 px-3 whitespace-nowrap text-slate-800">
-                          {isEditing ? (
-                            <input
-                              type="date"
-                              value={inlineForm.fromDate || ''}
-                              onChange={(e) => setInlineForm({ ...inlineForm, fromDate: e.target.value })}
-                              className="p-1 bg-white border border-slate-300 rounded text-xs"
-                            />
-                          ) : (
-                            rec.fromDate
-                          )}
+                        <td className="py-3 px-3 whitespace-nowrap text-slate-800 font-medium">
+                          {rec.fromDate}
                         </td>
 
                         {/* Area */}
                         <td className="py-3 px-3 text-slate-700">
-                          {isEditing ? (
-                            <select
-                              value={inlineForm.area || ''}
-                              onChange={(e) => setInlineForm({ ...inlineForm, area: e.target.value })}
-                              className="p-1 bg-white border border-slate-300 rounded text-xs max-w-[150px]"
-                            >
-                              {activeAreas.map((a) => (
-                                <option key={a.id} value={a.name}>{a.name}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 truncate inline-block max-w-[160px]">
-                              {rec.area}
-                            </span>
-                          )}
+                          <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 truncate inline-block max-w-[160px]">
+                            {rec.area}
+                          </span>
                         </td>
 
                         {/* Topic */}
                         <td className="py-3 px-3 font-semibold text-slate-900">
-                          {isEditing ? (
-                            <input
-                              type="text"
-                              value={inlineForm.topic || ''}
-                              onChange={(e) => setInlineForm({ ...inlineForm, topic: e.target.value })}
-                              className="p-1 bg-white border border-slate-300 rounded text-xs w-full"
-                            />
-                          ) : (
-                            rec.topic
-                          )}
+                          {rec.topic}
                         </td>
 
-                        {/* Resource Person */}
-                        <td className="py-3 px-3 text-slate-700 whitespace-nowrap">
-                          {isEditing ? (
-                            <select
-                              value={inlineForm.resourcePersonEmpId || ''}
-                              onChange={(e) => {
-                                const rp = officers.find((o) => o.employeeId === e.target.value);
-                                setInlineForm({
-                                  ...inlineForm,
-                                  resourcePersonEmpId: e.target.value,
-                                  resourcePersonName: rp ? rp.name : e.target.value
-                                });
-                              }}
-                              className="p-1 bg-white border border-slate-300 rounded text-xs max-w-[140px]"
-                            >
-                              {officers.map((o) => (
-                                <option key={o.employeeId} value={o.employeeId}>
-                                  {o.name} ({o.employeeId})
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span>{rec.resourcePersonName || rec.resourcePersonEmpId}</span>
-                          )}
+                        {/* Resource Person(s) */}
+                        <td className="py-3 px-3 text-slate-700">
+                          <span className="line-clamp-2">
+                            {rec.resourcePersonName || rec.resourcePersonEmpId || '—'}
+                          </span>
                         </td>
 
                         {/* Mode */}
                         <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
-                          {isEditing ? (
-                            <select
-                              value={inlineForm.modeOfTeaching || ''}
-                              onChange={(e) => setInlineForm({ ...inlineForm, modeOfTeaching: e.target.value })}
-                              className="p-1 bg-white border border-slate-300 rounded text-xs"
-                            >
-                              {teachingModes.map((m) => (
-                                <option key={m} value={m}>{m}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            rec.modeOfTeaching
-                          )}
+                          {rec.modeOfTeaching}
                         </td>
 
                         {/* Staff Count */}
@@ -538,57 +605,31 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                           </span>
                         </td>
 
-                        {/* Duration */}
+                        {/* Duration (Preserved) */}
                         <td className="py-3 px-3 text-center whitespace-nowrap font-mono text-slate-600">
-                          {isEditing ? (
-                            <input
-                              type="text"
-                              value={inlineForm.duration || ''}
-                              onChange={(e) => setInlineForm({ ...inlineForm, duration: e.target.value })}
-                              className="p-1 bg-white border border-slate-300 rounded text-xs w-20 text-center"
-                            />
-                          ) : (
-                            rec.duration || '1:00:00'
-                          )}
+                          {rec.duration || '1:00:00'}
                         </td>
 
-                        {/* Actions */}
+                        {/* Actions (Modal triggers) */}
                         <td className="py-3 px-3 text-right whitespace-nowrap">
-                          {isEditing ? (
-                            <div className="flex items-center justify-end gap-1">
-                              <button
-                                onClick={() => saveInlineEdit(rec.dataId)}
-                                className="p-1.5 text-emerald-700 hover:bg-emerald-100 rounded-md"
-                                title="Save changes"
-                              >
-                                <Check className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={cancelInlineEdit}
-                                className="p-1.5 text-rose-700 hover:bg-rose-100 rounded-md"
-                                title="Cancel"
-                              >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-end gap-1">
-                              <button
-                                onClick={() => startInlineEdit(rec)}
-                                className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-md"
-                                title="Inline Edit"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => setDeletingRecord(rec)}
-                                className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-md"
-                                title="Delete record"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          )}
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(rec)}
+                              className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-md cursor-pointer"
+                              title="Edit CNE Record (Modal)"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeletingRecord(rec)}
+                              className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-md cursor-pointer"
+                              title="Delete record"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -604,16 +645,18 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
               </div>
               <div className="flex items-center gap-1">
                 <button
+                  type="button"
                   disabled={currentPage <= 1}
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40"
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
                 >
                   Previous
                 </button>
                 <button
+                  type="button"
                   disabled={currentPage >= totalPages}
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40"
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
                 >
                   Next
                 </button>
@@ -623,12 +666,16 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
         )}
       </div>
 
-      {/* Add CNE Activity Modal */}
+      {/* ========================================================= */}
+      {/* 1. ADD CNE Activity Modal (With RP & Staff Multi-Select)  */}
+      {/* ========================================================= */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-xl border border-slate-200 relative max-h-[90vh] overflow-y-auto">
             <button
+              type="button"
               onClick={() => setIsAddModalOpen(false)}
+              disabled={isSubmitting}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1"
             >
               <X className="w-5 h-5" />
@@ -695,7 +742,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                 </div>
               </div>
 
-              {/* Dates & Duration */}
+              {/* Dates & Duration (Preserved Duration Handling) */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
@@ -736,27 +783,83 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                 </div>
               </div>
 
-              {/* Resource Person */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                  Resource Person (Instructor) *
-                </label>
-                <select
-                  required
-                  value={formRpEmpId}
-                  onChange={(e) => setFormRpEmpId(e.target.value)}
-                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                >
-                  <option value="">Select Resource Person...</option>
-                  {officers.map((o) => (
-                    <option key={o.employeeId} value={o.employeeId}>
-                      {o.employeeId} — {o.name} ({o.designation})
-                    </option>
-                  ))}
-                </select>
+              {/* MULTI-SELECT 1: Resource Persons */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                    Resource Person(s) / Instructors (Multi-Select) *
+                  </label>
+                  <span className="text-xs font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
+                    Selected: {selectedRpEmpIds.length}
+                  </span>
+                </div>
+
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Filter resource persons by name or ID..."
+                    value={rpSearchQuery}
+                    onChange={(e) => setRpSearchQuery(e.target.value)}
+                    className="w-full pl-8 pr-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
+                  />
+                </div>
+
+                {/* Selected RP chips */}
+                {selectedRpEmpIds.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1 bg-white rounded-lg border border-slate-200">
+                    {selectedRpEmpIds.map((id) => {
+                      const off = officers.find((o) => o.employeeId === id);
+                      return (
+                        <span
+                          key={id}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium bg-purple-50 text-purple-900 px-2 py-0.5 rounded-md border border-purple-200"
+                        >
+                          <span>{id} — {off ? off.name : ''}</span>
+                          <button
+                            type="button"
+                            onClick={() => toggleRpSelection(id)}
+                            className="hover:text-rose-600"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* RP Selection List */}
+                <div className="max-h-32 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white">
+                  {filteredRpOptions.slice(0, 15).map((o) => {
+                    const isSelected = selectedRpEmpIds.includes(o.employeeId);
+                    return (
+                      <div
+                        key={o.employeeId}
+                        onClick={() => toggleRpSelection(o.employeeId)}
+                        className={`p-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer text-xs ${
+                          isSelected ? 'bg-purple-50/60 font-semibold' : ''
+                        }`}
+                      >
+                        <div>
+                          <span className="font-mono text-slate-600">{o.employeeId}</span>
+                          <span className="mx-1.5">•</span>
+                          <span className="text-slate-900">{o.name}</span>
+                          <span className="text-slate-400 text-[10px] ml-1">({o.designation})</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {}}
+                          className="rounded text-purple-600 focus:ring-purple-500"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
-              {/* Section 14: Searchable Staff Selection (Multi-select) */}
+              {/* MULTI-SELECT 2: Staff Participants */}
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
@@ -824,7 +927,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => {}}
-                          className="rounded text-emerald-600"
+                          className="rounded text-emerald-600 focus:ring-emerald-500"
                         />
                       </div>
                     );
@@ -850,16 +953,24 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-5 py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
                 >
-                  {isSubmitting ? 'Saving Activity...' : 'Save CNE Activity'}
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                      <span>Saving Activity...</span>
+                    </>
+                  ) : (
+                    <span>Save CNE Activity</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -867,7 +978,320 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
+      {/* ========================================================= */}
+      {/* 2. EDIT CNE Activity Modal (Replacing Inline Edit)        */}
+      {/* ========================================================= */}
+      {editingRecord && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-xl border border-slate-200 relative max-h-[90vh] overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => setEditingRecord(null)}
+              disabled={isEditSubmitting}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center">
+                <Edit2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Edit CNE Activity Record</h3>
+                <p className="text-xs text-slate-500">Update session details, resource persons, and participants</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleEditSubmit} className="space-y-4 text-xs">
+              {/* Topic */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  CNE Topic / Skills Description *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editTopic}
+                  onChange={(e) => setEditTopic(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+                />
+              </div>
+
+              {/* Area & Mode */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Ward Name / Area *
+                  </label>
+                  <select
+                    required
+                    value={editArea}
+                    onChange={(e) => setEditArea(e.target.value)}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+                  >
+                    <option value="">Select Ward / Area...</option>
+                    {activeAreas.map((a) => (
+                      <option key={a.id} value={a.name}>{a.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Mode of Teaching
+                  </label>
+                  <select
+                    value={editMode}
+                    onChange={(e) => setEditMode(e.target.value)}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+                  >
+                    {teachingModes.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Dates & Duration */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    From Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editFromDate}
+                    onChange={(e) => setEditFromDate(e.target.value)}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    To Date
+                  </label>
+                  <input
+                    type="date"
+                    value={editToDate}
+                    onChange={(e) => setEditToDate(e.target.value)}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Duration (hh:mm:ss)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="1:00:00"
+                    value={editDuration}
+                    onChange={(e) => setEditDuration(e.target.value)}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* EDIT MULTI-SELECT 1: Resource Persons */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                    Resource Person(s) / Instructors (Multi-Select) *
+                  </label>
+                  <span className="text-xs font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
+                    Selected: {editRpEmpIds.length}
+                  </span>
+                </div>
+
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Filter resource persons by name or ID..."
+                    value={editRpSearchQuery}
+                    onChange={(e) => setEditRpSearchQuery(e.target.value)}
+                    className="w-full pl-8 pr-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
+                  />
+                </div>
+
+                {/* Selected RP chips */}
+                {editRpEmpIds.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1 bg-white rounded-lg border border-slate-200">
+                    {editRpEmpIds.map((id) => {
+                      const off = officers.find((o) => o.employeeId === id);
+                      return (
+                        <span
+                          key={id}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium bg-purple-50 text-purple-900 px-2 py-0.5 rounded-md border border-purple-200"
+                        >
+                          <span>{id} — {off ? off.name : ''}</span>
+                          <button
+                            type="button"
+                            onClick={() => toggleEditRpSelection(id)}
+                            className="hover:text-rose-600"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* RP Selection List */}
+                <div className="max-h-32 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white">
+                  {filteredEditRpOptions.slice(0, 15).map((o) => {
+                    const isSelected = editRpEmpIds.includes(o.employeeId);
+                    return (
+                      <div
+                        key={o.employeeId}
+                        onClick={() => toggleEditRpSelection(o.employeeId)}
+                        className={`p-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer text-xs ${
+                          isSelected ? 'bg-purple-50/60 font-semibold' : ''
+                        }`}
+                      >
+                        <div>
+                          <span className="font-mono text-slate-600">{o.employeeId}</span>
+                          <span className="mx-1.5">•</span>
+                          <span className="text-slate-900">{o.name}</span>
+                          <span className="text-slate-400 text-[10px] ml-1">({o.designation})</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {}}
+                          className="rounded text-purple-600 focus:ring-purple-500"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* EDIT MULTI-SELECT 2: Staff Participants */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                    Staff Participants (Multi-Select)
+                  </label>
+                  <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                    Selected Count: {editStaffIds.length}
+                  </span>
+                </div>
+
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Filter staff by name or employee ID..."
+                    value={editStaffSearchQuery}
+                    onChange={(e) => setEditStaffSearchQuery(e.target.value)}
+                    className="w-full pl-8 pr-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
+                  />
+                </div>
+
+                {/* Selected staff chips */}
+                {editStaffIds.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1 bg-white rounded-lg border border-slate-200">
+                    {editStaffIds.map((id) => {
+                      const off = officers.find((o) => o.employeeId === id);
+                      return (
+                        <span
+                          key={id}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium bg-slate-100 text-slate-800 px-2 py-0.5 rounded-md border border-slate-300"
+                        >
+                          <span>{id} — {off ? off.name : ''}</span>
+                          <button
+                            type="button"
+                            onClick={() => toggleEditStaffSelection(id)}
+                            className="hover:text-rose-600"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Staff Selection List */}
+                <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white">
+                  {filteredEditStaffOptions.slice(0, 15).map((o) => {
+                    const isSelected = editStaffIds.includes(o.employeeId);
+                    return (
+                      <div
+                        key={o.employeeId}
+                        onClick={() => toggleEditStaffSelection(o.employeeId)}
+                        className={`p-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer text-xs ${
+                          isSelected ? 'bg-emerald-50/60 font-semibold' : ''
+                        }`}
+                      >
+                        <div>
+                          <span className="font-mono text-slate-600">{o.employeeId}</span>
+                          <span className="mx-1.5">•</span>
+                          <span className="text-slate-900">{o.name}</span>
+                          <span className="text-slate-400 text-[10px] ml-1">({o.designation})</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {}}
+                          className="rounded text-emerald-600 focus:ring-emerald-500"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Remarks */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Remarks / Notes
+                </label>
+                <textarea
+                  rows={2}
+                  value={editRemarks}
+                  onChange={(e) => setEditRemarks(e.target.value)}
+                  placeholder="Additional skills notes, simulation equipment used..."
+                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingRecord(null)}
+                  disabled={isEditSubmitting}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isEditSubmitting}
+                  className="flex items-center gap-1.5 px-5 py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
+                >
+                  {isEditSubmitting ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                      <span>Saving Changes...</span>
+                    </>
+                  ) : (
+                    <span>Update CNE Record</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* 3. Delete Confirmation Modal (Data ID hidden from text)    */}
+      {/* ========================================================= */}
       {deletingRecord && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-200 text-center space-y-4">
@@ -877,21 +1301,32 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
             <div>
               <h3 className="text-base font-bold text-slate-900">Delete CNE Activity?</h3>
               <p className="text-xs text-slate-500 mt-1">
-                Are you sure you want to delete <strong className="text-slate-800 font-mono">{deletingRecord.dataId}</strong>? This will remove participation records from connected staff portfolios.
+                Are you sure you want to delete the CNE activity on <strong className="text-slate-800">"{deletingRecord.topic}"</strong> held on <strong className="text-slate-800">{deletingRecord.fromDate}</strong>? This will remove participation records from connected staff portfolios.
               </p>
             </div>
             <div className="flex items-center justify-center gap-2 pt-2">
               <button
+                type="button"
                 onClick={() => setDeletingRecord(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+                disabled={isDeleting}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={confirmDelete}
-                className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg"
+                disabled={isDeleting}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg cursor-pointer disabled:opacity-50"
               >
-                Yes, Delete Record
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <span>Yes, Delete Record</span>
+                )}
               </button>
             </div>
           </div>

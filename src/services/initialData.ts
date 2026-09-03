@@ -1,4 +1,4 @@
-import { Area, Employee, RoleMapping, CNERecord, UpcomingClass, CNEApplication, GalleryItem, ChairpersonMessageData, NewsEventItem, QuickLinkItem } from '../types';
+import { Area, Employee, RoleMapping, CNERecord, UpcomingClass, CNEApplication, GalleryItem, ChairpersonMessageData, NewsEventItem, QuickLinkItem, CoordinatorDeskInfo } from '../types';
 
 export const INITIAL_AREAS: Area[] = [
   "216(OT-Complex)-(DSA & IR)",
@@ -609,3 +609,9 @@ export const INITIAL_QUICK_LINKS: QuickLinkItem[] = [
     }
   }
 ];
+
+export const INITIAL_COORDINATOR_DESK: CoordinatorDeskInfo = {
+  note: 'Have questions regarding class credits, attendance verification, or training schedules?',
+  coordinators: ['Ms. Suman Choudhary', 'Ms. Ramya T'],
+  email: 'training.nur@aiimsrishikesh.edu.in'
+};

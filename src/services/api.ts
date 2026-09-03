@@ -13,7 +13,8 @@ import {
   RoleMapping,
   SessionUser,
   UpcomingClass,
-  UserRole
+  UserRole,
+  CoordinatorDeskInfo
 } from '../types';
 import {
   INITIAL_AREAS,
@@ -25,7 +26,8 @@ import {
   INITIAL_QUICK_LINKS,
   INITIAL_ROLES,
   INITIAL_UPCOMING_CLASSES,
-  INITIAL_USER_CREDS
+  INITIAL_USER_CREDS,
+  INITIAL_COORDINATOR_DESK
 } from './initialData';
 
 const STORAGE_KEYS = {
@@ -40,6 +42,7 @@ const STORAGE_KEYS = {
   NEWS_EVENTS: 'cne_news_events',
   CHAIRPERSON_MESSAGE: 'cne_chairperson_message',
   QUICK_LINKS: 'cne_quick_links',
+  COORDINATOR_DESK: 'cne_coordinator_desk',
   SESSION: 'cne_session_user',
   API_URL: 'CNE_CUSTOM_APPS_SCRIPT_URL',
   ENV_MODE: 'CNE_ENVIRONMENT_MODE' // 'production' | 'sandbox'
@@ -571,6 +574,10 @@ export class ApiService {
     return this.executeAction('updateGalleryItem', { id, ...data });
   }
 
+  static async deleteGalleryItem(id: string): Promise<ApiResponse> {
+    return this.executeAction('deleteGalleryItem', { id });
+  }
+
   /**
    * News & Events APIs
    */
@@ -580,6 +587,10 @@ export class ApiService {
 
   static async addNewsEvent(item: Partial<NewsEventItem>): Promise<ApiResponse<{ id: string }>> {
     return this.executeAction<{ id: string }>('addNewsEvent', item);
+  }
+
+  static async updateNewsEvent(id: string, data: Partial<NewsEventItem>): Promise<ApiResponse> {
+    return this.executeAction('updateNewsEvent', { id, ...data });
   }
 
   static async deleteNewsEvent(id: string): Promise<ApiResponse> {
@@ -600,10 +611,33 @@ export class ApiService {
   }
 
   /**
-   * Quick Links
+   * CNE Coordinator Desk APIs
+   */
+  static async getCoordinatorDesk(): Promise<ApiResponse<CoordinatorDeskInfo>> {
+    return this.executeAction<CoordinatorDeskInfo>('getCoordinatorDesk');
+  }
+
+  static async updateCoordinatorDesk(data: Partial<CoordinatorDeskInfo>): Promise<ApiResponse<CoordinatorDeskInfo>> {
+    return this.executeAction<CoordinatorDeskInfo>('updateCoordinatorDesk', data);
+  }
+
+  /**
+   * Quick Links APIs
    */
   static async getQuickLinks(): Promise<ApiResponse<QuickLinkItem[]>> {
     return this.executeAction<QuickLinkItem[]>('getQuickLinks');
+  }
+
+  static async addQuickLink(item: Partial<QuickLinkItem>): Promise<ApiResponse<{ id: string }>> {
+    return this.executeAction<{ id: string }>('addQuickLink', item);
+  }
+
+  static async updateQuickLink(id: string, data: Partial<QuickLinkItem>): Promise<ApiResponse> {
+    return this.executeAction('updateQuickLink', { id, ...data });
+  }
+
+  static async deleteQuickLink(id: string): Promise<ApiResponse> {
+    return this.executeAction('deleteQuickLink', { id });
   }
 
   /**
@@ -979,6 +1013,24 @@ export class ApiService {
           return { success: true, message: 'Image uploaded in sandbox.', data: { id, imageUrl: params.base64Image } as any };
         }
 
+        case 'updateGalleryItem': {
+          const list: GalleryItem[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.GALLERY) || '[]');
+          const idx = list.findIndex((g) => g.id === params.id);
+          if (idx !== -1) {
+            list[idx] = { ...list[idx], ...params };
+            localStorage.setItem(STORAGE_KEYS.GALLERY, JSON.stringify(list));
+            return { success: true, message: 'Photo updated.' } as any;
+          }
+          return { success: false, message: 'Photo not found' };
+        }
+
+        case 'deleteGalleryItem': {
+          let list: GalleryItem[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.GALLERY) || '[]');
+          list = list.filter((g) => g.id !== params.id);
+          localStorage.setItem(STORAGE_KEYS.GALLERY, JSON.stringify(list));
+          return { success: true, message: 'Photo removed from gallery.' } as any;
+        }
+
         case 'getNewsEvents': {
           const list: NewsEventItem[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.NEWS_EVENTS) || '[]');
           return { success: true, data: list as any };
@@ -1001,6 +1053,17 @@ export class ApiService {
           list.unshift(newItem);
           localStorage.setItem(STORAGE_KEYS.NEWS_EVENTS, JSON.stringify(list));
           return { success: true, message: 'News item published.', data: { id } as any };
+        }
+
+        case 'updateNewsEvent': {
+          const list: NewsEventItem[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.NEWS_EVENTS) || '[]');
+          const idx = list.findIndex((n) => n.id === params.id);
+          if (idx !== -1) {
+            list[idx] = { ...list[idx], ...params };
+            localStorage.setItem(STORAGE_KEYS.NEWS_EVENTS, JSON.stringify(list));
+            return { success: true, message: 'News item updated.' } as any;
+          }
+          return { success: false, message: 'News item not found' };
         }
 
         case 'deleteNewsEvent': {
@@ -1054,11 +1117,71 @@ export class ApiService {
           } as any;
         }
 
+        case 'getCoordinatorDesk': {
+          const data: CoordinatorDeskInfo = JSON.parse(
+            localStorage.getItem(STORAGE_KEYS.COORDINATOR_DESK) || JSON.stringify(INITIAL_COORDINATOR_DESK)
+          );
+          return { success: true, data: data as any };
+        }
+
+        case 'updateCoordinatorDesk': {
+          const existing: CoordinatorDeskInfo = JSON.parse(
+            localStorage.getItem(STORAGE_KEYS.COORDINATOR_DESK) || JSON.stringify(INITIAL_COORDINATOR_DESK)
+          );
+          const updated: CoordinatorDeskInfo = {
+            ...existing,
+            ...params
+          };
+          localStorage.setItem(STORAGE_KEYS.COORDINATOR_DESK, JSON.stringify(updated));
+          return { success: true, message: 'Coordinator Desk information updated.', data: updated as any };
+        }
+
         case 'getQuickLinks': {
           const data: QuickLinkItem[] = JSON.parse(
             localStorage.getItem(STORAGE_KEYS.QUICK_LINKS) || JSON.stringify(INITIAL_QUICK_LINKS)
           );
           return { success: true, data: data as any };
+        }
+
+        case 'addQuickLink': {
+          const list: QuickLinkItem[] = JSON.parse(
+            localStorage.getItem(STORAGE_KEYS.QUICK_LINKS) || JSON.stringify(INITIAL_QUICK_LINKS)
+          );
+          const id = 'ql-' + Date.now();
+          const newItem: QuickLinkItem = {
+            id,
+            title: params.title || 'Quick Link',
+            description: params.description || '',
+            iconName: params.iconName || 'Link',
+            target: params.target || params.url || '',
+            badge: params.badge || '',
+            actionType: params.actionType || (params.target && params.target.startsWith('http') ? 'external' : 'navigate')
+          };
+          list.push(newItem);
+          localStorage.setItem(STORAGE_KEYS.QUICK_LINKS, JSON.stringify(list));
+          return { success: true, message: 'Quick Link added.', data: { id } as any };
+        }
+
+        case 'updateQuickLink': {
+          const list: QuickLinkItem[] = JSON.parse(
+            localStorage.getItem(STORAGE_KEYS.QUICK_LINKS) || JSON.stringify(INITIAL_QUICK_LINKS)
+          );
+          const idx = list.findIndex((q) => q.id === params.id);
+          if (idx !== -1) {
+            list[idx] = { ...list[idx], ...params };
+            localStorage.setItem(STORAGE_KEYS.QUICK_LINKS, JSON.stringify(list));
+            return { success: true, message: 'Quick Link updated.' } as any;
+          }
+          return { success: false, message: 'Quick Link not found' };
+        }
+
+        case 'deleteQuickLink': {
+          let list: QuickLinkItem[] = JSON.parse(
+            localStorage.getItem(STORAGE_KEYS.QUICK_LINKS) || JSON.stringify(INITIAL_QUICK_LINKS)
+          );
+          list = list.filter((q) => q.id !== params.id);
+          localStorage.setItem(STORAGE_KEYS.QUICK_LINKS, JSON.stringify(list));
+          return { success: true, message: 'Quick Link deleted.' } as any;
         }
 
         case 'getProgramImpact': {

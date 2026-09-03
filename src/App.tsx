@@ -19,6 +19,7 @@ import { AdminAreas } from './components/AdminAreas';
 import { AdminRoles } from './components/AdminRoles';
 import { AdminApplications } from './components/AdminApplications';
 import { AdminReports } from './components/AdminReports';
+import { AdminContent } from './components/AdminContent';
 import { AlertTriangle, Database, FlaskConical, Wrench } from 'lucide-react';
 
 const AppContent: React.FC = () => {
@@ -172,6 +173,10 @@ const AppContent: React.FC = () => {
 
           {activeView === 'admin-roles' && user?.role === 'ADMIN' && (
             <AdminRoles user={user} />
+          )}
+
+          {activeView === 'admin-content' && user?.role === 'ADMIN' && (
+            <AdminContent user={user} />
           )}
 
           {activeView === 'admin-applications' && user?.role === 'ADMIN' && (

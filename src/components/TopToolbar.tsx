@@ -11,7 +11,8 @@ import {
   ShieldCheck,
   ClipboardList,
   BarChart3,
-  Shield
+  Shield,
+  FileText
 } from 'lucide-react';
 import { SessionUser, ViewMode } from '../types';
 
@@ -55,6 +56,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
     { id: 'admin-cne' as ViewMode, label: 'CNE Data Master', icon: Database },
     { id: 'admin-areas' as ViewMode, label: 'Area Master', icon: MapPin },
     { id: 'admin-roles' as ViewMode, label: 'Role Master', icon: ShieldCheck },
+    { id: 'admin-content' as ViewMode, label: 'Content Master', icon: FileText },
     { id: 'admin-applications' as ViewMode, label: 'Applications', icon: ClipboardList },
     { id: 'admin-reports' as ViewMode, label: 'Reports & Stats', icon: BarChart3 }
   ];

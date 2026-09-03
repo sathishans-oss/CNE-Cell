@@ -11,6 +11,7 @@ export type ViewMode =
   | 'admin-cne'
   | 'admin-areas'
   | 'admin-roles'
+  | 'admin-content'
   | 'admin-applications'
   | 'admin-reports';
 
@@ -194,3 +195,9 @@ export interface CNEPortfolioFilterParams {
 }
 
 export type APARFilterParams = CNEPortfolioFilterParams;
+
+export interface CoordinatorDeskInfo {
+  note: string;
+  coordinators: string[];
+  email: string;
+}
