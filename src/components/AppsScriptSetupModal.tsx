@@ -266,7 +266,7 @@ export const AppsScriptSetupModal: React.FC<AppsScriptSetupModalProps> = ({
                 <div className="text-slate-600 pl-8 space-y-1 leading-relaxed">
                   <p>In Apps Script, click <strong>Project Settings (gear icon) &gt; Script Properties &gt; Add script property</strong>:</p>
                   <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-700">
-                    <li><code>DROPDOWN_SPREADSHEET_ID</code>: ID of Spreadsheet containing <code>Officers data</code> (leave empty if in same sheet).</li>
+                    <li><code>DROPDOWN_SPREADSHEET_ID</code>: ID of Spreadsheet containing <code>Rosters Master Data</code> (leave empty if in same sheet).</li>
                     <li><code>CNE_SPREADSHEET_ID</code>: ID of Spreadsheet containing CNE tabs (leave empty if in same sheet).</li>
                     <li><code>DRIVE_FOLDER_ID</code>: Google Drive Folder ID for storing uploaded CNE activity photos.</li>
                   </ul>

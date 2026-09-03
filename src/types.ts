@@ -58,6 +58,8 @@ export interface Employee {
   name: string;
   designation: string;
   contactNo?: string;
+  employmentType?: string;
+  typeOfEmployment?: string;
   email?: string;
   dob?: string;
   doj?: string;

@@ -23,29 +23,20 @@ function sanitizeCellInput(val) {
   return str;
 }
 
-// Global Configuration & Sheet Resolution (Supports Separate Spreadsheet or Fallback to CNE Spreadsheet)
+// Global Configuration & Sheet Resolution (Strict separation: Officers Roster requires DROPDOWN_SPREADSHEET_ID)
 function getSpreadsheet(type) {
   var props = PropertiesService.getScriptProperties();
   
   if (type === 'OFFICERS') {
     var dropdownId = props.getProperty('DROPDOWN_SPREADSHEET_ID');
-    if (dropdownId && dropdownId.trim() !== '') {
-      try {
-        return SpreadsheetApp.openById(dropdownId.trim());
-      } catch (e) {
-        throw new Error('Could not open Employee Master spreadsheet with DROPDOWN_SPREADSHEET_ID: ' + e.message);
-      }
+    if (!dropdownId || dropdownId.trim() === '') {
+      throw new Error('DROPDOWN_SPREADSHEET_ID is not configured in Script Properties. Institutional roster lookup requires DROPDOWN_SPREADSHEET_ID to prevent reading operational CNE sheets.');
     }
-    // Fallback: If DROPDOWN_SPREADSHEET_ID is empty or not configured, safely fall back to CNE_SPREADSHEET_ID
-    var cneId = props.getProperty('CNE_SPREADSHEET_ID');
-    if (cneId && cneId.trim() !== '') {
-      try {
-        return SpreadsheetApp.openById(cneId.trim());
-      } catch (e) {
-        throw new Error('Could not open CNE spreadsheet for Officers data with CNE_SPREADSHEET_ID: ' + e.message);
-      }
+    try {
+      return SpreadsheetApp.openById(dropdownId.trim());
+    } catch (e) {
+      throw new Error('Could not open Employee Master spreadsheet with DROPDOWN_SPREADSHEET_ID: ' + e.message);
     }
-    throw new Error('Neither DROPDOWN_SPREADSHEET_ID nor CNE_SPREADSHEET_ID is configured in Script Properties.');
   } else {
     var cneId = props.getProperty('CNE_SPREADSHEET_ID');
     if (cneId && cneId.trim() !== '') {
@@ -473,7 +464,7 @@ function handleDiagnosticPing(params) {
   // 2. Check Employee Master Spreadsheet
   try {
     var offSS = getSpreadsheet('OFFICERS');
-    var offSheet = offSS.getSheetByName('Officers data');
+    var offSheet = offSS.getSheetByName('Rosters Master Data');
     if (offSheet) {
       diagnostics.employeeMaster = 'PASS';
     } else {
@@ -551,15 +542,22 @@ function getUserRole(employeeId) {
 }
 
 /**
- * Safe Header Detection for 'Officers data' Tab
+ * Safe Header Detection for 'Rosters Master Data' Tab
  * Dynamically resolves column indices without silent incorrect hardcoded fallbacks.
- * Recognizes variants of Employee ID, Name, Designation, and Date of Joining (DOJ).
+ * Recognizes exact columns:
+ *   Column A: Name of the Officers
+ *   Column B: Designation
+ *   Column C: Type of employment
+ *   Column D: Contact No.
+ *   Column E: Employee ID No.
+ *   Column F: Date of Joining
+ * Also recognizes common header variants for institutional resilience.
  */
 function findOfficerHeaders(headers) {
-  var empCol = -1, nameCol = -1, desigCol = -1, dojCol = -1;
+  var empCol = -1, nameCol = -1, desigCol = -1, empTypeCol = -1, contactCol = -1, dojCol = -1;
   
   if (!headers || !headers.length) {
-    return { empCol: -1, nameCol: -1, desigCol: -1, dojCol: -1 };
+    return { empCol: -1, nameCol: -1, desigCol: -1, empTypeCol: -1, contactCol: -1, dojCol: -1 };
   }
   
   for (var c = 0; c < headers.length; c++) {
@@ -567,31 +565,49 @@ function findOfficerHeaders(headers) {
     var h = raw.toLowerCase();
     if (!h) continue;
     
-    // 1. Employee ID
+    // 1. Employee ID No. (Column E, or header variants)
     if (empCol === -1) {
-      if ((h.indexOf('emp') !== -1 && (h.indexOf('id') !== -1 || h.indexOf('no') !== -1)) ||
-          h === 'id' || h === 'empid' || h === 'employee_id' || h === 'employee id' || h === 'employee no') {
+      if (h === 'employee id no.' || h === 'employee id no' || h === 'employee id number' ||
+          h === 'employee id' || h === 'employee no.' || h === 'employee no' ||
+          h === 'emp id' || h === 'emp id no.' || h === 'emp id no' ||
+          h === 'id' || h === 'empid' || h === 'employee_id' ||
+          (h.indexOf('emp') !== -1 && (h.indexOf('id') !== -1 || h.indexOf('no') !== -1))) {
         empCol = c;
       }
     }
     
-    // 2. Name of Officer
+    // 2. Name of the Officers (Column A, or header variants)
     if (nameCol === -1) {
-      if ((h.indexOf('name') !== -1 && (h.indexOf('officer') !== -1 || h.indexOf('emp') !== -1 || h.indexOf('staff') !== -1)) ||
-          h === 'name of officer' || h === 'officer name' || h === 'employee name' || h === 'staff name') {
+      if (h === 'name of the officers' || h === 'name of the officer' || h === 'name of officers' ||
+          h === 'name of officer' || h === 'officer name' || h === 'employee name' || h === 'staff name' ||
+          (h.indexOf('name') !== -1 && (h.indexOf('officer') !== -1 || h.indexOf('emp') !== -1 || h.indexOf('staff') !== -1))) {
         nameCol = c;
       }
     }
     
-    // 3. Designation
+    // 3. Designation (Column B, or header variants)
     if (desigCol === -1) {
       if (h.indexOf('designation') !== -1 || h.indexOf('desig') !== -1 || h.indexOf('post') !== -1) {
         desigCol = c;
       }
     }
+
+    // 4. Type of employment (Column C, or header variants)
+    if (empTypeCol === -1) {
+      if (h === 'type of employment' || h === 'employment type' || h.indexOf('employment') !== -1) {
+        empTypeCol = c;
+      }
+    }
+
+    // 5. Contact No. (Column D, or header variants)
+    if (contactCol === -1) {
+      if (h === 'contact no.' || h === 'contact no' || h === 'contact number' ||
+          h.indexOf('contact') !== -1 || h.indexOf('phone') !== -1 || h.indexOf('mobile') !== -1) {
+        contactCol = c;
+      }
+    }
     
-    // 4. Date of Joining (DOJ)
-    // Variants: Date of Joining, Date Of Joining, DOJ, D.O.J, Joining Date, Date of Joining AIIMS
+    // 6. Date of Joining (Column F, or header variants)
     if (dojCol === -1) {
       if (h === 'date of joining' ||
           h === 'date of joining aiims' ||
@@ -618,8 +634,23 @@ function findOfficerHeaders(headers) {
       }
     }
   }
+
+  // Positional fallback for standard A1:F layout if header row is present
+  // Col A(0): Name, Col B(1): Designation, Col C(2): Type of employment, Col D(3): Contact No., Col E(4): Employee ID No., Col F(5): Date of Joining
+  if (headers.length >= 5 && empCol === -1) {
+    var rawColE = String(headers[4] || '').toLowerCase();
+    if (rawColE.indexOf('emp') !== -1 || rawColE.indexOf('id') !== -1 || rawColE.indexOf('no') !== -1) {
+      empCol = 4;
+    }
+  }
+  if (headers.length >= 6 && dojCol === -1) {
+    var rawColF = String(headers[5] || '').toLowerCase();
+    if (rawColF.indexOf('date') !== -1 || rawColF.indexOf('join') !== -1 || rawColF.indexOf('doj') !== -1) {
+      dojCol = 5;
+    }
+  }
   
-  return { empCol: empCol, nameCol: nameCol, desigCol: desigCol, dojCol: dojCol };
+  return { empCol: empCol, nameCol: nameCol, desigCol: desigCol, empTypeCol: empTypeCol, contactCol: contactCol, dojCol: dojCol };
 }
 
 /**
@@ -773,82 +804,113 @@ function formatDateDisplay(val) {
 }
 
 /**
- * Helper: Find Officer in 'Officers data' tab (DOJ & DOB stay strictly server-side)
- * Uses safe header detection without silent incorrect column fallbacks.
+ * Helper to retrieve the authoritative Rosters Master Data sheet from DROPDOWN_SPREADSHEET_ID.
+ * Strictly resolves 'Rosters Master Data'.
+ * Strictly throws if the sheet is not found; NEVER silently falls back to getActiveSheet().
+ */
+function getRosterSheet() {
+  var ss = getSpreadsheet('OFFICERS');
+  var sheet = ss.getSheetByName('Rosters Master Data');
+  if (!sheet) {
+    throw new Error('Rosters Master Data sheet not found in spreadsheet configured by DROPDOWN_SPREADSHEET_ID.');
+  }
+  return sheet;
+}
+
+/**
+ * Helper: Find Officer in 'Rosters Master Data' tab (DOJ stays strictly server-side)
+ * Uses safe dynamic header detection with robust employee ID matching.
  */
 function findOfficerById(employeeId) {
   var normId = normalizeEmpId(employeeId);
   if (!normId) return null;
   
-  try {
-    var ss = getSpreadsheet('OFFICERS');
-    var sheet = ss.getSheetByName('Officers data') || ss.getActiveSheet();
-    if (!sheet) {
-      console.warn('Officers data sheet not found');
-      return null;
-    }
-    var data = sheet.getDataRange().getValues();
-    if (data.length <= 1) return null;
-    
-    var headers = data[0];
-    var colMap = findOfficerHeaders(headers);
-    
-    // Safety check: Employee ID column MUST be safely identified
-    if (colMap.empCol === -1) {
-      console.warn('Employee ID column could not be safely identified in Officers data header row.');
-      return null;
-    }
-    
-    for (var r = 1; r < data.length; r++) {
-      var rowEmpId = normalizeEmpId(data[r][colMap.empCol]);
-      if (rowEmpId === normId) {
-        var rawDoj = (colMap.dojCol !== -1) ? data[r][colMap.dojCol] : '';
-        var rawName = (colMap.nameCol !== -1) ? String(data[r][colMap.nameCol] || '').trim() : '';
-        var rawDesig = (colMap.desigCol !== -1) ? String(data[r][colMap.desigCol] || '').trim() : '';
-        return {
-          employeeId: String(data[r][colMap.empCol]).trim(),
-          name: rawName,
-          designation: rawDesig,
-          doj: rawDoj,
-          dojFormatted: formatDateDisplay(rawDoj),
-          dojColMissing: (colMap.dojCol === -1)
-        };
-      }
-    }
-  } catch (e) {
-    console.warn('findOfficerById error: ' + e.message);
+  var sheet = getRosterSheet();
+  var range = sheet.getDataRange();
+  var data = range.getValues();
+  var displayData = range.getDisplayValues();
+  if (data.length <= 1) return null;
+  
+  var headers = data[0];
+  var colMap = findOfficerHeaders(headers);
+  
+  // Safety check: Employee ID column MUST be safely identified
+  if (colMap.empCol === -1) {
+    throw new Error('System configuration error: Required column "Employee ID No." could not be identified in Rosters Master Data.');
   }
+
+  // Diagnostic logging (strictly minimal, no secrets or credentials logged)
+  Logger.log('[Roster Lookup] Sheet: "' + sheet.getName() + '" | Total rows: ' + data.length + ' | EmpId Col: ' + colMap.empCol + ' | Searching ID: ' + normId);
+  
+  for (var r = 1; r < data.length; r++) {
+    var cellVal = data[r][colMap.empCol];
+    var dispVal = displayData[r] ? displayData[r][colMap.empCol] : '';
+    var rowEmpId = normalizeEmpId(dispVal || cellVal);
+    if (!rowEmpId) rowEmpId = normalizeEmpId(cellVal);
+
+    if (rowEmpId === normId) {
+      var rawDoj = (colMap.dojCol !== -1) ? data[r][colMap.dojCol] : '';
+      var dispDoj = (colMap.dojCol !== -1 && displayData[r]) ? String(displayData[r][colMap.dojCol] || '').trim() : '';
+      var rawName = (colMap.nameCol !== -1) ? String((displayData[r] && displayData[r][colMap.nameCol]) || data[r][colMap.nameCol] || '').trim() : '';
+      var rawDesig = (colMap.desigCol !== -1) ? String((displayData[r] && displayData[r][colMap.desigCol]) || data[r][colMap.desigCol] || '').trim() : '';
+      var rawEmpType = (colMap.empTypeCol !== -1) ? String((displayData[r] && displayData[r][colMap.empTypeCol]) || data[r][colMap.empTypeCol] || '').trim() : '';
+      var rawContact = (colMap.contactCol !== -1) ? String((displayData[r] && displayData[r][colMap.contactCol]) || data[r][colMap.contactCol] || '').trim() : '';
+      var empIdExact = String(dispVal || cellVal || '').trim();
+
+      Logger.log('[Roster Lookup] Match found for employee ID: ' + normId + ' (Row ' + (r + 1) + ')');
+
+      return {
+        employeeId: empIdExact,
+        name: rawName,
+        designation: rawDesig,
+        employmentType: rawEmpType,
+        typeOfEmployment: rawEmpType,
+        contactNo: rawContact,
+        doj: rawDoj,
+        dojFormatted: dispDoj || formatDateDisplay(rawDoj),
+        dojColMissing: (colMap.dojCol === -1)
+      };
+    }
+  }
+
+  Logger.log('[Roster Lookup] Employee ID "' + normId + '" not found in ' + sheet.getName() + ' (' + (data.length - 1) + ' roster records checked).');
   return null;
 }
 
 /**
- * Officers Dropdown (Admin Only, Sanitized: NO Aadhaar, UAN, DOJ, DOB, Phone, Email exposed)
+ * Officers Dropdown (Admin Only, Sanitized: NO Aadhaar, UAN, DOJ, DOB exposed)
  */
 function handleGetOfficersDropdown(params, session) {
   var adminError = requireAdmin(session);
   if (adminError) return adminError;
 
-  var ss = getSpreadsheet('OFFICERS');
-  var sheet = ss.getSheetByName('Officers data') || ss.getActiveSheet();
-  if (!sheet) {
-    return { success: false, message: '"Officers data" tab not found in spreadsheet.' };
+  var sheet;
+  try {
+    sheet = getRosterSheet();
+  } catch (err) {
+    return { success: false, message: err.message };
   }
-  var data = sheet.getDataRange().getValues();
+
+  var range = sheet.getDataRange();
+  var data = range.getValues();
+  var displayData = range.getDisplayValues();
   var list = [];
   
   if (data.length > 1) {
     var headers = data[0];
     var colMap = findOfficerHeaders(headers);
     if (colMap.empCol === -1 || colMap.nameCol === -1) {
-      return { success: false, message: 'System configuration error: Required columns (Employee ID / Name) could not be identified in Officers data.' };
+      return { success: false, message: 'System configuration error: Required columns (Employee ID No. / Name of the Officers) could not be identified in Rosters Master Data.' };
     }
     
     for (var r = 1; r < data.length; r++) {
-      var empId = String(data[r][colMap.empCol] || '').trim();
-      var name = String(data[r][colMap.nameCol] || '').trim();
-      var desig = (colMap.desigCol !== -1) ? String(data[r][colMap.desigCol] || '').trim() : '';
+      var empId = String((displayData[r] && displayData[r][colMap.empCol]) || data[r][colMap.empCol] || '').trim();
+      var name = String((displayData[r] && displayData[r][colMap.nameCol]) || data[r][colMap.nameCol] || '').trim();
+      var desig = (colMap.desigCol !== -1) ? String((displayData[r] && displayData[r][colMap.desigCol]) || data[r][colMap.desigCol] || '').trim() : '';
+      var empType = (colMap.empTypeCol !== -1) ? String((displayData[r] && displayData[r][colMap.empTypeCol]) || data[r][colMap.empTypeCol] || '').trim() : '';
+      var contact = (colMap.contactCol !== -1) ? String((displayData[r] && displayData[r][colMap.contactCol]) || data[r][colMap.contactCol] || '').trim() : '';
       if (empId) {
-        list.push({ employeeId: empId, name: name, designation: desig });
+        list.push({ employeeId: empId, name: name, designation: desig, employmentType: empType, contactNo: contact });
       }
     }
   }
@@ -867,7 +929,13 @@ function handleLogin(params) {
     return { success: false, message: 'Employee ID and password are required.' };
   }
   
-  var officer = findOfficerById(employeeId);
+  var officer;
+  try {
+    officer = findOfficerById(employeeId);
+  } catch (err) {
+    return { success: false, message: err.message || 'Error accessing institutional roster.' };
+  }
+
   if (!officer) {
     return { success: false, message: 'Employee ID not found in institutional roster.' };
   }
@@ -1030,7 +1098,13 @@ function handleResetPassword(params) {
     return { success: false, message: 'New password must be at least 6 characters long.' };
   }
   
-  var officer = findOfficerById(employeeId);
+  var officer;
+  try {
+    officer = findOfficerById(employeeId);
+  } catch (err) {
+    return { success: false, message: err.message || 'Error accessing institutional roster.' };
+  }
+
   if (!officer) {
     cache.put(cacheKey, String(failCount + 1), 900);
     return { success: false, message: 'Verification failed. Please check your details and try again.' };
@@ -1039,7 +1113,7 @@ function handleResetPassword(params) {
   if (officer.dojColMissing) {
     return {
       success: false,
-      message: 'System configuration error: Date of Joining column could not be identified in Officers data. Please contact system administrator.'
+      message: 'System configuration error: Date of Joining column could not be identified in Rosters Master Data. Please contact system administrator.'
     };
   }
   
@@ -1454,13 +1528,13 @@ function handleAddCNE(params, session) {
       return { success: false, message: 'Topic, Area, Date, and Resource Person are required.' };
     }
     
-    // Validate Resource Person against Officers data master
+    // Validate Resource Person against Rosters Master Data
     var rpOfficer = findOfficerById(rpEmpId);
     if (!rpOfficer) {
       return { success: false, message: 'Resource Person Employee ID (' + rpEmpId + ') was not found in the employee master roster.' };
     }
     
-    // Sanitize, deduplicate, and validate staff IDs against Officers data
+    // Sanitize, deduplicate, and validate staff IDs against Rosters Master Data
     var inputStaff = Array.isArray(params.staffEmpIds) ? params.staffEmpIds : (params.staffEmpIds || '').split(',');
     var cleanMap = {};
     var staffClean = [];
@@ -2987,12 +3061,12 @@ function internalInitializeSheets(executorEmpId) {
   // Check Employee Master
   try {
     var offSS = getSpreadsheet('OFFICERS');
-    var offSheet = offSS.getSheetByName('Officers data');
+    var offSheet = offSS.getSheetByName('Rosters Master Data');
     if (offSheet) {
-      auditReport.push({ tab: 'Officers data', status: 'Existing, unchanged (Master Roster)', rowCount: offSheet.getLastRow() });
+      auditReport.push({ tab: offSheet.getName(), status: 'Existing, unchanged (Master Roster)', rowCount: offSheet.getLastRow() });
     }
   } catch (e) {
-    auditReport.push({ tab: 'Officers data', status: 'Separate Sheet / Unconfigured', error: e.message });
+    auditReport.push({ tab: 'Rosters Master Data', status: 'Separate Sheet / Unconfigured', error: e.message });
   }
   
   logAuditAction('INITIALIZE_SHEETS', executorEmpId || 'SYSTEM', 'Sheet verification executed', 'SUCCESS');
@@ -3021,7 +3095,7 @@ function handleInitializeSheets(params, session) {
  * 
  * Safely initializes a new or existing Google Spreadsheet for CNE System:
  * - Bootstraps all 9 required CNE tabs with bold headers
- * - Leaves 'Officers data' roster completely untouched if present
+ * - Leaves 'Rosters Master Data' roster completely untouched if present
  * - Auto-generates cryptographic security keys in Script Properties
  * - Auto-provisions initial ADMIN role if INITIAL_ADMIN_EMPLOYEE_ID is set
  * ============================================================================
@@ -3043,7 +3117,7 @@ function setupNewCNESpreadsheet() {
     }
   }
   
-  // 3. First Administrator Setup Safety (Strict verification against Officers data)
+  // 3. First Administrator Setup Safety (Strict verification against Rosters Master Data)
   var props = PropertiesService.getScriptProperties();
   var initialAdminId = props.getProperty('INITIAL_ADMIN_EMPLOYEE_ID');
   if (!initialAdminId || initialAdminId.trim() === '') {
@@ -3070,7 +3144,7 @@ function setupNewCNESpreadsheet() {
         } else {
           var officer = findOfficerById(normInitialId);
           if (!officer || !officer.name) {
-            Logger.log('>>> First Admin Setup: Employee ID "' + normInitialId + '" does not exist in authoritative Officers data. Administrator NOT created (no fake administrator permitted).');
+            Logger.log('>>> First Admin Setup: Employee ID "' + normInitialId + '" does not exist in authoritative Rosters Master Data. Administrator NOT created (no fake administrator permitted).');
           } else {
             roleSheet.appendRow([normInitialId, officer.name, officer.designation || 'Nursing Officer', 'ADMIN']);
             Logger.log('>>> First Admin Setup: First administrator created successfully for: ' + normInitialId + ' (' + officer.name + ')');
