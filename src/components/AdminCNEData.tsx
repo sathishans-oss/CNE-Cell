@@ -257,7 +257,11 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
   const filteredStaffOptions = officers.filter((o) => {
     if (!staffSearchQuery.trim()) return true;
     const q = staffSearchQuery.toLowerCase();
-    return o.name.toLowerCase().includes(q) || o.employeeId.toLowerCase().includes(q) || o.designation.toLowerCase().includes(q);
+    return (
+      (o.name || '').toLowerCase().includes(q) ||
+      (o.employeeId || '').toLowerCase().includes(q) ||
+      (o.designation || '').toLowerCase().includes(q)
+    );
   });
 
   const toggleStaffSelection = (empId: string) => {

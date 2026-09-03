@@ -9,6 +9,7 @@ import {
   Building2,
   FileDown,
   Info,
+  GraduationCap,
   ChevronRight
 } from 'lucide-react';
 import { QuickLinkItem, ViewMode } from '../../types';
@@ -40,7 +41,8 @@ export const QuickLinksWidget: React.FC<QuickLinksWidgetProps> = ({
     teal: 'group-hover:text-teal-700'
   }[accentColor];
 
-  const getDynamicIcon = (name: string) => {
+  const getDynamicIcon = (name?: string) => {
+    if (!name || typeof name !== 'string') return BookOpen;
     switch (name.toLowerCase()) {
       case 'calendar':
         return Calendar;
@@ -50,13 +52,17 @@ export const QuickLinksWidget: React.FC<QuickLinksWidgetProps> = ({
         return Award;
       case 'shieldcheck':
       case 'shield':
+      case 'filecheck':
         return ShieldCheck;
       case 'building':
+      case 'building2':
         return Building2;
       case 'filedown':
         return FileDown;
       case 'info':
         return Info;
+      case 'graduationcap':
+        return GraduationCap;
       default:
         return BookOpen;
     }
@@ -73,11 +79,14 @@ export const QuickLinksWidget: React.FC<QuickLinksWidgetProps> = ({
       </div>
 
       <div className="p-3 divide-y divide-slate-100">
-        {quickLinks.map((link) => {
-          const IconComp = getDynamicIcon(link.iconName);
+        {quickLinks.map((link, index) => {
+          const IconComp = getDynamicIcon(link?.iconName);
+          const linkId = link?.id || `quick-link-${index}`;
+          const title = link?.title || 'Resource Link';
+          const description = link?.description || '';
           return (
             <div
-              key={link.id}
+              key={linkId}
               onClick={() => onQuickLinkClick(link)}
               className="py-2.5 first:pt-1 last:pb-1 flex items-center justify-between gap-3 cursor-pointer group hover:bg-slate-50/80 -mx-2 px-2 rounded-lg transition-colors"
             >
@@ -88,15 +97,17 @@ export const QuickLinksWidget: React.FC<QuickLinksWidgetProps> = ({
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className={`text-xs font-bold text-slate-900 ${linkHoverColor} transition-colors truncate`}>
-                      {link.title}
+                      {title}
                     </span>
-                    {link.badge && (
+                    {link?.badge && (
                       <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-slate-100 text-slate-700 uppercase">
                         {link.badge}
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-slate-500 truncate">{link.description}</p>
+                  {description && (
+                    <p className="text-[11px] text-slate-500 truncate">{description}</p>
+                  )}
                 </div>
               </div>
 

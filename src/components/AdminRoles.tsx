@@ -44,7 +44,9 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
       if (rolesRes.success && rolesRes.data) {
         const map: { [empId: string]: UserRole } = {};
         rolesRes.data.forEach((r) => {
-          map[r.employeeId.toLowerCase()] = r.role;
+          if (r.employeeId) {
+            map[r.employeeId.toLowerCase()] = r.role;
+          }
         });
         setRolesMap(map);
       }
@@ -96,9 +98,9 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
     if (!searchTerm.trim()) return true;
     const q = searchTerm.toLowerCase();
     return (
-      o.name.toLowerCase().includes(q) ||
-      o.employeeId.toLowerCase().includes(q) ||
-      o.designation.toLowerCase().includes(q)
+      (o.name || '').toLowerCase().includes(q) ||
+      (o.employeeId || '').toLowerCase().includes(q) ||
+      (o.designation || '').toLowerCase().includes(q)
     );
   });
 
@@ -160,8 +162,9 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredOfficers.map((officer) => {
-                  const role: UserRole = rolesMap[officer.employeeId.toLowerCase()] || 'EMPLOYEE';
-                  const isCurrentLoggedUser = officer.employeeId.toLowerCase() === user.employeeId.toLowerCase();
+                  const empId = (officer.employeeId || '').toLowerCase();
+                  const role: UserRole = rolesMap[empId] || 'EMPLOYEE';
+                  const isCurrentLoggedUser = empId === (user.employeeId || '').toLowerCase();
                   const isResetting = resettingId === officer.employeeId;
 
                   return (

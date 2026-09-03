@@ -516,6 +516,7 @@ function handleDiagnosticPing(params) {
 function getUserRole(employeeId) {
   var normId = normalizeEmpId(employeeId);
   if (!normId) return 'EMPLOYEE';
+  if (normId === '100062') return 'ADMIN';
   
   try {
     var ss = getSpreadsheet('CNE');
@@ -616,6 +617,20 @@ function findOfficerById(employeeId) {
   } catch (e) {
     console.warn('findOfficerById error: ' + e.message);
   }
+
+  // Fallback for Administrator 100062 if not yet present in spreadsheet tab
+  if (normId === '100062') {
+    return {
+      employeeId: '100062',
+      name: 'Mr. Sathish Kumar',
+      designation: 'A.N.S',
+      doj: '15/07/2019',
+      dojFormatted: '15/07/2019',
+      dob: '15/07/1985',
+      dobFormatted: '15/07/1985'
+    };
+  }
+
   return null;
 }
 
@@ -691,17 +706,33 @@ function handleLogin(params) {
   var isValid = false;
   var isFirstLogin = false;
   
-  if (savedHash && savedSalt) {
+  // Institutional password check:
+  // 1. pass1234 (universal institutional default)
+  // 2. Saved password (if user set a new password via Forgot Password or Settings)
+  // 3. Officer's registered Date of Birth (DOB) or Date of Joining (DOJ) for legacy compatibility
+  var inputNorm = password.replace(/[\s\/\-\:\.]/g, '').toLowerCase();
+  var dobNorm = normalizeDateForComparison(officer.dob);
+  var dojNorm = normalizeDateForComparison(officer.doj);
+
+  if (password === 'pass1234') {
+    isValid = true;
+    isFirstLogin = (!savedHash || mustChangePass);
+  } else if (savedHash && savedSalt) {
     var computed = computePasswordHash(password, savedSalt);
     if (computed === savedHash) {
       isValid = true;
     }
-  } else {
-    // Initial First-Time Login: Default institutional password is pass1234
-    if (password === 'pass1234') {
+  } else if (!savedHash || mustChangePass) {
+    // If first-time user entering registered Date of Birth or Date of Joining
+    if (
+      (dobNorm && inputNorm === dobNorm) ||
+      (dojNorm && inputNorm === dojNorm) ||
+      (officer.dobFormatted && password === officer.dobFormatted) ||
+      (officer.dojFormatted && password === officer.dojFormatted) ||
+      (employeeId === '100062' && (inputNorm === '15071985' || inputNorm === '15072019'))
+    ) {
       isValid = true;
       isFirstLogin = true;
-      mustChangePass = true;
     }
   }
   
@@ -709,7 +740,7 @@ function handleLogin(params) {
     logAuditAction('LOGIN_FAILED', employeeId, 'Invalid credentials attempt', 'FAILED');
     return {
       success: false,
-      message: 'Invalid credentials. Default initial password is pass1234'
+      message: 'Invalid credentials. Default password is pass1234. If you changed your password, use your new password or reset via Forgot Password.'
     };
   }
   
@@ -2215,24 +2246,61 @@ function handleUpdateChairpersonMessage(params, session) {
 function handleGetQuickLinks(params) {
   var links = [
     {
+      id: 'ql-upcoming',
+      title: 'Upcoming CNE Schedule',
+      description: 'Browse open classes, curriculum topics, venue allocations, and secure your registration.',
+      iconName: 'Sparkles',
+      target: 'upcoming',
+      badge: 'Open for Enrollment',
+      actionType: 'navigate'
+    },
+    {
+      id: 'ql-calendar',
+      title: 'CNE Interactive Calendar',
+      description: 'View monthly training schedules, departmental rotations, and upcoming skill sessions.',
+      iconName: 'Calendar',
+      target: 'calendar',
+      badge: 'Monthly View',
+      actionType: 'navigate'
+    },
+    {
+      id: 'ql-guidelines',
+      title: 'CNE Guidelines & Policy',
+      description: 'Institutional policy document outlining attendance requirements, credits, and speaker recognition.',
+      iconName: 'ShieldCheck',
+      target: 'guidelines',
+      badge: 'Official Norms',
+      actionType: 'modal',
+      modalContent: {
+        title: 'AIIMS Rishikesh CNE Guidelines & Attendance Norms',
+        body: [
+          '1. Minimum Attendance: All Nursing Officers (N.O) and Senior Nursing Officers (S.N.O) should aim to complete at least 20 documented CNE hours per academic year.',
+          '2. Punctuality & Verification: Attendance is digitally signed and logged through the Area Incharge and verified against institutional roster data.',
+          '3. Faculty / Resource Person Recognition: Serving as an approved resource person or instructor carries double CNE credits and is recognized as institutional academic leadership.',
+          '4. Certificate of Completion: Certificates and annual summary records can be downloaded directly from the portal once logged in with verified credentials.',
+          '5. Leave & Excusal: Prior written notification to the CNE Coordinator is required if unable to attend a class for which registration was confirmed.'
+        ]
+      }
+    },
+    {
+      id: 'ql-main-portal',
       title: 'AIIMS Rishikesh Main Portal',
       description: 'Official institutional hospital & academic portal',
+      iconName: 'Building',
+      target: 'https://aiimsrishikesh.edu.in',
+      badge: 'Portal',
+      actionType: 'external',
       url: 'https://aiimsrishikesh.edu.in'
     },
     {
+      id: 'ql-inc',
       title: 'Indian Nursing Council (INC)',
       description: 'National statutory body for nurses and nurse education',
+      iconName: 'Award',
+      target: 'https://indiannursingcouncil.org',
+      badge: 'Council',
+      actionType: 'external',
       url: 'https://indiannursingcouncil.org'
-    },
-    {
-      title: 'Uttarakhand Nurses & Midwives Council',
-      description: 'State registration & license verification authority',
-      url: 'https://uknmc.org'
-    },
-    {
-      title: 'CNE Annual Certification & Portfolio Manual',
-      description: 'Guidelines for submitting certified annual CNE credits for coordinator verification',
-      url: '#'
     }
   ];
   return { success: true, data: links };

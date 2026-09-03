@@ -18,7 +18,6 @@ import { INITIAL_CHAIRPERSON_MESSAGE } from '../services/initialData';
 import { generateAnnualCNEPdf } from '../services/pdfGenerator';
 import { useToast } from './Toast';
 import { ChangeCnoPhotoModal } from './ChangeCnoPhotoModal';
-import { usePortalTheme } from '../context/ThemeContext';
 
 // Modular Child Widgets
 import { UpcomingClassesWidget } from './home/UpcomingClassesWidget';
@@ -45,8 +44,6 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
   onOpenLogin,
   onOpenBackendSetup
 }) => {
-  const { theme } = usePortalTheme();
-
   const [upcomingClasses, setUpcomingClasses] = useState<UpcomingClass[]>([]);
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
   const [newsEvents, setNewsEvents] = useState<NewsEventItem[]>([]);
@@ -69,26 +66,36 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
 
   useEffect(() => {
     loadHomeData();
-  }, []);
+  }, [user?.employeeId]);
 
   const loadHomeData = async () => {
     setLoading(true);
     try {
-      const [upcomingRes, galleryRes, newsRes, quickRes, recordsRes, cnoRes] = await Promise.all([
+      // Wave 1: Primary visual components (Upcoming, Gallery, CNO Message)
+      const [upcomingRes, galleryRes, cnoRes] = await Promise.all([
         ApiService.getUpcomingClasses(),
         ApiService.getGallery(),
-        ApiService.getNewsEvents(),
-        ApiService.getQuickLinks(),
-        ApiService.getCNERecords(),
         ApiService.getChairpersonMessage()
       ]);
 
       if (upcomingRes.success && upcomingRes.data) setUpcomingClasses(upcomingRes.data);
       if (galleryRes.success && galleryRes.data) setGallery(galleryRes.data);
+      if (cnoRes.success && cnoRes.data) setCnoMessage(cnoRes.data);
+
+      // Wave 2: News events & Quick Links
+      const [newsRes, quickRes] = await Promise.all([
+        ApiService.getNewsEvents(),
+        ApiService.getQuickLinks()
+      ]);
+
       if (newsRes.success && newsRes.data) setNewsEvents(newsRes.data);
       if (quickRes.success && quickRes.data) setQuickLinks(quickRes.data);
-      if (recordsRes.success && recordsRes.data) setCneRecords(recordsRes.data);
-      if (cnoRes.success && cnoRes.data) setCnoMessage(cnoRes.data);
+
+      // Wave 3: Records for live stats (only query if logged in, otherwise use local/default stats)
+      if (user && user.employeeId) {
+        const recordsRes = await ApiService.getCNERecords();
+        if (recordsRes.success && recordsRes.data) setCneRecords(recordsRes.data);
+      }
     } catch (e) {
       console.error('Error loading home data', e);
     } finally {
@@ -122,11 +129,16 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
   };
 
   const handleQuickLinkClick = (item: QuickLinkItem) => {
+    if (!item) return;
     if (item.actionType === 'navigate' && item.target) {
       onNavigate(item.target as ViewMode);
     } else if (item.actionType === 'modal' || item.modalContent) {
       setSelectedQuickLink(item);
     } else if (item.actionType === 'external' && item.target) {
+      window.open(item.target, '_blank');
+    } else if ((item as any).url) {
+      window.open((item as any).url, '_blank');
+    } else if (item.target && item.target.startsWith('http')) {
       window.open(item.target, '_blank');
     }
   };
@@ -171,267 +183,63 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
   // Open upcoming classes filter
   const openClasses = upcomingClasses.filter((c) => c.status === 'OPEN').slice(0, 4);
 
-  // Derive color theme tokens
-  const accentColor: 'emerald' | 'blue' | 'amber' | 'teal' =
-    theme === 'navy' ? 'blue' : theme === 'bento' ? 'amber' : theme === 'nordic' ? 'teal' : 'emerald';
-
   return (
     <div className="space-y-8 pb-16">
-      
-      {/* ========================================================================= */}
-      {/* LAYOUT OPTION 1: EMERALD INSTITUTIONAL (3-COLUMN BALANCED - CURRENT)     */}
-      {/* ========================================================================= */}
-      {theme === 'emerald' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Column (3 cols) */}
-          <aside className="lg:col-span-3 space-y-6">
-            <UpcomingClassesWidget
-              openClasses={openClasses}
-              loading={loading}
-              onNavigate={onNavigate}
-              onSelectClass={(c) => setSelectedClass(c)}
-              accentColor="emerald"
-            />
-            <GuidelinesCard accentColor="emerald" />
-            <CoordinatorDeskCard accentColor="emerald" />
-          </aside>
+      {/* Top Full-Width 4-Metric Impact Ribbon */}
+      <InstitutionalImpactWidget
+        totalCompletedClasses={totalCompletedClasses}
+        uniqueStaffTrained={uniqueStaffTrained}
+        uniqueWardsCount={uniqueWardsCount}
+        attendanceComplianceRate={attendanceComplianceRate}
+        accentColor="teal"
+        horizontal={true}
+      />
 
-          {/* Middle Column (6 cols) */}
-          <main className="lg:col-span-6 space-y-8">
-            <CnoLeadershipCard
-              cnoMessage={cnoMessage}
-              isAdmin={isAdmin}
-              onOpenChangePhoto={() => setIsChangePhotoModalOpen(true)}
-              accentColor="emerald"
-            />
-            <ClassMomentsGalleryWidget
-              gallery={gallery}
-              loading={loading}
-              onNavigate={onNavigate}
-              onSelectPhoto={(photo) => setSelectedPhoto(photo)}
-              accentColor="emerald"
-            />
-            <SpecialtyModulesWidget accentColor="emerald" />
-            <CertificationWorkflowWidget accentColor="emerald" />
-          </main>
-
-          {/* Right Column (3 cols) */}
-          <aside className="lg:col-span-3 space-y-6">
-            <InstitutionalImpactWidget
-              totalCompletedClasses={totalCompletedClasses}
-              uniqueStaffTrained={uniqueStaffTrained}
-              uniqueWardsCount={uniqueWardsCount}
-              attendanceComplianceRate={attendanceComplianceRate}
-              accentColor="emerald"
-            />
-            <NewsCircularsWidget
-              newsEvents={newsEvents}
-              onSelectNews={(news) => setSelectedNews(news)}
-              accentColor="emerald"
-            />
-            <QuickLinksWidget
-              quickLinks={quickLinks}
-              onNavigate={onNavigate}
-              onQuickLinkClick={handleQuickLinkClick}
-              accentColor="emerald"
-            />
-          </aside>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* LAYOUT OPTION 2: CLINICAL SAPPHIRE & NAVY (MODERN HOSPITAL 2-COLUMN)      */}
-      {/* ========================================================================= */}
-      {theme === 'navy' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Main Stage (8 cols) */}
-          <main className="lg:col-span-8 space-y-6">
-            {/* Interactive Schedule & Classes Stage */}
-            <UpcomingClassesWidget
-              openClasses={openClasses}
-              loading={loading}
-              onNavigate={onNavigate}
-              onSelectClass={(c) => setSelectedClass(c)}
-              accentColor="blue"
-            />
-
-            <ClassMomentsGalleryWidget
-              gallery={gallery}
-              loading={loading}
-              onNavigate={onNavigate}
-              onSelectPhoto={(photo) => setSelectedPhoto(photo)}
-              accentColor="blue"
-            />
-
-            <SpecialtyModulesWidget accentColor="blue" />
-            <CertificationWorkflowWidget accentColor="blue" />
-          </main>
-
-          {/* Sticky Sidebar (4 cols) */}
-          <aside className="lg:col-span-4 space-y-6">
-            <InstitutionalImpactWidget
-              totalCompletedClasses={totalCompletedClasses}
-              uniqueStaffTrained={uniqueStaffTrained}
-              uniqueWardsCount={uniqueWardsCount}
-              attendanceComplianceRate={attendanceComplianceRate}
-              accentColor="blue"
-            />
-
-            <CnoLeadershipCard
-              cnoMessage={cnoMessage}
-              isAdmin={isAdmin}
-              onOpenChangePhoto={() => setIsChangePhotoModalOpen(true)}
-              accentColor="blue"
-              compact={true}
-            />
-
-            <NewsCircularsWidget
-              newsEvents={newsEvents}
-              onSelectNews={(news) => setSelectedNews(news)}
-              accentColor="blue"
-            />
-
-            <GuidelinesCard accentColor="blue" />
-            <CoordinatorDeskCard accentColor="blue" />
-
-            <QuickLinksWidget
-              quickLinks={quickLinks}
-              onNavigate={onNavigate}
-              onQuickLinkClick={handleQuickLinkClick}
-              accentColor="blue"
-            />
-          </aside>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* LAYOUT OPTION 3: EXECUTIVE BENTO & OXFORD SLATE (ACADEMIC PRESTIGE)       */}
-      {/* ========================================================================= */}
-      {theme === 'bento' && (
-        <div className="space-y-6">
-          {/* Top Full-Width 4-Metric Impact Ribbon */}
-          <InstitutionalImpactWidget
-            totalCompletedClasses={totalCompletedClasses}
-            uniqueStaffTrained={uniqueStaffTrained}
-            uniqueWardsCount={uniqueWardsCount}
-            attendanceComplianceRate={attendanceComplianceRate}
-            accentColor="amber"
-            horizontal={true}
-          />
-
-          {/* Executive 2-Column Split */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Left Column (5 cols: Leadership & Academic Foundation) */}
-            <aside className="lg:col-span-5 space-y-6">
-              <CnoLeadershipCard
-                cnoMessage={cnoMessage}
-                isAdmin={isAdmin}
-                onOpenChangePhoto={() => setIsChangePhotoModalOpen(true)}
-                accentColor="amber"
-              />
-              <GuidelinesCard accentColor="amber" />
-              <CoordinatorDeskCard accentColor="amber" />
-              <QuickLinksWidget
-                quickLinks={quickLinks}
-                onNavigate={onNavigate}
-                onQuickLinkClick={handleQuickLinkClick}
-                accentColor="amber"
-              />
-            </aside>
-
-            {/* Right Column (7 cols: Active Training Sessions & Circulars) */}
-            <main className="lg:col-span-7 space-y-6">
-              <UpcomingClassesWidget
-                openClasses={openClasses}
-                loading={loading}
-                onNavigate={onNavigate}
-                onSelectClass={(c) => setSelectedClass(c)}
-                accentColor="amber"
-              />
-
-              <NewsCircularsWidget
-                newsEvents={newsEvents}
-                onSelectNews={(news) => setSelectedNews(news)}
-                accentColor="amber"
-              />
-
-              <ClassMomentsGalleryWidget
-                gallery={gallery}
-                loading={loading}
-                onNavigate={onNavigate}
-                onSelectPhoto={(photo) => setSelectedPhoto(photo)}
-                accentColor="amber"
-              />
-
-              <SpecialtyModulesWidget accentColor="amber" />
-              <CertificationWorkflowWidget accentColor="amber" />
-            </main>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* LAYOUT OPTION 4: NORDIC MINIMALIST CLINICAL (ULTRA-CLEAN TEAL)            */}
-      {/* ========================================================================= */}
-      {theme === 'nordic' && (
-        <div className="space-y-8">
-          {/* Header Impact Banner */}
-          <InstitutionalImpactWidget
-            totalCompletedClasses={totalCompletedClasses}
-            uniqueStaffTrained={uniqueStaffTrained}
-            uniqueWardsCount={uniqueWardsCount}
-            attendanceComplianceRate={attendanceComplianceRate}
+      {/* Streamlined 2-Column Nordic Clinical Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Left Column (7 cols: Leadership, Active Classes, Moments) */}
+        <main className="lg:col-span-7 space-y-6">
+          <CnoLeadershipCard
+            cnoMessage={cnoMessage}
+            isAdmin={isAdmin}
+            onOpenChangePhoto={() => setIsChangePhotoModalOpen(true)}
             accentColor="teal"
-            horizontal={true}
           />
+          <UpcomingClassesWidget
+            openClasses={openClasses}
+            loading={loading}
+            onNavigate={onNavigate}
+            onSelectClass={(c) => setSelectedClass(c)}
+            accentColor="teal"
+          />
+          <ClassMomentsGalleryWidget
+            gallery={gallery}
+            loading={loading}
+            onNavigate={onNavigate}
+            onSelectPhoto={(photo) => setSelectedPhoto(photo)}
+            accentColor="teal"
+          />
+        </main>
 
-          {/* 2-Column Clean Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Left Column (7 cols) */}
-            <main className="lg:col-span-7 space-y-6">
-              <CnoLeadershipCard
-                cnoMessage={cnoMessage}
-                isAdmin={isAdmin}
-                onOpenChangePhoto={() => setIsChangePhotoModalOpen(true)}
-                accentColor="teal"
-              />
-              <UpcomingClassesWidget
-                openClasses={openClasses}
-                loading={loading}
-                onNavigate={onNavigate}
-                onSelectClass={(c) => setSelectedClass(c)}
-                accentColor="teal"
-              />
-              <ClassMomentsGalleryWidget
-                gallery={gallery}
-                loading={loading}
-                onNavigate={onNavigate}
-                onSelectPhoto={(photo) => setSelectedPhoto(photo)}
-                accentColor="teal"
-              />
-            </main>
-
-            {/* Right Column (5 cols) */}
-            <aside className="lg:col-span-5 space-y-6">
-              <NewsCircularsWidget
-                newsEvents={newsEvents}
-                onSelectNews={(news) => setSelectedNews(news)}
-                accentColor="teal"
-              />
-              <GuidelinesCard accentColor="teal" />
-              <CoordinatorDeskCard accentColor="teal" />
-              <QuickLinksWidget
-                quickLinks={quickLinks}
-                onNavigate={onNavigate}
-                onQuickLinkClick={handleQuickLinkClick}
-                accentColor="teal"
-              />
-              <SpecialtyModulesWidget accentColor="teal" />
-              <CertificationWorkflowWidget accentColor="teal" />
-            </aside>
-          </div>
-        </div>
-      )}
+        {/* Right Column (5 cols: Circulars, Guidelines, Desk, Quick Links, Modules) */}
+        <aside className="lg:col-span-5 space-y-6">
+          <NewsCircularsWidget
+            newsEvents={newsEvents}
+            onSelectNews={(news) => setSelectedNews(news)}
+            accentColor="teal"
+          />
+          <GuidelinesCard accentColor="teal" />
+          <CoordinatorDeskCard accentColor="teal" />
+          <QuickLinksWidget
+            quickLinks={quickLinks}
+            onNavigate={onNavigate}
+            onQuickLinkClick={handleQuickLinkClick}
+            accentColor="teal"
+          />
+          <SpecialtyModulesWidget accentColor="teal" />
+          <CertificationWorkflowWidget accentColor="teal" />
+        </aside>
+      </div>
 
       {/* ========================================================= */}
       {/* MODALS: News Detail, QuickLink Content, Photo Lightbox,   */}

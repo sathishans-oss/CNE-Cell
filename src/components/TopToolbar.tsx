@@ -14,7 +14,6 @@ import {
   Shield
 } from 'lucide-react';
 import { SessionUser, ViewMode } from '../types';
-import { usePortalTheme } from '../context/ThemeContext';
 
 interface TopToolbarProps {
   user: SessionUser | null;
@@ -31,22 +30,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
   upcomingCount = 0,
   myAppsCount = 0
 }) => {
-  const { theme } = usePortalTheme();
   const isAdmin = user?.role === 'ADMIN';
-
-  const activeTabClass = {
-    emerald: 'bg-emerald-600 text-white shadow-sm',
-    navy: 'bg-blue-600 text-white shadow-sm',
-    bento: 'bg-amber-600 text-white shadow-sm',
-    nordic: 'bg-teal-600 text-white shadow-sm'
-  }[theme] || 'bg-emerald-600 text-white shadow-sm';
-
-  const activeBadgeClass = {
-    emerald: 'bg-emerald-800 text-emerald-100',
-    navy: 'bg-blue-800 text-blue-100',
-    bento: 'bg-amber-800 text-amber-100',
-    nordic: 'bg-teal-800 text-teal-100'
-  }[theme] || 'bg-emerald-800 text-emerald-100';
 
   const staffTabs = [
     { id: 'dashboard' as ViewMode, label: 'Home', icon: LayoutDashboard },
@@ -92,7 +76,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
                   onClick={() => onSelectView(tab.id)}
                   className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                     isActive
-                      ? 'bg-emerald-600 text-white shadow-sm'
+                      ? 'bg-teal-600 text-white shadow-sm'
                       : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                   }`}
                 >
@@ -102,8 +86,8 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
                     <span
                       className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
                         isActive
-                          ? 'bg-emerald-800 text-emerald-100'
-                          : 'bg-emerald-500/20 text-emerald-400'
+                          ? 'bg-teal-800 text-teal-100'
+                          : 'bg-slate-700/60 text-slate-300'
                       }`}
                     >
                       {tab.badge}

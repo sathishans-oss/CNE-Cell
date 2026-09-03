@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { ViewMode, SessionUser } from './types';
 import { ApiService } from './services/api';
 import { ToastProvider, useToast } from './components/Toast';
-import { ThemeProvider } from './context/ThemeContext';
-import { ThemePreviewSelector } from './components/ThemePreviewSelector';
 import { Navbar } from './components/Navbar';
 import { TopToolbar } from './components/TopToolbar';
 import { CneHomePage } from './components/CneHomePage';
@@ -26,7 +24,6 @@ import { AlertTriangle, Database, FlaskConical, Wrench } from 'lucide-react';
 const AppContent: React.FC = () => {
   const [user, setUser] = useState<SessionUser | null>(() => ApiService.getSessionUser());
   const [activeView, setActiveView] = useState<ViewMode>('dashboard');
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Modals state
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -82,7 +79,6 @@ const AppContent: React.FC = () => {
         onChangePasswordClick={() => setIsChangePasswordOpen(true)}
         onOpenBackendSetup={() => setIsSetupModalOpen(true)}
         onLogout={handleLogout}
-        onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
       />
 
       {/* Persistent Static Top Toolbar for Primary Navigation */}
@@ -91,9 +87,6 @@ const AppContent: React.FC = () => {
         activeView={activeView}
         onSelectView={handleNavigate}
       />
-
-      {/* Interactive Theme & Layout Live Previewer */}
-      <ThemePreviewSelector />
 
       {/* Institutional Environment Warning Banners */}
       {isSandbox ? (
@@ -238,9 +231,7 @@ const AppContent: React.FC = () => {
 export default function App() {
   return (
     <ToastProvider>
-      <ThemeProvider>
-        <AppContent />
-      </ThemeProvider>
+      <AppContent />
     </ToastProvider>
   );
 }

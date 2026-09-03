@@ -67,7 +67,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
         </button>
 
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-200">
+          <div className="w-10 h-10 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center border border-teal-200">
             <KeyRound className="w-5 h-5" />
           </div>
           <div>
@@ -78,16 +78,19 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
 
         {isSuccess ? (
           <div className="text-center py-6 space-y-4">
-            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center">
+            <div className="w-12 h-12 rounded-full bg-teal-100 text-teal-700 mx-auto flex items-center justify-center">
               <CheckCircle2 className="w-7 h-7" />
             </div>
             <p className="text-sm font-medium text-slate-800">
-              Your password has been reset successfully!
+              Your password has been updated successfully!
+            </p>
+            <p className="text-xs text-slate-500">
+              Your password has been updated successfully. You can now log in using your new password.
             </p>
             <button
               id="btn-forgot-pass-return-login"
               onClick={onClose}
-              className="w-full py-2.5 px-4 bg-slate-900 text-white rounded-lg text-sm font-semibold hover:bg-slate-800"
+              className="w-full py-2.5 px-4 bg-teal-800 text-white rounded-lg text-sm font-semibold hover:bg-teal-900"
             >
               Return to Login
             </button>
@@ -110,31 +113,30 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="e.g. AIIMSRDNS0013"
+                  placeholder="e.g. 100062 or AIIMSRDNS0013"
                   value={employeeId}
                   onChange={(e) => setEmployeeId(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm uppercase"
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm uppercase focus:outline-hidden focus:ring-2 focus:ring-teal-700"
                 />
               </div>
             </div>
 
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                Date of Joining (DOJ)
+                Date of Joining (DOJ) / DOB
               </label>
               <div className="relative">
                 <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                 <input
                   type="text"
-                  required
-                  placeholder="e.g. 15/07/2019 or 15 Jul 2019"
+                  placeholder="e.g. 15 Jul 1985 or 15/07/2019"
                   value={doj}
                   onChange={(e) => setDoj(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm"
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-teal-700"
                 />
               </div>
               <p className="text-[11px] text-slate-500 mt-1">
-                Must match your registered Date of Joining (DOJ) in institutional roster.
+                Must match your registered Date of Joining (DOJ) or DOB in hospital records.
               </p>
             </div>
 
@@ -149,7 +151,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
                 placeholder="Minimum 6 characters"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-teal-700"
               />
             </div>
 
@@ -164,7 +166,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
                 placeholder="Re-enter new password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-teal-700"
               />
             </div>
 
@@ -179,7 +181,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
               <button
                 type="submit"
                 disabled={loading}
-                className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg disabled:opacity-50"
+                className="px-4 py-2 text-xs font-semibold text-white bg-teal-800 hover:bg-teal-900 rounded-lg disabled:opacity-50"
               >
                 {loading ? 'Verifying...' : 'Reset Password'}
               </button>

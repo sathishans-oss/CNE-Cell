@@ -49,15 +49,57 @@ export class ApiService {
    * Initialize Local Storage for Sandbox/Test Mode only
    */
   static initLocalStorage() {
-    if (!localStorage.getItem(STORAGE_KEYS.OFFICERS)) {
-      localStorage.setItem(STORAGE_KEYS.OFFICERS, JSON.stringify(INITIAL_OFFICERS));
+    let officers: Employee[] = [];
+    const storedOfficers = localStorage.getItem(STORAGE_KEYS.OFFICERS);
+    if (!storedOfficers) {
+      officers = [...INITIAL_OFFICERS];
+      localStorage.setItem(STORAGE_KEYS.OFFICERS, JSON.stringify(officers));
+    } else {
+      try {
+        officers = JSON.parse(storedOfficers);
+      } catch (e) {
+        officers = [...INITIAL_OFFICERS];
+      }
+      if (!officers.some((o) => o.employeeId.toLowerCase() === '100062')) {
+        officers.unshift({
+          srNo: 1,
+          employeeId: "100062",
+          name: "Mr. Sathish Kumar",
+          designation: "A.N.S",
+          contactNo: "9876543299",
+          email: "sathish.ans@aiimsrishikesh.edu.in",
+          dob: "15 Jul 1985"
+        });
+        localStorage.setItem(STORAGE_KEYS.OFFICERS, JSON.stringify(officers));
+      }
     }
+
     if (!localStorage.getItem(STORAGE_KEYS.AREAS)) {
       localStorage.setItem(STORAGE_KEYS.AREAS, JSON.stringify(INITIAL_AREAS));
     }
-    if (!localStorage.getItem(STORAGE_KEYS.ROLES)) {
-      localStorage.setItem(STORAGE_KEYS.ROLES, JSON.stringify(INITIAL_ROLES));
+
+    let roles: RoleMapping[] = [];
+    const storedRoles = localStorage.getItem(STORAGE_KEYS.ROLES);
+    if (!storedRoles) {
+      roles = [...INITIAL_ROLES];
+      localStorage.setItem(STORAGE_KEYS.ROLES, JSON.stringify(roles));
+    } else {
+      try {
+        roles = JSON.parse(storedRoles);
+      } catch (e) {
+        roles = [...INITIAL_ROLES];
+      }
+      if (!roles.some((r) => r.employeeId.toLowerCase() === '100062')) {
+        roles.unshift({
+          employeeId: "100062",
+          name: "Mr. Sathish Kumar",
+          designation: "A.N.S",
+          role: "ADMIN"
+        });
+        localStorage.setItem(STORAGE_KEYS.ROLES, JSON.stringify(roles));
+      }
     }
+
     if (!localStorage.getItem(STORAGE_KEYS.USER_CREDS)) {
       localStorage.setItem(STORAGE_KEYS.USER_CREDS, JSON.stringify(INITIAL_USER_CREDS));
     }
@@ -90,7 +132,7 @@ export class ApiService {
   static getEnvironmentMode(): 'production' | 'sandbox' {
     const saved = localStorage.getItem(STORAGE_KEYS.ENV_MODE);
     if (saved === 'sandbox') return 'sandbox';
-    return 'production'; // Production is default
+    return 'production';
   }
 
   static setEnvironmentMode(mode: 'production' | 'sandbox') {
@@ -126,8 +168,8 @@ export class ApiService {
 
   /**
    * Central Action Executor:
-   * In Production mode: Exclusively connects to Google Apps Script. If unavailable, fails cleanly.
-   * In Sandbox mode: Runs offline local simulation for testing.
+   * In Production mode: Exclusively connects to Google Apps Script. Fails closed if not configured.
+   * In Sandbox mode: Runs offline local simulation for development/testing.
    */
   static async executeAction<T = any>(
     action: string,
@@ -143,19 +185,22 @@ export class ApiService {
       loggedInEmployeeId: session?.employeeId
     };
 
-    // If in Production Mode
+    // In Production Mode: Fail closed if backend URL is not configured
     if (mode === 'production') {
       if (!apiUrl) {
+        if (action === 'ping') {
+          return { success: false, message: 'Google Apps Script URL is not configured.' };
+        }
         return {
           success: false,
           errorCode: 'BACKEND_NOT_CONFIGURED',
-          message: 'Backend connection is unavailable. Please configure the Google Apps Script Web App URL in Setup.'
+          message: 'Google Apps Script backend URL is not configured. Please configure your backend to connect to Google Sheets.'
         };
       }
 
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15-second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 45000); // 45-second timeout for Apps Script
 
         const response = await fetch(apiUrl, {
           method: 'POST',
@@ -174,8 +219,24 @@ export class ApiService {
           if (result.errorCode === 'UNAUTHORIZED' && session) {
             this.logout();
           }
+          if (result.success && result.data && action.startsWith('get')) {
+            try {
+              localStorage.setItem(`cne_cache_${action}`, JSON.stringify(result.data));
+            } catch (e) {}
+          }
           return result as ApiResponse<T>;
         } else {
+          // If server returns HTTP error and it's a read query, attempt offline cache fallback
+          if (action.startsWith('get')) {
+            console.warn(`[CNE Service] HTTP ${response.status} on ${action}. Serving cached dataset.`);
+            try {
+              const cached = localStorage.getItem(`cne_cache_${action}`);
+              if (cached) {
+                return { success: true, data: JSON.parse(cached), message: 'Loaded from local cache' } as ApiResponse<T>;
+              }
+            } catch (e) {}
+          }
+
           return {
             success: false,
             errorCode: 'HTTP_ERROR',
@@ -183,19 +244,30 @@ export class ApiService {
           };
         }
       } catch (err: any) {
-        console.error(`[CNE Service] Error executing ${action} against ${apiUrl}:`, err);
+        console.warn(`[CNE Service] Network notice executing ${action} against ${apiUrl}:`, err);
         const isTimeout = err?.name === 'AbortError';
+
+        // For read queries, gracefully fall back to cached dataset if present
+        if (action.startsWith('get') || action === 'ping') {
+          try {
+            const cached = localStorage.getItem(`cne_cache_${action}`);
+            if (cached) {
+              return { success: true, data: JSON.parse(cached), message: 'Loaded from local cache' } as ApiResponse<T>;
+            }
+          } catch (e) {}
+        }
+
         return {
           success: false,
           errorCode: 'BACKEND_UNAVAILABLE',
           message: isTimeout
-            ? 'Backend connection timed out (15s). Please check your internet connection or Google Apps Script performance.'
+            ? 'Backend connection timed out. Please check your internet connection or Google Apps Script performance.'
             : 'Backend connection is unavailable. Please check your network and Google Apps Script configuration.'
         };
       }
     }
 
-    // Sandbox / Test Mode simulation
+    // Explicit Sandbox Mode execution only
     this.initLocalStorage();
     return this.executeLocalAction<T>(action, payload);
   }
@@ -265,7 +337,18 @@ export class ApiService {
    * Authentication
    */
   static async login(employeeId: string, password: string): Promise<ApiResponse<SessionUser>> {
-    const res = await this.executeAction<SessionUser>('login', { employeeId, password });
+    const cleanEmpId = (employeeId || '').trim();
+    const cleanPass = (password || '').trim();
+
+    if (!cleanEmpId || !cleanPass) {
+      return { success: false, message: 'Please enter both your Employee ID and Password.' };
+    }
+
+    const res = await this.executeAction<SessionUser>('login', {
+      employeeId: cleanEmpId,
+      password: cleanPass
+    });
+
     if (res.success && res.data) {
       this.saveSessionUser(res.data);
     }
@@ -303,24 +386,13 @@ export class ApiService {
   static getCurrentUser(): SessionUser {
     const user = this.getSessionUser();
     if (user) return user;
-    
-    // In sandbox mode without session, return default admin demo
-    if (this.getEnvironmentMode() === 'sandbox') {
-      return {
-        employeeId: '100062',
-        name: 'Sathish Kumar ANS',
-        designation: 'Assistant Nursing Superintendent',
-        email: 'sathish.ans@aiimsrishikesh.edu.in',
-        role: 'ADMIN',
-        token: '100062:' + new Date().getTime() + ':sandbox'
-      };
-    }
 
     // Default guest session for unauthenticated state
     return {
       employeeId: '',
       name: 'Guest User',
-      designation: 'Nursing Officer',
+      designation: 'Visitor',
+      email: '',
       role: 'EMPLOYEE',
       token: ''
     };
@@ -489,13 +561,45 @@ export class ApiService {
           const empId = (params.employeeId || '').trim();
           const password = (params.password || '').trim();
 
-          const officers: Employee[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.OFFICERS) || '[]');
-          const officer = officers.find(
+          let officers: Employee[] = [];
+          try {
+            officers = JSON.parse(localStorage.getItem(STORAGE_KEYS.OFFICERS) || '[]');
+          } catch (e) {
+            officers = [...INITIAL_OFFICERS];
+          }
+
+          let officer = officers.find(
             (o) => o.employeeId.toLowerCase() === empId.toLowerCase()
           );
 
           if (!officer) {
-            return { success: false, message: 'Employee ID not found in institutional roster.' };
+            officer = INITIAL_OFFICERS.find(
+              (o) => o.employeeId.toLowerCase() === empId.toLowerCase()
+            );
+            if (officer) {
+              officers.push(officer);
+              localStorage.setItem(STORAGE_KEYS.OFFICERS, JSON.stringify(officers));
+            }
+          }
+
+          // If still not found and employee ID is provided, auto-register for seamless testing
+          if (!officer && empId) {
+            const isSathish = empId.toLowerCase() === '100062';
+            officer = {
+              srNo: officers.length + 1,
+              employeeId: empId,
+              name: isSathish ? 'Mr. Sathish Kumar' : `Staff (${empId})`,
+              designation: isSathish ? 'A.N.S' : 'Nursing Officer',
+              email: isSathish ? 'sathish.ans@aiimsrishikesh.edu.in' : `${empId.toLowerCase()}@aiimsrishikesh.edu.in`,
+              contactNo: '9876543299',
+              dob: '15 Jul 1985'
+            };
+            officers.push(officer);
+            localStorage.setItem(STORAGE_KEYS.OFFICERS, JSON.stringify(officers));
+          }
+
+          if (!officer) {
+            return { success: false, message: 'Please provide a valid Employee ID.' };
           }
 
           const creds = JSON.parse(localStorage.getItem(STORAGE_KEYS.USER_CREDS) || '{}');
@@ -505,9 +609,12 @@ export class ApiService {
           let isFirstLogin = false;
 
           if (savedPass) {
-            isValid = savedPass === password;
+            // User has a saved password: ONLY the saved personal password is valid (pass1234 is rejected)
+            if (password === savedPass) {
+              isValid = true;
+            }
           } else {
-            // Initial First-Time Login: Default password is pass1234
+            // New user without a saved personal password: ONLY pass1234 is accepted
             if (password === 'pass1234') {
               isValid = true;
               isFirstLogin = true;
@@ -517,13 +624,19 @@ export class ApiService {
           if (!isValid) {
             return {
               success: false,
-              message: 'Invalid credentials. Default initial password is pass1234'
+              message: 'Invalid credentials. Default first-time password is pass1234. If you changed your password, please enter your new personal password.'
             };
           }
 
-          const roles: RoleMapping[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.ROLES) || '[]');
+          let roles: RoleMapping[] = [];
+          try {
+            roles = JSON.parse(localStorage.getItem(STORAGE_KEYS.ROLES) || '[]');
+          } catch (e) {
+            roles = [...INITIAL_ROLES];
+          }
+
           const roleEntry = roles.find((r) => r.employeeId.toLowerCase() === empId.toLowerCase());
-          const role: UserRole = roleEntry ? roleEntry.role : 'EMPLOYEE';
+          const role: UserRole = roleEntry?.role === 'ADMIN' ? 'ADMIN' : (roleEntry ? roleEntry.role : 'EMPLOYEE');
 
           const sessionUser: SessionUser = {
             employeeId: officer.employeeId,
@@ -612,7 +725,7 @@ export class ApiService {
 
         case 'updateArea': {
           const areas: Area[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.AREAS) || '[]');
-          const idx = areas.findIndex((a) => a.name.toLowerCase() === params.oldName.toLowerCase());
+          const idx = areas.findIndex((a) => (a.name || '').toLowerCase() === (params.oldName || '').toLowerCase());
           if (idx !== -1) {
             areas[idx].name = params.name || areas[idx].name;
             areas[idx].status = params.status || areas[idx].status;
@@ -629,7 +742,7 @@ export class ApiService {
 
         case 'updateRole': {
           const roles: RoleMapping[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.ROLES) || '[]');
-          const idx = roles.findIndex((r) => r.employeeId.toLowerCase() === params.employeeId.toLowerCase());
+          const idx = roles.findIndex((r) => (r.employeeId || '').toLowerCase() === (params.employeeId || '').toLowerCase());
           if (idx !== -1) {
             roles[idx].role = params.role;
             roles[idx].updatedAt = new Date().toISOString();
@@ -741,12 +854,15 @@ export class ApiService {
         case 'applyForClass': {
           const apps: CNEApplication[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.APPLICATIONS) || '[]');
           const user = this.getSessionUser();
+          if (!user || !user.employeeId) {
+            return { success: false, message: 'Please log in to apply for a CNE class.' };
+          }
           const appId = `APP-${new Date().getFullYear()}-${('00000' + (apps.length + 1)).slice(-5)}`;
           const newApp: CNEApplication = {
             applicationId: appId,
             classId: params.classId,
-            employeeId: user?.employeeId || '100062',
-            employeeName: user?.name || 'Staff User',
+            employeeId: user.employeeId,
+            employeeName: user.name || 'Staff User',
             appliedAt: new Date().toISOString(),
             status: 'Applied',
             remarks: params.remarks || ''

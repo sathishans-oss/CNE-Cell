@@ -1,7 +1,5 @@
 export type UserRole = 'ADMIN' | 'EMPLOYEE';
 
-export type PortalTheme = 'emerald' | 'navy' | 'bento' | 'nordic';
-
 export type ViewMode =
   | 'home'
   | 'dashboard'

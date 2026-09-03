@@ -108,7 +108,7 @@ export const AdminAreas: React.FC<AdminAreasProps> = () => {
 
   const filteredAreas = areas.filter((a) => {
     if (statusFilter !== 'ALL' && a.status !== statusFilter) return false;
-    if (searchTerm.trim() && !a.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+    if (searchTerm.trim() && !(a.name || '').toLowerCase().includes(searchTerm.toLowerCase())) return false;
     return true;
   });
 

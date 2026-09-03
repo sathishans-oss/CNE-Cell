@@ -88,6 +88,15 @@ export const INITIAL_AREAS: Area[] = [
 export const INITIAL_OFFICERS: Employee[] = [
   {
     srNo: 1,
+    employeeId: "100062",
+    name: "Mr. Sathish Kumar",
+    designation: "A.N.S",
+    contactNo: "9876543299",
+    email: "sathish.ans@aiimsrishikesh.edu.in",
+    dob: "15 Jul 1985"
+  },
+  {
+    srNo: 2,
     employeeId: "FNMDCNO00067",
     name: "Dr.Anita Rani Kansal",
     designation: "C.N.O",
@@ -179,6 +188,12 @@ export const INITIAL_OFFICERS: Employee[] = [
 ];
 
 export const INITIAL_ROLES: RoleMapping[] = [
+  {
+    employeeId: "100062",
+    name: "Mr. Sathish Kumar",
+    designation: "A.N.S",
+    role: "ADMIN"
+  },
   {
     employeeId: "RSNHO000841",
     name: "Ms.Ramya T",
