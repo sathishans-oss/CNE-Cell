@@ -26,7 +26,7 @@ function sanitizeCellInput(val) {
   return str;
 }
 
-// Global Configuration & Sheet Resolution (Strict Two-Spreadsheet Isolation or Single Spreadsheet Fallback)
+// Global Configuration & Sheet Resolution (Supports Separate Spreadsheet or Fallback to CNE Spreadsheet)
 function getSpreadsheet(type) {
   var props = PropertiesService.getScriptProperties();
   
@@ -39,14 +39,16 @@ function getSpreadsheet(type) {
         throw new Error('Could not open Employee Master spreadsheet with DROPDOWN_SPREADSHEET_ID: ' + e.message);
       }
     }
-    // Fallback: If container-bound active spreadsheet contains 'Officers data', use it
-    try {
-      var activeSS = SpreadsheetApp.getActiveSpreadsheet();
-      if (activeSS && activeSS.getSheetByName('Officers data')) {
-        return activeSS;
+    // Fallback: If DROPDOWN_SPREADSHEET_ID is empty or not configured, safely fall back to CNE_SPREADSHEET_ID
+    var cneId = props.getProperty('CNE_SPREADSHEET_ID');
+    if (cneId && cneId.trim() !== '') {
+      try {
+        return SpreadsheetApp.openById(cneId.trim());
+      } catch (e) {
+        throw new Error('Could not open CNE spreadsheet for Officers data with CNE_SPREADSHEET_ID: ' + e.message);
       }
-    } catch (e) {}
-    throw new Error('DROPDOWN_SPREADSHEET_ID is not configured in Script Properties and "Officers data" tab not found in active spreadsheet.');
+    }
+    throw new Error('Neither DROPDOWN_SPREADSHEET_ID nor CNE_SPREADSHEET_ID is configured in Script Properties.');
   } else {
     var cneId = props.getProperty('CNE_SPREADSHEET_ID');
     if (cneId && cneId.trim() !== '') {
@@ -56,14 +58,7 @@ function getSpreadsheet(type) {
         throw new Error('Could not open CNE spreadsheet with CNE_SPREADSHEET_ID: ' + e.message);
       }
     }
-    // Fallback: Use container-bound active spreadsheet
-    try {
-      var activeSS = SpreadsheetApp.getActiveSpreadsheet();
-      if (activeSS) {
-        return activeSS;
-      }
-    } catch (e) {}
-    throw new Error('CNE_SPREADSHEET_ID is not configured in Script Properties.');
+    throw new Error('CNE_SPREADSHEET_ID is not configured in Script Properties. Please configure the CNE Database Spreadsheet ID.');
   }
 }
 
@@ -167,6 +162,13 @@ function verifySession(token, employeeId) {
   if (!timingSafeEqual(receivedSig, expectedSig)) return null;
   
   var verifiedEmpId = normalizeEmpId(tokenEmpId);
+
+  // Invalidate tokens issued before password change / reset
+  var lastChange = CacheService.getScriptCache().get('pwd_change_' + verifiedEmpId);
+  if (lastChange && timestamp < parseInt(lastChange, 10)) {
+    return null;
+  }
+
   var role = getUserRole(verifiedEmpId);
   return { employeeId: verifiedEmpId, role: role };
 }
@@ -278,10 +280,6 @@ function handleRequest(e, method) {
         output = handleGetAreas(params);
         break;
         
-      case 'getOfficersDropdown':
-        output = handleGetOfficersDropdown(params);
-        break;
-        
       case 'getUpcomingClasses':
         output = handleGetUpcomingClasses(params);
         break;
@@ -320,6 +318,9 @@ function handleRequest(e, method) {
         break;
         
       // Administrative Endpoints (Strictly requireAdmin verified)
+      case 'getOfficersDropdown':
+        output = handleAdminAction(params, session, handleGetOfficersDropdown, 'GET_OFFICERS_DROPDOWN');
+        break;
       case 'addArea':
         output = handleAdminAction(params, session, handleAddArea, 'ADD_AREA');
         break;
@@ -516,7 +517,6 @@ function handleDiagnosticPing(params) {
 function getUserRole(employeeId) {
   var normId = normalizeEmpId(employeeId);
   if (!normId) return 'EMPLOYEE';
-  if (normId === '100062') return 'ADMIN';
   
   try {
     var ss = getSpreadsheet('CNE');
@@ -550,31 +550,215 @@ function getUserRole(employeeId) {
 }
 
 /**
- * Helper: Normalize date string or Date object for flexible identity comparison
+ * Safe Header Detection for 'Officers data' Tab
+ * Dynamically resolves column indices without silent incorrect hardcoded fallbacks.
+ * Recognizes variants of Employee ID, Name, Designation, and Date of Joining (DOJ).
  */
-function normalizeDateForComparison(val) {
-  if (!val) return '';
-  if (val instanceof Date) {
-    var tz = Session.getScriptTimeZone() || 'Asia/Kolkata';
-    return Utilities.formatDate(val, tz, 'ddMMyyyy');
+function findOfficerHeaders(headers) {
+  var empCol = -1, nameCol = -1, desigCol = -1, dojCol = -1;
+  
+  if (!headers || !headers.length) {
+    return { empCol: -1, nameCol: -1, desigCol: -1, dojCol: -1 };
   }
-  return String(val).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+  
+  for (var c = 0; c < headers.length; c++) {
+    var raw = String(headers[c] || '').trim();
+    var h = raw.toLowerCase();
+    if (!h) continue;
+    
+    // 1. Employee ID
+    if (empCol === -1) {
+      if ((h.indexOf('emp') !== -1 && (h.indexOf('id') !== -1 || h.indexOf('no') !== -1)) ||
+          h === 'id' || h === 'empid' || h === 'employee_id' || h === 'employee id' || h === 'employee no') {
+        empCol = c;
+      }
+    }
+    
+    // 2. Name of Officer
+    if (nameCol === -1) {
+      if ((h.indexOf('name') !== -1 && (h.indexOf('officer') !== -1 || h.indexOf('emp') !== -1 || h.indexOf('staff') !== -1)) ||
+          h === 'name of officer' || h === 'officer name' || h === 'employee name' || h === 'staff name') {
+        nameCol = c;
+      }
+    }
+    
+    // 3. Designation
+    if (desigCol === -1) {
+      if (h.indexOf('designation') !== -1 || h.indexOf('desig') !== -1 || h.indexOf('post') !== -1) {
+        desigCol = c;
+      }
+    }
+    
+    // 4. Date of Joining (DOJ)
+    // Variants: Date of Joining, Date Of Joining, DOJ, D.O.J, Joining Date, Date of Joining AIIMS
+    if (dojCol === -1) {
+      if (h === 'date of joining' ||
+          h === 'date of joining aiims' ||
+          h === 'joining date' ||
+          h === 'doj' ||
+          h === 'd.o.j' ||
+          h === 'd.o.j.' ||
+          h === 'd. o. j' ||
+          h.indexOf('joining') !== -1 ||
+          h.indexOf('doj') !== -1 ||
+          h.indexOf('d.o.j') !== -1) {
+        dojCol = c;
+      }
+    }
+  }
+  
+  // Secondary fallback for Name if specific compound was not found
+  if (nameCol === -1) {
+    for (var c2 = 0; c2 < headers.length; c2++) {
+      var h2 = String(headers[c2] || '').toLowerCase().trim();
+      if (h2 === 'name') {
+        nameCol = c2;
+        break;
+      }
+    }
+  }
+  
+  return { empCol: empCol, nameCol: nameCol, desigCol: desigCol, dojCol: dojCol };
 }
 
 /**
- * Helper: Format Date for display
+ * Calendar validation helper for date parts (leap year aware)
+ */
+function isValidDateParts(year, month, day) {
+  if (isNaN(year) || isNaN(month) || isNaN(day)) return false;
+  if (year < 1920 || year > 2100) return false;
+  if (month < 1 || month > 12) return false;
+  if (day < 1 || day > 31) return false;
+  var isLeap = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+  var daysInMonth = [31, (isLeap ? 29 : 28), 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= daysInMonth[month - 1];
+}
+
+function padTwo(n) {
+  return n < 10 ? '0' + n : String(n);
+}
+
+/**
+ * Robust Canonical Date Normalizer
+ * Converts any valid date representation into standard canonical format: YYYY-MM-DD
+ * Supports:
+ *  - Google Sheets Date objects
+ *  - DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY (e.g. 15/08/2020, 15-08-2020, 15.08.2020)
+ *  - YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD (e.g. 2020-08-15)
+ *  - Textual months: 15-Aug-2020, 15 August 2020, Aug 15 2020
+ * Returns canonical 'YYYY-MM-DD', or '' if invalid/unparseable.
+ */
+function normalizeDateForComparison(val) {
+  if (val === null || val === undefined || val === '') return '';
+  
+  // 1. Google Sheets Date object
+  if (val instanceof Date || Object.prototype.toString.call(val) === '[object Date]') {
+    if (isNaN(val.getTime())) return '';
+    try {
+      if (typeof Utilities !== 'undefined' && Utilities.formatDate && typeof Session !== 'undefined' && Session.getScriptTimeZone) {
+        var tz = Session.getScriptTimeZone() || 'Asia/Kolkata';
+        return Utilities.formatDate(val, tz, 'yyyy-MM-dd');
+      }
+    } catch (e) {}
+    var y = val.getFullYear();
+    var m = val.getMonth() + 1;
+    var d = val.getDate();
+    return isValidDateParts(y, m, d) ? (y + '-' + padTwo(m) + '-' + padTwo(d)) : '';
+  }
+  
+  var str = String(val).trim();
+  if (!str) return '';
+  
+  // Strip time portion if present (e.g. "2020-08-15T00:00:00.000Z" or "15/08/2020 00:00:00")
+  str = str.split(/[T\\s]/)[0].trim();
+  
+  // 2. YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+  var matchYMD = str.match(/^(\\d{4})[-/.](\\d{1,2})[-/.](\\d{1,2})$/);
+  if (matchYMD) {
+    var year = parseInt(matchYMD[1], 10);
+    var month = parseInt(matchYMD[2], 10);
+    var day = parseInt(matchYMD[3], 10);
+    if (isValidDateParts(year, month, day)) {
+      return year + '-' + padTwo(month) + '-' + padTwo(day);
+    }
+    return '';
+  }
+  
+  // 3. DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  var matchDMY = str.match(/^(\\d{1,2})[-/.](\\d{1,2})[-/.](\\d{4})$/);
+  if (matchDMY) {
+    var p1 = parseInt(matchDMY[1], 10);
+    var p2 = parseInt(matchDMY[2], 10);
+    var year = parseInt(matchDMY[3], 10);
+    var day, month;
+    if (p1 > 12 && p2 <= 12) {
+      day = p1;
+      month = p2;
+    } else if (p2 > 12 && p1 <= 12) {
+      day = p2;
+      month = p1;
+    } else {
+      // Preferred standard: DD/MM/YYYY
+      day = p1;
+      month = p2;
+    }
+    if (isValidDateParts(year, month, day)) {
+      return year + '-' + padTwo(month) + '-' + padTwo(day);
+    }
+    return '';
+  }
+  
+  // 4. Textual month format: 15-Aug-2020, 15 August 2020, Aug 15 2020
+  var monthsMap = {
+    jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
+    apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
+    aug: 8, august: 8, sep: 9, september: 9, oct: 10, october: 10,
+    nov: 11, november: 11, dec: 12, december: 12
+  };
+  
+  var matchTextMonth = str.match(/^(\\d{1,2})[-/.\\s]+([a-zA-Z]+)[-/.\\s,]+(\\d{4})$/);
+  if (matchTextMonth) {
+    var day = parseInt(matchTextMonth[1], 10);
+    var mStr = matchTextMonth[2].toLowerCase();
+    var year = parseInt(matchTextMonth[3], 10);
+    var month = monthsMap[mStr];
+    if (month && isValidDateParts(year, month, day)) {
+      return year + '-' + padTwo(month) + '-' + padTwo(day);
+    }
+    return '';
+  }
+  
+  var matchMonthText = str.match(/^([a-zA-Z]+)[-/.\\s]+(\\d{1,2})[-/.\\s,]+(\\d{4})$/);
+  if (matchMonthText) {
+    var mStr = matchMonthText[1].toLowerCase();
+    var day = parseInt(matchMonthText[2], 10);
+    var year = parseInt(matchMonthText[3], 10);
+    var month = monthsMap[mStr];
+    if (month && isValidDateParts(year, month, day)) {
+      return year + '-' + padTwo(month) + '-' + padTwo(day);
+    }
+    return '';
+  }
+  
+  return '';
+}
+
+/**
+ * Helper: Format Date for display in preferred DD/MM/YYYY format
  */
 function formatDateDisplay(val) {
   if (!val) return '';
-  if (val instanceof Date) {
-    var tz = Session.getScriptTimeZone() || 'Asia/Kolkata';
-    return Utilities.formatDate(val, tz, 'dd/MM/yyyy');
+  var canon = normalizeDateForComparison(val);
+  if (canon) {
+    var parts = canon.split('-');
+    return parts[2] + '/' + parts[1] + '/' + parts[0];
   }
   return String(val).trim();
 }
 
 /**
  * Helper: Find Officer in 'Officers data' tab (DOJ & DOB stay strictly server-side)
+ * Uses safe header detection without silent incorrect column fallbacks.
  */
 function findOfficerById(employeeId) {
   var normId = normalizeEmpId(employeeId);
@@ -583,81 +767,70 @@ function findOfficerById(employeeId) {
   try {
     var ss = getSpreadsheet('OFFICERS');
     var sheet = ss.getSheetByName('Officers data') || ss.getActiveSheet();
+    if (!sheet) {
+      console.warn('Officers data sheet not found');
+      return null;
+    }
     var data = sheet.getDataRange().getValues();
     if (data.length <= 1) return null;
     
     var headers = data[0];
-    var empCol = 1, nameCol = 3, desigCol = 8, dojCol = -1, dobCol = -1;
+    var colMap = findOfficerHeaders(headers);
     
-    for (var c = 0; c < headers.length; c++) {
-      var h = String(headers[c]).toLowerCase().trim();
-      if (h.indexOf('emp') !== -1 && h.indexOf('id') !== -1) empCol = c;
-      if (h.indexOf('name') !== -1 && h.indexOf('officer') !== -1) nameCol = c;
-      if (h.indexOf('designation') !== -1) desigCol = c;
-      if (h.indexOf('joining') !== -1 || h.indexOf('doj') !== -1 || h.indexOf('d.o.j') !== -1) dojCol = c;
-      if (h.indexOf('d.o.b') !== -1 || h.indexOf('dob') !== -1 || h.indexOf('birth') !== -1) dobCol = c;
+    // Safety check: Employee ID column MUST be safely identified
+    if (colMap.empCol === -1) {
+      console.warn('Employee ID column could not be safely identified in Officers data header row.');
+      return null;
     }
     
     for (var r = 1; r < data.length; r++) {
-      var rowEmpId = normalizeEmpId(data[r][empCol]);
+      var rowEmpId = normalizeEmpId(data[r][colMap.empCol]);
       if (rowEmpId === normId) {
-        var rawDoj = (dojCol !== -1) ? data[r][dojCol] : '';
-        var rawDob = (dobCol !== -1) ? data[r][dobCol] : '';
+        var rawDoj = (colMap.dojCol !== -1) ? data[r][colMap.dojCol] : '';
+        var rawName = (colMap.nameCol !== -1) ? String(data[r][colMap.nameCol] || '').trim() : '';
+        var rawDesig = (colMap.desigCol !== -1) ? String(data[r][colMap.desigCol] || '').trim() : '';
         return {
-          employeeId: String(data[r][empCol]).trim(),
-          name: String(data[r][nameCol] || '').trim(),
-          designation: String(data[r][desigCol] || '').trim(),
+          employeeId: String(data[r][colMap.empCol]).trim(),
+          name: rawName,
+          designation: rawDesig,
           doj: rawDoj,
           dojFormatted: formatDateDisplay(rawDoj),
-          dob: rawDob,
-          dobFormatted: formatDateDisplay(rawDob)
+          dojColMissing: (colMap.dojCol === -1)
         };
       }
     }
   } catch (e) {
     console.warn('findOfficerById error: ' + e.message);
   }
-
-  // Fallback for Administrator 100062 if not yet present in spreadsheet tab
-  if (normId === '100062') {
-    return {
-      employeeId: '100062',
-      name: 'Mr. Sathish Kumar',
-      designation: 'A.N.S',
-      doj: '15/07/2019',
-      dojFormatted: '15/07/2019',
-      dob: '15/07/1985',
-      dobFormatted: '15/07/1985'
-    };
-  }
-
   return null;
 }
 
 /**
- * Officers Dropdown (Sanitized: NO Aadhaar, UAN, DOJ, DOB, Phone, Email exposed)
+ * Officers Dropdown (Admin Only, Sanitized: NO Aadhaar, UAN, DOJ, DOB, Phone, Email exposed)
  */
-function handleGetOfficersDropdown(params) {
+function handleGetOfficersDropdown(params, session) {
+  var adminError = requireAdmin(session);
+  if (adminError) return adminError;
+
   var ss = getSpreadsheet('OFFICERS');
   var sheet = ss.getSheetByName('Officers data') || ss.getActiveSheet();
+  if (!sheet) {
+    return { success: false, message: '"Officers data" tab not found in spreadsheet.' };
+  }
   var data = sheet.getDataRange().getValues();
   var list = [];
   
   if (data.length > 1) {
     var headers = data[0];
-    var empCol = 1, nameCol = 3, desigCol = 8;
-    
-    for (var c = 0; c < headers.length; c++) {
-      var h = String(headers[c]).toLowerCase().trim();
-      if (h.indexOf('emp') !== -1 && h.indexOf('id') !== -1) empCol = c;
-      if (h.indexOf('name') !== -1) nameCol = c;
-      if (h.indexOf('designation') !== -1) desigCol = c;
+    var colMap = findOfficerHeaders(headers);
+    if (colMap.empCol === -1 || colMap.nameCol === -1) {
+      return { success: false, message: 'System configuration error: Required columns (Employee ID / Name) could not be identified in Officers data.' };
     }
     
     for (var r = 1; r < data.length; r++) {
-      var empId = String(data[r][empCol] || '').trim();
-      var name = String(data[r][nameCol] || '').trim();
-      var desig = String(data[r][desigCol] || '').trim();
+      var empId = String(data[r][colMap.empCol] || '').trim();
+      var name = String(data[r][colMap.nameCol] || '').trim();
+      var desig = (colMap.desigCol !== -1) ? String(data[r][colMap.desigCol] || '').trim() : '';
       if (empId) {
         list.push({ employeeId: empId, name: name, designation: desig });
       }
@@ -683,9 +856,14 @@ function handleLogin(params) {
     return { success: false, message: 'Employee ID not found in institutional roster.' };
   }
   
-  var authSheet = getOrCreateSheet('User Credentials', [
-    'Employee ID', 'Password Hash', 'Password Salt', 'Must Change Password', 'Created At', 'Updated At', 'Last Login At', 'Account Status'
-  ]);
+  var ss = getCNESpreadsheet();
+  var authSheet = ss.getSheetByName('User Credentials');
+  if (!authSheet) {
+    return {
+      success: false,
+      message: 'System configuration error: "User Credentials" sheet not found in CNE database. Please contact system administrator.'
+    };
+  }
   
   var authData = authSheet.getDataRange().getValues();
   var savedHash = '';
@@ -706,33 +884,17 @@ function handleLogin(params) {
   var isValid = false;
   var isFirstLogin = false;
   
-  // Institutional password check:
-  // 1. pass1234 (universal institutional default)
-  // 2. Saved password (if user set a new password via Forgot Password or Settings)
-  // 3. Officer's registered Date of Birth (DOB) or Date of Joining (DOJ) for legacy compatibility
-  var inputNorm = password.replace(/[\s\/\-\:\.]/g, '').toLowerCase();
-  var dobNorm = normalizeDateForComparison(officer.dob);
-  var dojNorm = normalizeDateForComparison(officer.doj);
-
-  if (password === 'pass1234') {
-    isValid = true;
-    isFirstLogin = (!savedHash || mustChangePass);
-  } else if (savedHash && savedSalt) {
+  if (savedHash && savedSalt) {
     var computed = computePasswordHash(password, savedSalt);
     if (computed === savedHash) {
       isValid = true;
     }
-  } else if (!savedHash || mustChangePass) {
-    // If first-time user entering registered Date of Birth or Date of Joining
-    if (
-      (dobNorm && inputNorm === dobNorm) ||
-      (dojNorm && inputNorm === dojNorm) ||
-      (officer.dobFormatted && password === officer.dobFormatted) ||
-      (officer.dojFormatted && password === officer.dojFormatted) ||
-      (employeeId === '100062' && (inputNorm === '15071985' || inputNorm === '15072019'))
-    ) {
+  } else {
+    // Initial First-Time Login: Default institutional password is pass1234
+    if (password === 'pass1234') {
       isValid = true;
       isFirstLogin = true;
+      mustChangePass = true;
     }
   }
   
@@ -740,7 +902,7 @@ function handleLogin(params) {
     logAuditAction('LOGIN_FAILED', employeeId, 'Invalid credentials attempt', 'FAILED');
     return {
       success: false,
-      message: 'Invalid credentials. Default password is pass1234. If you changed your password, use your new password or reset via Forgot Password.'
+      message: 'Invalid credentials. Default initial password is pass1234'
     };
   }
   
@@ -786,9 +948,14 @@ function handleChangePassword(params, session) {
   var hashStr = computePasswordHash(newPassword, salt);
   var empId = normalizeEmpId(session.employeeId);
   
-  var authSheet = getOrCreateSheet('User Credentials', [
-    'Employee ID', 'Password Hash', 'Password Salt', 'Must Change Password', 'Created At', 'Updated At', 'Last Login At', 'Account Status'
-  ]);
+  var ss = getCNESpreadsheet();
+  var authSheet = ss.getSheetByName('User Credentials');
+  if (!authSheet) {
+    return {
+      success: false,
+      message: 'System configuration error: "User Credentials" sheet not found in CNE database. Please contact system administrator.'
+    };
+  }
   var data = authSheet.getDataRange().getValues();
   var updated = false;
   var now = new Date().toISOString();
@@ -809,6 +976,9 @@ function handleChangePassword(params, session) {
     authSheet.appendRow([empId, hashStr, salt, 'NO', now, now, now, 'ACTIVE']);
   }
   
+  // Invalidate previous active sessions
+  CacheService.getScriptCache().put('pwd_change_' + empId, String(Date.now()), 7 * 24 * 60 * 60);
+
   logAuditAction('PASSWORD_CHANGED', empId, 'User changed personal password', 'SUCCESS');
   
   return { success: true, message: 'Password updated successfully. You can now use your new password.' };
@@ -850,13 +1020,31 @@ function handleResetPassword(params) {
     return { success: false, message: 'Verification failed. Please check your details and try again.' };
   }
   
-  // Flexible comparison against Date of Joining (DOJ)
-  var inputDojNorm = normalizeDateForComparison(doj);
-  var officerDojNorm = normalizeDateForComparison(officer.doj);
-  var rawMatch = (String(doj).trim().toLowerCase() === String(officer.doj || '').trim().toLowerCase()) ||
-                 (String(doj).trim().toLowerCase() === String(officer.dojFormatted || '').trim().toLowerCase());
+  if (officer.dojColMissing) {
+    return {
+      success: false,
+      message: 'System configuration error: Date of Joining column could not be identified in Officers data. Please contact system administrator.'
+    };
+  }
   
-  if (!rawMatch && inputDojNorm !== '' && inputDojNorm !== officerDojNorm) {
+  // Strict comparison against Date of Joining (DOJ) ONLY - NO DOB Fallback
+  var inputDojNorm = normalizeDateForComparison(doj);
+  if (!inputDojNorm) {
+    return {
+      success: false,
+      message: 'Invalid Date of Joining format. Please enter a valid date in DD/MM/YYYY format.'
+    };
+  }
+  
+  var officerDojNorm = normalizeDateForComparison(officer.doj);
+  if (!officerDojNorm) {
+    return {
+      success: false,
+      message: 'Hospital record error: Date of Joining in institutional roster is not formatted properly. Please contact system administrator.'
+    };
+  }
+  
+  if (inputDojNorm !== officerDojNorm) {
     cache.put(cacheKey, String(failCount + 1), 900);
     logAuditAction('PASSWORD_RESET_FAILED', employeeId, 'DOJ mismatch', 'FAILED');
     return { success: false, message: 'Verification failed. Date of Joining does not match hospital records.' };
@@ -869,9 +1057,14 @@ function handleResetPassword(params) {
   var hashStr = computePasswordHash(newPassword, salt);
   var now = new Date().toISOString();
   
-  var authSheet = getOrCreateSheet('User Credentials', [
-    'Employee ID', 'Password Hash', 'Password Salt', 'Must Change Password', 'Created At', 'Updated At', 'Last Login At', 'Account Status'
-  ]);
+  var ss = getCNESpreadsheet();
+  var authSheet = ss.getSheetByName('User Credentials');
+  if (!authSheet) {
+    return {
+      success: false,
+      message: 'System configuration error: "User Credentials" sheet not found in CNE database. Please contact system administrator.'
+    };
+  }
   var data = authSheet.getDataRange().getValues();
   var updated = false;
   
@@ -891,6 +1084,9 @@ function handleResetPassword(params) {
     authSheet.appendRow([employeeId, hashStr, salt, 'NO', now, now, now, 'ACTIVE']);
   }
   
+  // Invalidate previous active sessions
+  CacheService.getScriptCache().put('pwd_change_' + employeeId, String(Date.now()), 7 * 24 * 60 * 60);
+
   logAuditAction('PASSWORD_RESET_SUCCESS', employeeId, 'Password reset via DOJ verification', 'SUCCESS');
   
   return { success: true, message: 'Password reset successfully. You can now log in with your new password.' };
@@ -917,9 +1113,14 @@ function handleAdminResetPassword(params, session) {
   var defaultHash = computePasswordHash('pass1234', salt);
   var now = new Date().toISOString();
   
-  var authSheet = getOrCreateSheet('User Credentials', [
-    'Employee ID', 'Password Hash', 'Password Salt', 'Must Change Password', 'Created At', 'Updated At', 'Last Login At', 'Account Status'
-  ]);
+  var ss = getCNESpreadsheet();
+  var authSheet = ss.getSheetByName('User Credentials');
+  if (!authSheet) {
+    return {
+      success: false,
+      message: 'System configuration error: "User Credentials" sheet not found in CNE database. Please contact system administrator.'
+    };
+  }
   var data = authSheet.getDataRange().getValues();
   var updated = false;
   
@@ -939,11 +1140,14 @@ function handleAdminResetPassword(params, session) {
     authSheet.appendRow([targetEmpId, defaultHash, salt, 'YES', now, now, now, 'ACTIVE']);
   }
   
-  logAuditAction('ADMIN_RESET_PASSWORD', session.employeeId, 'Reset password for ' + targetEmpId + ' to pass1234', 'SUCCESS');
+  // Invalidate previous active sessions
+  CacheService.getScriptCache().put('pwd_change_' + targetEmpId, String(Date.now()), 7 * 24 * 60 * 60);
+
+  logAuditAction('ADMIN_PASSWORD_RESET', session.employeeId, 'Target Employee ID: ' + targetEmpId + ', Timestamp: ' + now + ', Status: SUCCESS', 'SUCCESS');
   
   return {
     success: true,
-    message: 'Password for ' + targetOfficer.name + ' (' + targetEmpId + ') has been reset to pass1234.'
+    message: 'Password for ' + targetOfficer.name + ' (' + targetEmpId + ') has been reset to default password.'
   };
 }
 
@@ -1753,15 +1957,18 @@ function handleUploadImage(params, session) {
   if (!base64Data) return { success: false, message: 'Image data is required.' };
   
   var driveFolderId = PropertiesService.getScriptProperties().getProperty('DRIVE_FOLDER_ID');
+  if (!driveFolderId || driveFolderId.trim() === '') {
+    return {
+      success: false,
+      message: 'Google Drive upload error: Gallery Drive folder is not configured. Please configure DRIVE_FOLDER_ID in Script Properties.'
+    };
+  }
+  
   var folder;
-  if (driveFolderId && driveFolderId.trim() !== '') {
-    try {
-      folder = DriveApp.getFolderById(driveFolderId.trim());
-    } catch (e) {
-      return { success: false, message: 'Google Drive upload error: Invalid DRIVE_FOLDER_ID configured.' };
-    }
-  } else {
-    folder = DriveApp.getRootFolder();
+  try {
+    folder = DriveApp.getFolderById(driveFolderId.trim());
+  } catch (e) {
+    return { success: false, message: 'Google Drive upload error: Invalid DRIVE_FOLDER_ID configured.' };
   }
   
   var contentType = 'image/jpeg';
@@ -1796,7 +2003,7 @@ function handleUploadImage(params, session) {
     var blob = Utilities.newBlob(decoded, contentType, 'CNE_' + new Date().getTime() + ext);
     var file = folder.createFile(blob);
     
-    // Gallery images are shared for public embedding
+    // Public view-only permission granted strictly for institutional CNE display in the portal
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     
     var fileId = file.getId();
@@ -1988,10 +2195,10 @@ function handleGetNewsEvents(params) {
     list = [
       {
         id: 'NEWS-INIT-01',
-        title: 'Continuing Nursing Education (CNE) Guidelines 2026',
+        title: 'Mandatory Continuing Nursing Education (CNE) Guidelines 2026',
         category: 'Circular',
         date: new Date().toISOString().split('T')[0],
-        summary: 'All Nursing Officers are encouraged to complete minimum 30 verified CNE training hours for annual certification.',
+        summary: 'All Nursing Officers are directed to complete minimum 30 verified CNE training hours for annual APAR compliance.',
         content: 'As per the directives of the Nursing Services Committee and AIIMS Rishikesh Academic Cell, all registered Nursing Officers must participate in accredited CNE programs.',
         createdAt: new Date().toISOString().split('T')[0]
       }
@@ -2167,32 +2374,35 @@ function handleUpdateChairpersonMessage(params, session) {
   var rawImage = params.base64Image || (params.photoUrl && params.photoUrl.indexOf('data:image') === 0 ? params.photoUrl : null);
   
   if (rawImage) {
+    var driveFolderId = props.getProperty('DRIVE_FOLDER_ID');
+    if (!driveFolderId || driveFolderId.trim() === '') {
+      return {
+        success: false,
+        message: 'Google Drive upload error: CNO Photo Drive folder is not configured. Please configure DRIVE_FOLDER_ID in Script Properties.'
+      };
+    }
+
+    var folder;
     try {
-      var driveFolderId = props.getProperty('DRIVE_FOLDER_ID');
-      var folder;
-      if (driveFolderId && driveFolderId.trim() !== '') {
-        try {
-          folder = DriveApp.getFolderById(driveFolderId.trim());
-        } catch (e) {
-          folder = DriveApp.getRootFolder();
-        }
-      } else {
-        folder = DriveApp.getRootFolder();
-      }
+      folder = DriveApp.getFolderById(driveFolderId.trim());
+    } catch (e) {
+      return { success: false, message: 'Google Drive upload error: Invalid DRIVE_FOLDER_ID configured.' };
+    }
 
-      var contentType = 'image/jpeg';
-      var rawBase64 = rawImage;
-      if (rawImage.indexOf(';base64,') !== -1) {
-        var parts = rawImage.split(';base64,');
-        contentType = parts[0].replace('data:', '').toLowerCase().trim();
-        rawBase64 = parts[1];
-      }
+    var contentType = 'image/jpeg';
+    var rawBase64 = rawImage;
+    if (rawImage.indexOf(';base64,') !== -1) {
+      var parts = rawImage.split(';base64,');
+      contentType = parts[0].replace('data:', '').toLowerCase().trim();
+      rawBase64 = parts[1];
+    }
 
-      var allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
-      if (allowedMimes.indexOf(contentType) === -1) {
-        contentType = 'image/jpeg';
-      }
+    var allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (allowedMimes.indexOf(contentType) === -1) {
+      return { success: false, message: 'Invalid file format. Only JPEG, PNG, and WebP images are allowed.' };
+    }
 
+    try {
       var decoded = Utilities.base64Decode(rawBase64);
       // 5MB max check
       if (decoded.length > 5 * 1024 * 1024) {
@@ -2204,7 +2414,7 @@ function handleUpdateChairpersonMessage(params, session) {
       var blob = Utilities.newBlob(decoded, contentType, fileName);
       var file = folder.createFile(blob);
       
-      // Share view permission so it displays seamlessly on the web portal
+      // Public view-only permission granted strictly for institutional CNE display in the portal
       file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
       
       driveFileId = file.getId();
@@ -2221,6 +2431,9 @@ function handleUpdateChairpersonMessage(params, session) {
       };
     }
   } else if (params.photoUrl) {
+    if (params.photoUrl.indexOf('data:') === 0 || params.photoUrl.length > 500) {
+      return { success: false, message: 'Invalid photo URL. Base64 strings cannot be saved directly; please upload an image file.' };
+    }
     props.setProperty('CHAIRPERSON_PHOTO', sanitizeCellInput(params.photoUrl));
     finalPhotoUrl = params.photoUrl;
   }
@@ -2230,9 +2443,11 @@ function handleUpdateChairpersonMessage(params, session) {
   return { 
     success: true, 
     message: driveFileId 
-      ? 'CNO photo successfully uploaded and saved to your Google Drive.' 
-      : 'CNO leadership details updated successfully.',
+      ? 'CNO photo successfully saved to Google Drive and leadership profile updated.' 
+      : 'Chairperson leadership profile updated successfully.',
     data: {
+      name: sanitizeCellInput(params.name || ''),
+      designation: sanitizeCellInput(params.designation || ''),
       photoUrl: finalPhotoUrl,
       driveFileId: driveFileId,
       driveUrl: driveUrl
@@ -2455,12 +2670,9 @@ function getOrCreateSheet(sheetName, defaultHeaders) {
 }
 
 /**
- * 8 & 24. Auto-Initialize Sheets (Strictly NON-DESTRUCTIVE with Audit Report, Requires ADMIN)
+ * Internal Non-Destructive Sheet Initializer (Shared by setup script and admin endpoint)
  */
-function handleInitializeSheets(params, session) {
-  var adminError = requireAdmin(session);
-  if (adminError) return adminError;
-
+function internalInitializeSheets(executorEmpId) {
   var cneTabs = [
     { name: 'Data', headers: ['Data ID', 'Ward Name / Area', 'From Date', 'To Date', 'Duration', 'Topic', 'Resource Person Emp Id', 'Mode of Teaching', 'Staff Emp ID', 'Staff Count', 'Remarks', 'CreatedAt', 'CreatedBy'] },
     { name: 'Area', headers: ['Area', 'Status', 'CreatedAt'] },
@@ -2507,13 +2719,23 @@ function handleInitializeSheets(params, session) {
     auditReport.push({ tab: 'Officers data', status: 'Separate Sheet / Unconfigured', error: e.message });
   }
   
-  logAuditAction('INITIALIZE_SHEETS', session ? session.employeeId : 'SYSTEM', 'Sheet verification executed', 'SUCCESS');
+  logAuditAction('INITIALIZE_SHEETS', executorEmpId || 'SYSTEM', 'Sheet verification executed', 'SUCCESS');
   
   return {
     success: true,
     message: 'Sheet initialization completed safely. All existing data remained completely untouched.',
     auditReport: auditReport
   };
+}
+
+/**
+ * 8 & 24. Auto-Initialize Sheets (Strictly NON-DESTRUCTIVE with Audit Report, Requires ADMIN)
+ */
+function handleInitializeSheets(params, session) {
+  var adminError = requireAdmin(session);
+  if (adminError) return adminError;
+
+  return internalInitializeSheets(session ? session.employeeId : 'ADMIN');
 }
 
 /**
@@ -2534,8 +2756,8 @@ function setupNewCNESpreadsheet() {
   // 1. Ensure security properties (SESSION_SECRET & PASSWORD_PEPPER)
   setupSecurityProperties();
   
-  // 2. Initialize all CNE tabs safely
-  var result = handleInitializeSheets({}, null);
+  // 2. Initialize all CNE tabs safely via internal trusted function
+  var result = internalInitializeSheets('SCRIPT_OWNER');
   Logger.log('>>> Initialization Result: ' + result.message);
   
   if (result.auditReport && result.auditReport.length > 0) {
@@ -2545,28 +2767,39 @@ function setupNewCNESpreadsheet() {
     }
   }
   
-  // 3. Optional: Seed initial admin from Script Properties if configured
+  // 3. First Administrator Setup Safety (Strict verification against Officers data)
   var props = PropertiesService.getScriptProperties();
   var initialAdminId = props.getProperty('INITIAL_ADMIN_EMPLOYEE_ID');
-  if (initialAdminId && initialAdminId.trim() !== '') {
+  if (!initialAdminId || initialAdminId.trim() === '') {
+    Logger.log('>>> First Admin Setup: INITIAL_ADMIN_EMPLOYEE_ID is not configured in Script Properties. Skipping admin creation.');
+  } else {
+    var normInitialId = normalizeEmpId(initialAdminId);
     try {
       var ss = getSpreadsheet('CNE');
       var roleSheet = ss.getSheetByName('Role');
-      if (roleSheet) {
-        var data = roleSheet.getDataRange().getValues();
-        var exists = false;
-        for (var j = 1; j < data.length; j++) {
-          if (normalizeEmpId(data[j][0]) === normalizeEmpId(initialAdminId)) {
-            exists = true;
+      if (!roleSheet) {
+        Logger.log('>>> First Admin Setup: "Role" sheet not found in CNE database.');
+      } else {
+        var roleData = roleSheet.getDataRange().getValues();
+        var adminExists = false;
+        for (var j = 1; j < roleData.length; j++) {
+          var rRole = String(roleData[j][3] || '').toUpperCase().trim();
+          if (rRole === 'ADMIN') {
+            adminExists = true;
             break;
           }
         }
-        if (!exists) {
-          var officer = findOfficerById(initialAdminId);
-          var name = officer ? officer.name : 'System Administrator';
-          var desig = officer ? officer.designation : 'Nursing Officer';
-          roleSheet.appendRow([normalizeEmpId(initialAdminId), name, desig, 'ADMIN']);
-          Logger.log('>>> Initial Admin Role added for: ' + initialAdminId + ' (' + name + ')');
+        if (adminExists) {
+          Logger.log('>>> First Admin Setup: An administrator already exists in Role sheet. Doing nothing and preserving configuration.');
+        } else {
+          var officer = findOfficerById(normInitialId);
+          if (!officer || !officer.name) {
+            Logger.log('>>> First Admin Setup: Employee ID "' + normInitialId + '" does not exist in authoritative Officers data. Administrator NOT created (no fake administrator permitted).');
+          } else {
+            roleSheet.appendRow([normInitialId, officer.name, officer.designation || 'Nursing Officer', 'ADMIN']);
+            Logger.log('>>> First Admin Setup: First administrator created successfully for: ' + normInitialId + ' (' + officer.name + ')');
+            logAuditAction('INITIAL_ADMIN_PROVISIONED', normInitialId, 'First administrator created for ' + normInitialId, 'SUCCESS');
+          }
         }
       }
     } catch (e) {

@@ -138,7 +138,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   required
                   value={employeeId}
                   onChange={(e) => setEmployeeId(e.target.value)}
-                  placeholder="e.g. 100062 or RSNHO000841"
+                  placeholder="example ID: RSNHO000001"
                   className="block w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 text-sm placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-teal-700 focus:bg-white transition-all uppercase"
                 />
               </div>

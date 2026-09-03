@@ -88,21 +88,13 @@ export const INITIAL_AREAS: Area[] = [
 export const INITIAL_OFFICERS: Employee[] = [
   {
     srNo: 1,
-    employeeId: "100062",
-    name: "Mr. Sathish Kumar",
-    designation: "A.N.S",
-    contactNo: "9876543299",
-    email: "sathish.ans@aiimsrishikesh.edu.in",
-    dob: "15 Jul 1985"
-  },
-  {
-    srNo: 2,
     employeeId: "FNMDCNO00067",
     name: "Dr.Anita Rani Kansal",
     designation: "C.N.O",
     contactNo: "8800933030",
     email: "anita.cno@aiimsrishikesh.edu.in",
-    dob: "20 Dec 1971"
+    dob: "20 Dec 1971",
+    doj: "2018-05-10"
   },
   {
     srNo: 2,
@@ -111,7 +103,8 @@ export const INITIAL_OFFICERS: Employee[] = [
     designation: "D.N.S",
     contactNo: "9068624501",
     email: "Kalpana.dns@aiimsrishikesh.edu.in",
-    dob: "6 Oct 1986"
+    dob: "6 Oct 1986",
+    doj: "2019-07-15"
   },
   {
     srNo: 3,
@@ -120,7 +113,8 @@ export const INITIAL_OFFICERS: Employee[] = [
     designation: "D.N.S",
     contactNo: "8826740820",
     email: "vandana.dns@aiimsrishikesh.edu.in",
-    dob: "12 Aug 1984"
+    dob: "12 Aug 1984",
+    doj: "2019-08-20"
   },
   {
     srNo: 4,
@@ -129,7 +123,8 @@ export const INITIAL_OFFICERS: Employee[] = [
     designation: "D.N.S",
     contactNo: "9876543210",
     email: "rekha.dns@aiimsrishikesh.edu.in",
-    dob: "15 May 1985"
+    dob: "15 May 1985",
+    doj: "2019-09-01"
   },
   {
     srNo: 5,
@@ -188,12 +183,6 @@ export const INITIAL_OFFICERS: Employee[] = [
 ];
 
 export const INITIAL_ROLES: RoleMapping[] = [
-  {
-    employeeId: "100062",
-    name: "Mr. Sathish Kumar",
-    designation: "A.N.S",
-    role: "ADMIN"
-  },
   {
     employeeId: "RSNHO000841",
     name: "Ms.Ramya T",

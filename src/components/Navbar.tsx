@@ -145,7 +145,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm hover:shadow-md transition-all cursor-pointer"
                 >
                   <LogIn className="w-3.5 h-3.5" />
-                  <span>Log In</span>
+                  <span>Sign in</span>
                 </button>
               )
             )}

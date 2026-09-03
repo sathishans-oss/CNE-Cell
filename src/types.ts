@@ -153,6 +153,7 @@ export interface SessionUser {
   role: UserRole;
   token: string;
   isFirstLogin?: boolean;
+  mustChangePassword?: boolean;
 }
 
 export interface ApiResponse<T = any> {

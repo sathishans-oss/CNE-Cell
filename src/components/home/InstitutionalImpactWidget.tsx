@@ -59,11 +59,11 @@ export const InstitutionalImpactWidget: React.FC<InstitutionalImpactWidgetProps>
         <div className="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Activity className={`w-4 h-4 ${iconColor}`} />
-            <h2 className="text-sm font-bold tracking-tight">Institutional CNE Program Impact (Live Google Sheets Sync)</h2>
+            <h2 className="text-sm font-bold tracking-tight">Institutional CNE Program Impact</h2>
           </div>
           <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${liveBadge}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${pulseColor} animate-pulse`} />
-            <span>Verified System Metrics</span>
+            <span>Live</span>
           </span>
         </div>
         <div className="p-4 bg-slate-50/50">
@@ -92,34 +92,34 @@ export const InstitutionalImpactWidget: React.FC<InstitutionalImpactWidgetProps>
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="bg-slate-900 text-white px-4 py-3.5 flex items-center justify-between">
+      <div className="bg-slate-900 text-white px-4 sm:px-5 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Activity className={`w-4 h-4 ${iconColor}`} />
-          <h2 className="text-sm font-bold tracking-tight">Institutional CNE Impact</h2>
+          <h2 className="text-sm font-bold tracking-tight">Institutional CNE Program Impact</h2>
         </div>
-        <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full border ${liveBadge}`}>
+        <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${liveBadge}`}>
           <span className={`w-1.5 h-1.5 rounded-full ${pulseColor} animate-pulse`} />
-          <span>Live Sync</span>
+          <span>Live</span>
         </span>
       </div>
 
-      <div className="p-3.5">
-        <div className="grid grid-cols-2 gap-2 text-center">
-          <div className={`p-2.5 rounded-xl bg-slate-50 border border-slate-100 ${hoverBorder} transition-colors`}>
-            <span className={`text-lg sm:text-xl font-black ${numberColor} block`}>{totalCompletedClasses}+</span>
-            <span className="text-[10px] text-slate-500 font-semibold leading-tight block">Completed Classes</span>
+      <div className="p-3.5 bg-slate-50/50">
+        <div className="grid grid-cols-2 gap-2.5 text-center">
+          <div className={`p-3 rounded-xl bg-white border border-slate-200 ${hoverBorder} transition-colors shadow-2xs`}>
+            <span className={`text-xl sm:text-2xl font-black ${numberColor} block`}>{totalCompletedClasses}+</span>
+            <span className="text-xs text-slate-600 font-semibold mt-0.5 block">Completed Classes</span>
           </div>
-          <div className={`p-2.5 rounded-xl bg-slate-50 border border-slate-100 ${hoverBorder} transition-colors`}>
-            <span className={`text-lg sm:text-xl font-black ${numberColor} block`}>{uniqueStaffTrained}+</span>
-            <span className="text-[10px] text-slate-500 font-semibold leading-tight block">Officers Trained</span>
+          <div className={`p-3 rounded-xl bg-white border border-slate-200 ${hoverBorder} transition-colors shadow-2xs`}>
+            <span className={`text-xl sm:text-2xl font-black ${numberColor} block`}>{uniqueStaffTrained}+</span>
+            <span className="text-xs text-slate-600 font-semibold mt-0.5 block">Officers Trained</span>
           </div>
-          <div className={`p-2.5 rounded-xl bg-slate-50 border border-slate-100 ${hoverBorder} transition-colors`}>
-            <span className={`text-lg sm:text-xl font-black ${numberColor} block`}>{uniqueWardsCount}+</span>
-            <span className="text-[10px] text-slate-500 font-semibold leading-tight block">Wards & ICUs</span>
+          <div className={`p-3 rounded-xl bg-white border border-slate-200 ${hoverBorder} transition-colors shadow-2xs`}>
+            <span className={`text-xl sm:text-2xl font-black ${numberColor} block`}>{uniqueWardsCount}+</span>
+            <span className="text-xs text-slate-600 font-semibold mt-0.5 block">Wards & ICUs Active</span>
           </div>
-          <div className={`p-2.5 rounded-xl bg-slate-50 border border-slate-100 ${hoverBorder} transition-colors`}>
-            <span className={`text-lg sm:text-xl font-black ${numberColor} block`}>{attendanceComplianceRate}</span>
-            <span className="text-[10px] text-slate-500 font-semibold leading-tight block">Verified Attendance</span>
+          <div className={`p-3 rounded-xl bg-white border border-slate-200 ${hoverBorder} transition-colors shadow-2xs`}>
+            <span className={`text-xl sm:text-2xl font-black ${numberColor} block`}>{attendanceComplianceRate}</span>
+            <span className="text-xs text-slate-600 font-semibold mt-0.5 block">Verified Compliance</span>
           </div>
         </div>
       </div>

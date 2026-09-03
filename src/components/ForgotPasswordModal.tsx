@@ -6,11 +6,13 @@ import { useToast } from './Toast';
 interface ForgotPasswordModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onBackToLogin?: () => void;
 }
 
 export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
   isOpen,
-  onClose
+  onClose,
+  onBackToLogin
 }) => {
   const [employeeId, setEmployeeId] = useState('');
   const [doj, setDoj] = useState('');
@@ -89,7 +91,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
             </p>
             <button
               id="btn-forgot-pass-return-login"
-              onClick={onClose}
+              onClick={onBackToLogin || onClose}
               className="w-full py-2.5 px-4 bg-teal-800 text-white rounded-lg text-sm font-semibold hover:bg-teal-900"
             >
               Return to Login
@@ -113,7 +115,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="e.g. 100062 or AIIMSRDNS0013"
+                  placeholder="example ID: RSNHO000001"
                   value={employeeId}
                   onChange={(e) => setEmployeeId(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm uppercase focus:outline-hidden focus:ring-2 focus:ring-teal-700"
@@ -123,20 +125,20 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
 
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                Date of Joining (DOJ) / DOB
+                Date of Joining (DOJ)
               </label>
               <div className="relative">
-                <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                 <input
-                  type="text"
-                  placeholder="e.g. 15 Jul 1985 or 15/07/2019"
+                  type="date"
+                  required
                   value={doj}
                   onChange={(e) => setDoj(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-teal-700"
                 />
               </div>
               <p className="text-[11px] text-slate-500 mt-1">
-                Must match your registered Date of Joining (DOJ) or DOB in hospital records.
+                Must match your registered Date of Joining (DOJ) in hospital records.
               </p>
             </div>
 

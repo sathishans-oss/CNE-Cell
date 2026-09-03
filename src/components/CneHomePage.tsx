@@ -185,16 +185,6 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
 
   return (
     <div className="space-y-8 pb-16">
-      {/* Top Full-Width 4-Metric Impact Ribbon */}
-      <InstitutionalImpactWidget
-        totalCompletedClasses={totalCompletedClasses}
-        uniqueStaffTrained={uniqueStaffTrained}
-        uniqueWardsCount={uniqueWardsCount}
-        attendanceComplianceRate={attendanceComplianceRate}
-        accentColor="teal"
-        horizontal={true}
-      />
-
       {/* Streamlined 2-Column Nordic Clinical Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Column (7 cols: Leadership, Active Classes, Moments) */}
@@ -221,8 +211,15 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
           />
         </main>
 
-        {/* Right Column (5 cols: Circulars, Guidelines, Desk, Quick Links, Modules) */}
+        {/* Right Column (5 cols: Impact, Circulars, Guidelines, Desk, Quick Links, Modules) */}
         <aside className="lg:col-span-5 space-y-6">
+          <InstitutionalImpactWidget
+            totalCompletedClasses={totalCompletedClasses}
+            uniqueStaffTrained={uniqueStaffTrained}
+            uniqueWardsCount={uniqueWardsCount}
+            attendanceComplianceRate={attendanceComplianceRate}
+            accentColor="teal"
+          />
           <NewsCircularsWidget
             newsEvents={newsEvents}
             onSelectNews={(news) => setSelectedNews(news)}

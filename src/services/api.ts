@@ -53,26 +53,16 @@ export class ApiService {
     const storedOfficers = localStorage.getItem(STORAGE_KEYS.OFFICERS);
     if (!storedOfficers) {
       officers = [...INITIAL_OFFICERS];
-      localStorage.setItem(STORAGE_KEYS.OFFICERS, JSON.stringify(officers));
     } else {
       try {
         officers = JSON.parse(storedOfficers);
       } catch (e) {
         officers = [...INITIAL_OFFICERS];
       }
-      if (!officers.some((o) => o.employeeId.toLowerCase() === '100062')) {
-        officers.unshift({
-          srNo: 1,
-          employeeId: "100062",
-          name: "Mr. Sathish Kumar",
-          designation: "A.N.S",
-          contactNo: "9876543299",
-          email: "sathish.ans@aiimsrishikesh.edu.in",
-          dob: "15 Jul 1985"
-        });
-        localStorage.setItem(STORAGE_KEYS.OFFICERS, JSON.stringify(officers));
-      }
     }
+    // Ensure invalid employee 100062 is never present
+    officers = officers.filter((o) => o.employeeId.toLowerCase() !== '100062');
+    localStorage.setItem(STORAGE_KEYS.OFFICERS, JSON.stringify(officers));
 
     if (!localStorage.getItem(STORAGE_KEYS.AREAS)) {
       localStorage.setItem(STORAGE_KEYS.AREAS, JSON.stringify(INITIAL_AREAS));
@@ -82,23 +72,16 @@ export class ApiService {
     const storedRoles = localStorage.getItem(STORAGE_KEYS.ROLES);
     if (!storedRoles) {
       roles = [...INITIAL_ROLES];
-      localStorage.setItem(STORAGE_KEYS.ROLES, JSON.stringify(roles));
     } else {
       try {
         roles = JSON.parse(storedRoles);
       } catch (e) {
         roles = [...INITIAL_ROLES];
       }
-      if (!roles.some((r) => r.employeeId.toLowerCase() === '100062')) {
-        roles.unshift({
-          employeeId: "100062",
-          name: "Mr. Sathish Kumar",
-          designation: "A.N.S",
-          role: "ADMIN"
-        });
-        localStorage.setItem(STORAGE_KEYS.ROLES, JSON.stringify(roles));
-      }
     }
+    // Ensure invalid employee 100062 is never present
+    roles = roles.filter((r) => r.employeeId.toLowerCase() !== '100062');
+    localStorage.setItem(STORAGE_KEYS.ROLES, JSON.stringify(roles));
 
     if (!localStorage.getItem(STORAGE_KEYS.USER_CREDS)) {
       localStorage.setItem(STORAGE_KEYS.USER_CREDS, JSON.stringify(INITIAL_USER_CREDS));
@@ -582,24 +565,8 @@ export class ApiService {
             }
           }
 
-          // If still not found and employee ID is provided, auto-register for seamless testing
-          if (!officer && empId) {
-            const isSathish = empId.toLowerCase() === '100062';
-            officer = {
-              srNo: officers.length + 1,
-              employeeId: empId,
-              name: isSathish ? 'Mr. Sathish Kumar' : `Staff (${empId})`,
-              designation: isSathish ? 'A.N.S' : 'Nursing Officer',
-              email: isSathish ? 'sathish.ans@aiimsrishikesh.edu.in' : `${empId.toLowerCase()}@aiimsrishikesh.edu.in`,
-              contactNo: '9876543299',
-              dob: '15 Jul 1985'
-            };
-            officers.push(officer);
-            localStorage.setItem(STORAGE_KEYS.OFFICERS, JSON.stringify(officers));
-          }
-
           if (!officer) {
-            return { success: false, message: 'Please provide a valid Employee ID.' };
+            return { success: false, message: 'Employee ID not found in institutional roster.' };
           }
 
           const creds = JSON.parse(localStorage.getItem(STORAGE_KEYS.USER_CREDS) || '{}');
@@ -645,7 +612,8 @@ export class ApiService {
             email: officer.email,
             role,
             token: `${officer.employeeId}:${Date.now()}:sandbox`,
-            isFirstLogin
+            isFirstLogin,
+            mustChangePassword: isFirstLogin
           };
 
           return { success: true, data: sessionUser as any, message: 'Login successful' };
@@ -666,18 +634,18 @@ export class ApiService {
           const doj = (params.dateOfJoining || params.doj || '').trim();
           const officers: Employee[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.OFFICERS) || '[]');
           const officer = officers.find((o) => o.employeeId.toLowerCase() === empId.toLowerCase());
-          if (!officer) return { success: false, message: 'Employee not found.' };
+          if (!officer) return { success: false, message: 'Verification failed. Employee ID not found in hospital records.' };
 
           const normInput = doj.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-          const normDoj = (officer.doj || officer.dob || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-          if (normInput !== '' && normInput !== normDoj && doj !== officer.doj && doj !== officer.dob) {
-            return { success: false, message: 'Date of Joining (DOJ) verification failed.' };
+          const normDoj = (officer.doj || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+          if (!normInput || (normInput !== normDoj && doj !== officer.doj)) {
+            return { success: false, message: 'Verification failed. Date of Joining does not match hospital records.' };
           }
 
           const creds = JSON.parse(localStorage.getItem(STORAGE_KEYS.USER_CREDS) || '{}');
           creds[officer.employeeId] = params.newPassword;
           localStorage.setItem(STORAGE_KEYS.USER_CREDS, JSON.stringify(creds));
-          return { success: true, message: 'Password reset successfully.' } as any;
+          return { success: true, message: 'Password reset successfully. You can now log in with your new password.' } as any;
         }
 
         case 'adminResetPassword': {

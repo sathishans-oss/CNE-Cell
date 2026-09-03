@@ -49,6 +49,7 @@ const AppContent: React.FC = () => {
     ApiService.logout();
     setUser(null);
     setIsLoginOpen(false);
+    setActiveView('dashboard');
     info('You have been signed out.', 'Session Ended');
   };
 
@@ -81,12 +82,14 @@ const AppContent: React.FC = () => {
         onLogout={handleLogout}
       />
 
-      {/* Persistent Static Top Toolbar for Primary Navigation */}
-      <TopToolbar
-        user={user}
-        activeView={activeView}
-        onSelectView={handleNavigate}
-      />
+      {/* Persistent Static Top Toolbar for Primary Navigation (Authenticated Users Only) */}
+      {user && user.employeeId && (
+        <TopToolbar
+          user={user}
+          activeView={activeView}
+          onSelectView={handleNavigate}
+        />
+      )}
 
       {/* Institutional Environment Warning Banners */}
       {isSandbox ? (
@@ -130,7 +133,7 @@ const AppContent: React.FC = () => {
       <div className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-12">
         {/* Main Content Area */}
         <main className="w-full">
-          {activeView === 'dashboard' && (
+          {(!user || !user.employeeId || activeView === 'dashboard') && (
             <CneHomePage
               user={user}
               onNavigate={handleNavigate}
@@ -139,21 +142,21 @@ const AppContent: React.FC = () => {
             />
           )}
 
-          {activeView === 'my-cne' && (
-            user ? <MyCNE user={user} /> : null
+          {user && user.employeeId && activeView === 'my-cne' && (
+            <MyCNE user={user} />
           )}
 
-          {activeView === 'calendar' && <CNECalendar />}
+          {user && user.employeeId && activeView === 'calendar' && <CNECalendar />}
 
-          {activeView === 'upcoming' && (
+          {user && user.employeeId && activeView === 'upcoming' && (
             <UpcomingClasses user={user} defaultTab="classes" />
           )}
 
-          {activeView === 'my-applications' && (
-            user ? <UpcomingClasses user={user} defaultTab="my-applications" /> : null
+          {user && user.employeeId && activeView === 'my-applications' && (
+            <UpcomingClasses user={user} defaultTab="my-applications" />
           )}
 
-          {activeView === 'gallery' && <Gallery user={user} />}
+          {user && user.employeeId && activeView === 'gallery' && <Gallery user={user} />}
 
           {/* Admin Protected Views */}
           {activeView === 'admin-cne' && user?.role === 'ADMIN' && (
