@@ -4,6 +4,7 @@ import {
   CNEApplication,
   CNERecord,
   CNEReportStats,
+  ProgramImpactStats,
   ChairpersonMessageData,
   Employee,
   GalleryItem,
@@ -43,6 +44,81 @@ const STORAGE_KEYS = {
   API_URL: 'CNE_CUSTOM_APPS_SCRIPT_URL',
   ENV_MODE: 'CNE_ENVIRONMENT_MODE' // 'production' | 'sandbox'
 };
+
+/**
+ * Safely normalize Duration to standard HH:MM:SS duration string.
+ * Duration in Google Sheets can be returned as:
+ * 1. Formatted display string from getDisplayValues() (e.g. "1:00:00", "1:30:00", "0:30:00", "15:00:00")
+ * 2. Date object from getValues() (e.g. Sat Dec 30 1899 01:30:00 GMT+...)
+ * 3. Numeric serial fraction of a day (e.g. 1/24 = 0.041666... for 1 hr, 1.5/24 = 0.0625 for 1.5 hrs)
+ * 4. Existing string representation or ISO/Date string
+ * Note: Duration can exceed 24 hours (e.g. 25:00:00, 120:00:00). It must NEVER be converted to a JavaScript Date object.
+ */
+export function formatDurationValue(rawValue: any, displayValue?: any): string {
+  // 1. Prefer Google Sheets display value if available and valid duration
+  if (displayValue !== null && displayValue !== undefined) {
+    const disp = String(displayValue).trim();
+    if (disp) {
+      const durMatch = disp.match(/^(\d+):([0-5]?\d)(?::([0-5]?\d))?$/);
+      if (durMatch) {
+        if (durMatch[3] !== undefined) {
+          return disp;
+        }
+        const m = durMatch[2].length === 1 ? '0' + durMatch[2] : durMatch[2];
+        return durMatch[1] + ':' + m + ':00';
+      }
+    }
+  }
+
+  // 2. Check rawValue
+  if (rawValue === null || rawValue === undefined || rawValue === '') {
+    return '1:00:00';
+  }
+
+  // If rawValue is a string
+  if (typeof rawValue === 'string') {
+    const str = rawValue.trim();
+    const durMatchStr = str.match(/^(\d+):([0-5]?\d)(?::([0-5]?\d))?$/);
+    if (durMatchStr) {
+      if (durMatchStr[3] !== undefined) {
+        return str;
+      }
+      const m2 = durMatchStr[2].length === 1 ? '0' + durMatchStr[2] : durMatchStr[2];
+      return durMatchStr[1] + ':' + m2 + ':00';
+    }
+    
+    // If rawValue is a Date string (e.g. "Sat Dec 30 1899 01:30:00 GMT..." or ISO string)
+    const timeMatch = str.match(/(?:^|\s|T)(\d{1,2}):([0-5]\d):([0-5]\d)(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2}|\s|$)/);
+    if (timeMatch) {
+      const hrsPart = parseInt(timeMatch[1], 10);
+      return hrsPart + ':' + timeMatch[2] + ':' + timeMatch[3];
+    }
+  }
+
+  // If rawValue is a Date object (Google Sheets returns Date for time/duration formatted cells under 24 hrs)
+  if (Object.prototype.toString.call(rawValue) === '[object Date]' || (rawValue instanceof Date)) {
+    const d = rawValue as Date;
+    if (!isNaN(d.getTime())) {
+      const dHours = d.getHours();
+      const dMinutes = d.getMinutes();
+      const dSeconds = d.getSeconds();
+      return dHours + ':' + (dMinutes < 10 ? '0' : '') + dMinutes + ':' + (dSeconds < 10 ? '0' : '') + dSeconds;
+    }
+  }
+
+  // If rawValue is a numeric day serial value (e.g. 1/24 = 0.041666666666666664, 1.5/24 = 0.0625)
+  if (typeof rawValue === 'number' && !isNaN(rawValue)) {
+    const totalSeconds = Math.round(rawValue * 86400);
+    if (totalSeconds >= 0) {
+      const nHours = Math.floor(totalSeconds / 3600);
+      const nMinutes = Math.floor((totalSeconds % 3600) / 60);
+      const nSeconds = totalSeconds % 60;
+      return nHours + ':' + (nMinutes < 10 ? '0' : '') + nMinutes + ':' + (nSeconds < 10 ? '0' : '') + nSeconds;
+    }
+  }
+
+  return '1:00:00';
+}
 
 export class ApiService {
   /**
@@ -204,7 +280,10 @@ export class ApiService {
           }
           if (result.success && result.data && action.startsWith('get')) {
             try {
-              localStorage.setItem(`cne_cache_${action}`, JSON.stringify(result.data));
+              const cacheKey = action === 'getProgramImpact'
+                ? (session && session.employeeId ? `cne_cache_getProgramImpact_${session.employeeId.toLowerCase()}` : 'cne_cache_getProgramImpact_institutional')
+                : (action === 'getCNERecords' && session && session.employeeId ? `cne_cache_getCNERecords_${session.employeeId.toLowerCase()}` : `cne_cache_${action}`);
+              localStorage.setItem(cacheKey, JSON.stringify(result.data));
             } catch (e) {}
           }
           return result as ApiResponse<T>;
@@ -213,7 +292,10 @@ export class ApiService {
           if (action.startsWith('get')) {
             console.warn(`[CNE Service] HTTP ${response.status} on ${action}. Serving cached dataset.`);
             try {
-              const cached = localStorage.getItem(`cne_cache_${action}`);
+              const cacheKey = action === 'getProgramImpact'
+                ? (session && session.employeeId ? `cne_cache_getProgramImpact_${session.employeeId.toLowerCase()}` : 'cne_cache_getProgramImpact_institutional')
+                : (action === 'getCNERecords' && session && session.employeeId ? `cne_cache_getCNERecords_${session.employeeId.toLowerCase()}` : `cne_cache_${action}`);
+              const cached = localStorage.getItem(cacheKey);
               if (cached) {
                 return { success: true, data: JSON.parse(cached), message: 'Loaded from local cache' } as ApiResponse<T>;
               }
@@ -233,7 +315,10 @@ export class ApiService {
         // For read queries, gracefully fall back to cached dataset if present
         if (action.startsWith('get') || action === 'ping') {
           try {
-            const cached = localStorage.getItem(`cne_cache_${action}`);
+            const cacheKey = action === 'getProgramImpact'
+              ? (session && session.employeeId ? `cne_cache_getProgramImpact_${session.employeeId.toLowerCase()}` : 'cne_cache_getProgramImpact_institutional')
+              : (action === 'getCNERecords' && session && session.employeeId ? `cne_cache_getCNERecords_${session.employeeId.toLowerCase()}` : `cne_cache_${action}`);
+            const cached = localStorage.getItem(cacheKey);
             if (cached) {
               return { success: true, data: JSON.parse(cached), message: 'Loaded from local cache' } as ApiResponse<T>;
             }
@@ -351,6 +436,13 @@ export class ApiService {
   }
 
   static logout() {
+    const session = this.getSessionUser();
+    if (session && session.employeeId) {
+      localStorage.removeItem(`cne_cache_getProgramImpact_${session.employeeId.toLowerCase()}`);
+      localStorage.removeItem(`cne_cache_getCNERecords_${session.employeeId.toLowerCase()}`);
+    }
+    localStorage.removeItem('cne_cache_getProgramImpact');
+    localStorage.removeItem('cne_cache_getCNERecords');
     localStorage.removeItem(STORAGE_KEYS.SESSION);
   }
 
@@ -416,7 +508,14 @@ export class ApiService {
    * CNE Records APIs
    */
   static async getCNERecords(): Promise<ApiResponse<CNERecord[]>> {
-    return this.executeAction<CNERecord[]>('getCNERecords');
+    const res = await this.executeAction<CNERecord[]>('getCNERecords');
+    if (res.success && Array.isArray(res.data)) {
+      res.data = res.data.map((r) => ({
+        ...r,
+        duration: formatDurationValue(r.duration, r.duration)
+      }));
+    }
+    return res;
   }
 
   static async addCNE(record: Partial<CNERecord>): Promise<ApiResponse<{ dataId: string }>> {
@@ -519,6 +618,13 @@ export class ApiService {
    */
   static async getQuickLinks(): Promise<ApiResponse<QuickLinkItem[]>> {
     return this.executeAction<QuickLinkItem[]>('getQuickLinks');
+  }
+
+  /**
+   * CNE Program Impact (Adaptive: Institutional when unauthenticated, Personal when logged in)
+   */
+  static async getProgramImpact(): Promise<ApiResponse<ProgramImpactStats>> {
+    return this.executeAction<ProgramImpactStats>('getProgramImpact');
   }
 
   /**
@@ -733,17 +839,19 @@ export class ApiService {
           const isAdmin = user?.role === 'ADMIN';
           const loggedInId = (user?.employeeId || '').toLowerCase().trim();
 
-          // Privacy filtering
+          // Privacy filtering & duration normalization
           const filtered = records.filter((r) => {
             if (isAdmin) return true;
             const isRp = r.resourcePersonEmpId.toLowerCase() === loggedInId;
             const isStaff = (r.staffEmpIds || []).some((s) => s.toLowerCase() === loggedInId);
             return isRp || isStaff;
           }).map((r) => {
-            if (isAdmin) return r;
+            const normalizedDuration = formatDurationValue(r.duration, r.duration);
+            if (isAdmin) return { ...r, duration: normalizedDuration };
             const isStaff = (r.staffEmpIds || []).some((s) => s.toLowerCase() === loggedInId);
             return {
               ...r,
+              duration: normalizedDuration,
               staffEmpIds: isStaff ? [user?.employeeId || ''] : []
             };
           });
@@ -760,7 +868,7 @@ export class ApiService {
             area: params.area || '',
             fromDate: params.fromDate || '',
             toDate: params.toDate || params.fromDate || '',
-            duration: params.duration || '1:00:00',
+            duration: formatDurationValue(params.duration, params.duration),
             topic: params.topic || '',
             resourcePersonEmpId: params.resourcePersonEmpId || '',
             modeOfTeaching: params.modeOfTeaching || 'Lecture Cum Discussion',
@@ -778,7 +886,8 @@ export class ApiService {
           const records: CNERecord[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.CNE_RECORDS) || '[]');
           const idx = records.findIndex((r) => r.dataId === params.dataId);
           if (idx !== -1) {
-            records[idx] = { ...records[idx], ...params, updatedAt: new Date().toISOString() };
+            const updatedDuration = params.duration !== undefined ? formatDurationValue(params.duration, params.duration) : records[idx].duration;
+            records[idx] = { ...records[idx], ...params, duration: updatedDuration, updatedAt: new Date().toISOString() };
             localStorage.setItem(STORAGE_KEYS.CNE_RECORDS, JSON.stringify(records));
             return { success: true, message: 'CNE record updated in sandbox.' } as any;
           }
@@ -966,6 +1075,74 @@ export class ApiService {
             localStorage.getItem(STORAGE_KEYS.QUICK_LINKS) || JSON.stringify(INITIAL_QUICK_LINKS)
           );
           return { success: true, data: data as any };
+        }
+
+        case 'getProgramImpact': {
+          const records: CNERecord[] = JSON.parse(localStorage.getItem(STORAGE_KEYS.CNE_RECORDS) || '[]');
+          const user = this.getSessionUser();
+          const loggedInId = (user?.employeeId || '').toLowerCase().trim();
+          const isUserLoggedIn = Boolean(user && loggedInId);
+
+          let completedClasses = 0;
+          const uniqueStaffSet = new Set<string>();
+          const uniqueWardsSet = new Set<string>();
+          const userTrainedOthersSet = new Set<string>();
+          let anonymousStaffCount = 0;
+          let anonymousStaffTrainedByRp = 0;
+
+          records.forEach((r) => {
+            const area = (r.area || '').trim();
+            const rpEmpId = (r.resourcePersonEmpId || '').toLowerCase().trim();
+            const staffArray = (r.staffEmpIds || []).map((s) => s.toLowerCase().trim()).filter(Boolean);
+            const staffCount = r.staffCount || (staffArray.length > 0 ? staffArray.length : 0);
+
+            if (!isUserLoggedIn) {
+              completedClasses++;
+              if (area) uniqueWardsSet.add(area.toLowerCase());
+              if (staffArray.length > 0) {
+                staffArray.forEach((s) => uniqueStaffSet.add(s));
+              } else if (staffCount > 0) {
+                anonymousStaffCount += staffCount;
+              }
+            } else {
+              const isRp = rpEmpId === loggedInId;
+              const isParticipant = staffArray.includes(loggedInId);
+
+              if (isRp || isParticipant) {
+                completedClasses++;
+                if (area) uniqueWardsSet.add(area.toLowerCase());
+                if (isRp) {
+                  if (staffArray.length > 0) {
+                    staffArray.forEach((s) => {
+                      if (s !== loggedInId) userTrainedOthersSet.add(s);
+                    });
+                  } else if (staffCount > 0) {
+                    anonymousStaffTrainedByRp += staffCount;
+                  }
+                }
+              }
+            }
+          });
+
+          let totalStaff = 0;
+          if (!isUserLoggedIn) {
+            totalStaff = uniqueStaffSet.size > 0 ? uniqueStaffSet.size : anonymousStaffCount;
+          } else {
+            // For logged-in Resource Person, Officers Trained = unique participants trained by RP (excluding themselves)
+            const trainedOthers = userTrainedOthersSet.size > 0 ? userTrainedOthersSet.size : anonymousStaffTrainedByRp;
+            totalStaff = trainedOthers;
+          }
+
+          return {
+            success: true,
+            data: {
+              totalCompletedClasses: completedClasses,
+              uniqueStaffTrained: totalStaff,
+              uniqueWardsCount: uniqueWardsSet.size,
+              attendanceComplianceRate: 'N/A', // Verified compliance column does not exist in Data sheet
+              scope: isUserLoggedIn ? 'user' : 'institutional'
+            } as any
+          };
         }
 
         case 'initializeSheets':

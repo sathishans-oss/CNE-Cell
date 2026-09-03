@@ -300,6 +300,10 @@ function handleRequest(e, method) {
         output = handleGetQuickLinks(params);
         break;
         
+      case 'getProgramImpact':
+        output = handleGetProgramImpact(params, session);
+        break;
+        
       // Authenticated User Endpoints
       case 'getCNERecords':
         output = handleGetCNERecords(params, session);
@@ -669,11 +673,58 @@ function normalizeDateForComparison(val) {
   var str = String(val).trim();
   if (!str) return '';
   
-  // Strip time portion if present (e.g. "2020-08-15T00:00:00.000Z" or "15/08/2020 00:00:00")
-  str = str.split(/[T\\s]/)[0].trim();
+  // 2. Textual month format: 15-Aug-2020, 15 August 2020, Aug 15 2020 (parse BEFORE whitespace splitting)
+  var monthsMap = {
+    jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
+    apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
+    aug: 8, august: 8, sep: 9, sept: 9, september: 9, oct: 10, october: 10,
+    nov: 11, november: 11, dec: 12, december: 12
+  };
   
-  // 2. YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
-  var matchYMD = str.match(/^(\\d{4})[-/.](\\d{1,2})[-/.](\\d{1,2})$/);
+  // DD-MMM-YYYY or DD MMM YYYY (e.g. 15-Aug-2020, 15 August 2020, 15.Aug.2020)
+  var matchTextMonth = str.match(/^(\\d{1,2})[-/.\\s]+([a-zA-Z]+)[-/.\\s,]+(\\d{4})(?:[T\\s].*)?$/);
+  if (matchTextMonth) {
+    var day = parseInt(matchTextMonth[1], 10);
+    var mStr = matchTextMonth[2].toLowerCase();
+    var year = parseInt(matchTextMonth[3], 10);
+    var month = monthsMap[mStr];
+    if (month && isValidDateParts(year, month, day)) {
+      return year + '-' + padTwo(month) + '-' + padTwo(day);
+    }
+    return '';
+  }
+  
+  // MMM DD YYYY (e.g. Aug 15 2020, August 15 2020, Aug 15, 2020)
+  var matchMonthText = str.match(/^([a-zA-Z]+)[-/.\\s]+(\\d{1,2})[-/.\\s,]+(\\d{4})(?:[T\\s].*)?$/);
+  if (matchMonthText) {
+    var mStr = matchMonthText[1].toLowerCase();
+    var day = parseInt(matchMonthText[2], 10);
+    var year = parseInt(matchMonthText[3], 10);
+    var month = monthsMap[mStr];
+    if (month && isValidDateParts(year, month, day)) {
+      return year + '-' + padTwo(month) + '-' + padTwo(day);
+    }
+    return '';
+  }
+
+  // YYYY-MMM-DD (e.g. 2020-Aug-15, 2020 August 15)
+  var matchYearText = str.match(/^(\\d{4})[-/.\\s]+([a-zA-Z]+)[-/.\\s]+(\\d{1,2})(?:[T\\s].*)?$/);
+  if (matchYearText) {
+    var year = parseInt(matchYearText[1], 10);
+    var mStr = matchYearText[2].toLowerCase();
+    var day = parseInt(matchYearText[3], 10);
+    var month = monthsMap[mStr];
+    if (month && isValidDateParts(year, month, day)) {
+      return year + '-' + padTwo(month) + '-' + padTwo(day);
+    }
+    return '';
+  }
+  
+  // 3. Strip time portion for purely numeric formats (e.g. "2020-08-15T00:00:00.000Z" or "15/08/2020 00:00:00")
+  var dateOnly = str.split(/[T\\s]/)[0].trim();
+  
+  // 4. YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+  var matchYMD = dateOnly.match(/^(\\d{4})[-/.](\\d{1,2})[-/.](\\d{1,2})$/);
   if (matchYMD) {
     var year = parseInt(matchYMD[1], 10);
     var month = parseInt(matchYMD[2], 10);
@@ -684,8 +735,8 @@ function normalizeDateForComparison(val) {
     return '';
   }
   
-  // 3. DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
-  var matchDMY = str.match(/^(\\d{1,2})[-/.](\\d{1,2})[-/.](\\d{4})$/);
+  // 5. DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  var matchDMY = dateOnly.match(/^(\\d{1,2})[-/.](\\d{1,2})[-/.](\\d{4})$/);
   if (matchDMY) {
     var p1 = parseInt(matchDMY[1], 10);
     var p2 = parseInt(matchDMY[2], 10);
@@ -703,38 +754,6 @@ function normalizeDateForComparison(val) {
       month = p2;
     }
     if (isValidDateParts(year, month, day)) {
-      return year + '-' + padTwo(month) + '-' + padTwo(day);
-    }
-    return '';
-  }
-  
-  // 4. Textual month format: 15-Aug-2020, 15 August 2020, Aug 15 2020
-  var monthsMap = {
-    jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3,
-    apr: 4, april: 4, may: 5, jun: 6, june: 6, jul: 7, july: 7,
-    aug: 8, august: 8, sep: 9, september: 9, oct: 10, october: 10,
-    nov: 11, november: 11, dec: 12, december: 12
-  };
-  
-  var matchTextMonth = str.match(/^(\\d{1,2})[-/.\\s]+([a-zA-Z]+)[-/.\\s,]+(\\d{4})$/);
-  if (matchTextMonth) {
-    var day = parseInt(matchTextMonth[1], 10);
-    var mStr = matchTextMonth[2].toLowerCase();
-    var year = parseInt(matchTextMonth[3], 10);
-    var month = monthsMap[mStr];
-    if (month && isValidDateParts(year, month, day)) {
-      return year + '-' + padTwo(month) + '-' + padTwo(day);
-    }
-    return '';
-  }
-  
-  var matchMonthText = str.match(/^([a-zA-Z]+)[-/.\\s]+(\\d{1,2})[-/.\\s,]+(\\d{4})$/);
-  if (matchMonthText) {
-    var mStr = matchMonthText[1].toLowerCase();
-    var day = parseInt(matchMonthText[2], 10);
-    var year = parseInt(matchMonthText[3], 10);
-    var month = monthsMap[mStr];
-    if (month && isValidDateParts(year, month, day)) {
       return year + '-' + padTwo(month) + '-' + padTwo(day);
     }
     return '';
@@ -1243,6 +1262,80 @@ function handleUpdateArea(params, session) {
 }
 
 /**
+ * Helper: Safely normalize Duration to standard HH:MM:SS duration string.
+ * Duration in Google Sheets can be returned as:
+ * 1. Formatted display string from getDisplayValues() (e.g. "1:00:00", "1:30:00", "0:30:00", "15:00:00")
+ * 2. Date object from getValues() (e.g. Sat Dec 30 1899 01:30:00 GMT+...)
+ * 3. Numeric serial fraction of a day (e.g. 1/24 = 0.041666... for 1 hr, 1.5/24 = 0.0625 for 1.5 hrs)
+ * 4. Existing string representation or ISO/Date string
+ * Note: Duration can exceed 24 hours (e.g. 25:00:00, 120:00:00). It must NEVER be converted to a JavaScript Date object.
+ */
+function formatDurationValue(rawValue, displayValue) {
+  // 1. Prefer Google Sheets display value if available and valid duration
+  if (displayValue !== null && displayValue !== undefined) {
+    var disp = String(displayValue).trim();
+    if (disp) {
+      var durMatch = disp.match(/^(\\d+):([0-5]?\\d)(?::([0-5]?\\d))?$/);
+      if (durMatch) {
+        if (durMatch[3] !== undefined) {
+          return disp;
+        }
+        var m = durMatch[2].length === 1 ? '0' + durMatch[2] : durMatch[2];
+        return durMatch[1] + ':' + m + ':00';
+      }
+    }
+  }
+
+  // 2. Check rawValue
+  if (rawValue === null || rawValue === undefined || rawValue === '') {
+    return '1:00:00';
+  }
+
+  // If rawValue is a string
+  if (typeof rawValue === 'string') {
+    var str = rawValue.trim();
+    var durMatchStr = str.match(/^(\\d+):([0-5]?\\d)(?::([0-5]?\\d))?$/);
+    if (durMatchStr) {
+      if (durMatchStr[3] !== undefined) {
+        return str;
+      }
+      var m2 = durMatchStr[2].length === 1 ? '0' + durMatchStr[2] : durMatchStr[2];
+      return durMatchStr[1] + ':' + m2 + ':00';
+    }
+    
+    // If rawValue is a Date string (e.g. "Sat Dec 30 1899 01:30:00 GMT..." or ISO string)
+    var timeMatch = str.match(/(?:^|\\s|T)(\\d{1,2}):([0-5]\\d):([0-5]\\d)(?:\\.\\d+)?(?:Z|[+-]\\d{2}:?\\d{2}|\\s|$)/);
+    if (timeMatch) {
+      var hrsPart = parseInt(timeMatch[1], 10);
+      return hrsPart + ':' + timeMatch[2] + ':' + timeMatch[3];
+    }
+  }
+
+  // If rawValue is a Date object (Google Sheets returns Date for time/duration formatted cells under 24 hrs)
+  if (Object.prototype.toString.call(rawValue) === '[object Date]' || (rawValue instanceof Date)) {
+    if (!isNaN(rawValue.getTime())) {
+      var dHours = rawValue.getHours();
+      var dMinutes = rawValue.getMinutes();
+      var dSeconds = rawValue.getSeconds();
+      return dHours + ':' + (dMinutes < 10 ? '0' : '') + dMinutes + ':' + (dSeconds < 10 ? '0' : '') + dSeconds;
+    }
+  }
+
+  // If rawValue is a numeric day serial value (e.g. 1/24 = 0.041666666666666664, 1.5/24 = 0.0625)
+  if (typeof rawValue === 'number' && !isNaN(rawValue)) {
+    var totalSeconds = Math.round(rawValue * 86400);
+    if (totalSeconds >= 0) {
+      var nHours = Math.floor(totalSeconds / 3600);
+      var nMinutes = Math.floor((totalSeconds % 3600) / 60);
+      var nSeconds = totalSeconds % 60;
+      return nHours + ':' + (nMinutes < 10 ? '0' : '') + nMinutes + ':' + (nSeconds < 10 ? '0' : '') + nSeconds;
+    }
+  }
+
+  return '1:00:00';
+}
+
+/**
  * 6. CNE Records Retrieval with Strict Server-Side Role and Privacy Filtering
  */
 function handleGetCNERecords(params, session) {
@@ -1257,8 +1350,10 @@ function handleGetCNERecords(params, session) {
   var sheet = ss.getSheetByName('Data');
   if (!sheet) return { success: true, data: [] };
   
-  var data = sheet.getDataRange().getValues();
+  var dataRange = sheet.getDataRange();
+  var data = dataRange.getValues();
   if (data.length <= 1) return { success: true, data: [] };
+  var displayValues = dataRange.getDisplayValues();
   
   var records = [];
   for (var r = 1; r < data.length; r++) {
@@ -1269,7 +1364,8 @@ function handleGetCNERecords(params, session) {
     var area = String(row[1] || '').trim();
     var fromDate = formatDateValue(row[2]);
     var toDate = formatDateValue(row[3]);
-    var duration = String(row[4] || '1:00:00').trim();
+    var displayDur = (displayValues && displayValues[r]) ? displayValues[r][4] : '';
+    var duration = formatDurationValue(row[4], displayDur);
     var topic = String(row[5] || '').trim();
     var resourcePersonEmpId = normalizeEmpId(row[6]);
     var mode = String(row[7] || '').trim();
@@ -1400,7 +1496,7 @@ function handleAddCNE(params, session) {
       area,
       fromDate,
       toDate,
-      sanitizeCellInput(params.duration || '1:00:00'),
+      sanitizeCellInput(formatDurationValue(params.duration, params.duration)),
       topic,
       rpEmpId,
       sanitizeCellInput(params.modeOfTeaching || 'Lecture Cum Discussion'),
@@ -1446,7 +1542,7 @@ function handleUpdateCNE(params, session) {
         if (params.area !== undefined) sheet.getRange(r + 1, 2).setValue(sanitizeCellInput(params.area));
         if (params.fromDate !== undefined) sheet.getRange(r + 1, 3).setValue(params.fromDate);
         if (params.toDate !== undefined) sheet.getRange(r + 1, 4).setValue(params.toDate);
-        if (params.duration !== undefined) sheet.getRange(r + 1, 5).setValue(sanitizeCellInput(params.duration));
+        if (params.duration !== undefined) sheet.getRange(r + 1, 5).setValue(sanitizeCellInput(formatDurationValue(params.duration, params.duration)));
         if (params.topic !== undefined) sheet.getRange(r + 1, 6).setValue(sanitizeCellInput(params.topic));
         
         if (params.resourcePersonEmpId !== undefined) {
@@ -2522,6 +2618,137 @@ function handleGetQuickLinks(params) {
 }
 
 /**
+ * 13b. Institutional & User CNE Program Impact
+ * Retrieves live impact metrics calculated strictly from the 'Data' tab.
+ * - Unauthenticated (session is null): Returns institutional/global metrics across all completed classes.
+ * - Authenticated (session exists): Returns personalized impact metrics for the authenticated user (RP or participant).
+ * Uses server-side session identity exclusively; does not accept unverified client-supplied employee IDs.
+ */
+function handleGetProgramImpact(params, session) {
+  var ss = getSpreadsheet('CNE');
+  var dataSheet = ss.getSheetByName('Data');
+  
+  var isUserLoggedIn = Boolean(session && session.employeeId);
+  var loggedInId = isUserLoggedIn ? normalizeEmpId(session.employeeId) : null;
+  
+  if (!dataSheet) {
+    return {
+      success: true,
+      data: {
+        totalCompletedClasses: 0,
+        uniqueStaffTrained: 0,
+        uniqueWardsCount: 0,
+        attendanceComplianceRate: 'N/A',
+        scope: isUserLoggedIn ? 'user' : 'institutional'
+      }
+    };
+  }
+  
+  var data = dataSheet.getDataRange().getValues();
+  if (data.length <= 1) {
+    return {
+      success: true,
+      data: {
+        totalCompletedClasses: 0,
+        uniqueStaffTrained: 0,
+        uniqueWardsCount: 0,
+        attendanceComplianceRate: 'N/A',
+        scope: isUserLoggedIn ? 'user' : 'institutional'
+      }
+    };
+  }
+  
+  var completedClasses = 0;
+  var uniqueStaffMap = {};
+  var uniqueWardsMap = {};
+  var userTrainedOthersMap = {};
+  var anonymousStaffCount = 0;
+  var anonymousStaffTrainedByRp = 0;
+  
+  for (var r = 1; r < data.length; r++) {
+    var row = data[r];
+    var dataId = String(row[0] || '').trim();
+    if (!dataId) continue;
+    
+    var area = String(row[1] || '').trim();
+    var rpEmpId = normalizeEmpId(row[6]);
+    var staffIdsRaw = String(row[8] || '').trim();
+    var staffCount = parseInt(row[9], 10) || 0;
+    
+    var staffArray = staffIdsRaw.split(',').map(function(s) {
+      return normalizeEmpId(s);
+    }).filter(Boolean);
+    
+    if (staffCount === 0 && staffArray.length > 0) {
+      staffCount = staffArray.length;
+    }
+    
+    if (!isUserLoggedIn) {
+      // INSTITUTIONAL: All valid completed classes in Data tab
+      completedClasses++;
+      if (area) {
+        uniqueWardsMap[area.toLowerCase()] = true;
+      }
+      if (staffArray.length > 0) {
+        for (var s = 0; s < staffArray.length; s++) {
+          uniqueStaffMap[staffArray[s]] = true;
+        }
+      } else if (staffCount > 0) {
+        anonymousStaffCount += staffCount;
+      }
+    } else {
+      // USER-SPECIFIC: Only records associated with authenticated user
+      var isResourcePerson = (rpEmpId === loggedInId);
+      var isParticipant = (staffArray.indexOf(loggedInId) !== -1);
+      
+      if (isResourcePerson || isParticipant) {
+        completedClasses++;
+        if (area) {
+          uniqueWardsMap[area.toLowerCase()] = true;
+        }
+        if (isResourcePerson) {
+          if (staffArray.length > 0) {
+            for (var sp = 0; sp < staffArray.length; sp++) {
+              if (staffArray[sp] !== loggedInId) {
+                userTrainedOthersMap[staffArray[sp]] = true;
+              }
+            }
+          } else if (staffCount > 0) {
+            anonymousStaffTrainedByRp += staffCount;
+          }
+        }
+      }
+    }
+  }
+  
+  var totalStaff = 0;
+  if (!isUserLoggedIn) {
+    var uniqueCount = Object.keys(uniqueStaffMap).length;
+    totalStaff = uniqueCount > 0 ? uniqueCount : anonymousStaffCount;
+  } else {
+    // For logged-in Resource Person, Officers Trained = unique participants trained by RP (excluding themselves)
+    var trainedOthers = Object.keys(userTrainedOthersMap).length;
+    if (trainedOthers === 0 && anonymousStaffTrainedByRp > 0) {
+      trainedOthers = anonymousStaffTrainedByRp;
+    }
+    totalStaff = trainedOthers;
+  }
+  
+  var totalWards = Object.keys(uniqueWardsMap).length;
+  
+  return {
+    success: true,
+    data: {
+      totalCompletedClasses: completedClasses,
+      uniqueStaffTrained: totalStaff,
+      uniqueWardsCount: totalWards,
+      attendanceComplianceRate: 'N/A', // Data sheet contains no verification/compliance percentage column
+      scope: isUserLoggedIn ? 'user' : 'institutional'
+    }
+  };
+}
+
+/**
  * 14. Dashboard & Analytics Stats (Requires Authenticated Session)
  */
 function handleGetDashboardStats(params, session) {
@@ -2550,7 +2777,9 @@ function handleGetDashboardStats(params, session) {
   var modeMap = {};
   
   if (dataSheet) {
-    var data = dataSheet.getDataRange().getValues();
+    var dataRange = dataSheet.getDataRange();
+    var data = dataRange.getValues();
+    var displayValues = dataRange.getDisplayValues();
     for (var r = 1; r < data.length; r++) {
       var row = data[r];
       if (!row[0]) continue;
@@ -2558,7 +2787,8 @@ function handleGetDashboardStats(params, session) {
       totalActivities++;
       var area = String(row[1] || 'General').trim();
       var fromDate = formatDateValue(row[2]);
-      var dur = String(row[4] || '1:00:00').trim();
+      var dispDur = (displayValues && displayValues[r]) ? displayValues[r][4] : '';
+      var dur = formatDurationValue(row[4], dispDur);
       var mode = String(row[7] || 'Lecture').trim();
       var count = parseInt(row[9], 10) || 0;
       

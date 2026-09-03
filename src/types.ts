@@ -177,6 +177,14 @@ export interface CNEReportStats {
   topResourcePersons: { name: string; count: number; empId: string }[];
 }
 
+export interface ProgramImpactStats {
+  totalCompletedClasses: number;
+  uniqueStaffTrained: number;
+  uniqueWardsCount: number;
+  attendanceComplianceRate: string;
+  scope: 'institutional' | 'user';
+}
+
 export interface CNEPortfolioFilterParams {
   year: number;
   startDate?: string;

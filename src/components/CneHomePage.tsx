@@ -8,6 +8,7 @@ import {
   CNERecord,
   GalleryItem,
   NewsEventItem,
+  ProgramImpactStats,
   QuickLinkItem,
   SessionUser,
   UpcomingClass,
@@ -48,7 +49,9 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
   const [newsEvents, setNewsEvents] = useState<NewsEventItem[]>([]);
   const [quickLinks, setQuickLinks] = useState<QuickLinkItem[]>([]);
-  const [cneRecords, setCneRecords] = useState<CNERecord[]>([]);
+  const [impactStats, setImpactStats] = useState<ProgramImpactStats | null>(null);
+  const [impactLoading, setImpactLoading] = useState(true);
+  const [impactError, setImpactError] = useState<string | null>(null);
   const [cnoMessage, setCnoMessage] = useState<ChairpersonMessageData>(INITIAL_CHAIRPERSON_MESSAGE);
   const [loading, setLoading] = useState(true);
 
@@ -65,11 +68,17 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
   const isAdmin = user?.role === 'ADMIN';
 
   useEffect(() => {
+    // Reset impact statistics immediately on user change/logout so previous user's data does not linger
+    setImpactStats(null);
+    setImpactLoading(true);
+    setImpactError(null);
     loadHomeData();
   }, [user?.employeeId]);
 
   const loadHomeData = async () => {
     setLoading(true);
+    setImpactLoading(true);
+    setImpactError(null);
     try {
       // Wave 1: Primary visual components (Upcoming, Gallery, CNO Message)
       const [upcomingRes, galleryRes, cnoRes] = await Promise.all([
@@ -91,15 +100,19 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
       if (newsRes.success && newsRes.data) setNewsEvents(newsRes.data);
       if (quickRes.success && quickRes.data) setQuickLinks(quickRes.data);
 
-      // Wave 3: Records for live stats (only query if logged in, otherwise use local/default stats)
-      if (user && user.employeeId) {
-        const recordsRes = await ApiService.getCNERecords();
-        if (recordsRes.success && recordsRes.data) setCneRecords(recordsRes.data);
+      // Wave 3: Live Program Impact from Data tab (institutional when unauthenticated, user-specific when logged in)
+      const impactRes = await ApiService.getProgramImpact();
+      if (impactRes.success && impactRes.data) {
+        setImpactStats(impactRes.data);
+      } else {
+        setImpactError(impactRes.message || 'Unable to load impact metrics');
       }
     } catch (e) {
       console.error('Error loading home data', e);
+      setImpactError('Unable to load impact metrics');
     } finally {
       setLoading(false);
+      setImpactLoading(false);
     }
   };
 
@@ -143,43 +156,6 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
     }
   };
 
-  // Live statistics computation directly from Google Sheet data
-  const totalCompletedClasses = cneRecords.length > 0 ? cneRecords.length : 48;
-
-  const uniqueStaffTrained = useMemo(() => {
-    const ids = new Set<string>();
-    let totalHeadcount = 0;
-    cneRecords.forEach((r) => {
-      if (r.staffEmpIds && Array.isArray(r.staffEmpIds) && r.staffEmpIds.length > 0) {
-        r.staffEmpIds.forEach((id) => id && ids.add(id.trim().toLowerCase()));
-        totalHeadcount += r.staffEmpIds.length;
-      } else if (r.staffCount && r.staffCount > 0) {
-        totalHeadcount += r.staffCount;
-      } else if (r.employeeId) {
-        ids.add(r.employeeId.trim().toLowerCase());
-        totalHeadcount += 1;
-      }
-    });
-    return ids.size > 0 ? ids.size : (totalHeadcount > 0 ? totalHeadcount : 850);
-  }, [cneRecords]);
-
-  const uniqueWardsCount = useMemo(() => {
-    const areas = new Set<string>();
-    cneRecords.forEach((r) => {
-      if (r.area && r.area.trim()) {
-        areas.add(r.area.trim().toLowerCase());
-      }
-    });
-    return areas.size > 0 ? areas.size : 42;
-  }, [cneRecords]);
-
-  const attendanceComplianceRate = useMemo(() => {
-    if (cneRecords.length === 0) return '98.4%';
-    const verified = cneRecords.filter((r) => r.status === 'VERIFIED' || !r.status).length;
-    const rate = ((verified / cneRecords.length) * 100).toFixed(1);
-    return `${rate}%`;
-  }, [cneRecords]);
-
   // Open upcoming classes filter
   const openClasses = upcomingClasses.filter((c) => c.status === 'OPEN').slice(0, 4);
 
@@ -214,10 +190,13 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
         {/* Right Column (5 cols: Impact, Circulars, Guidelines, Desk, Quick Links, Modules) */}
         <aside className="lg:col-span-5 space-y-6">
           <InstitutionalImpactWidget
-            totalCompletedClasses={totalCompletedClasses}
-            uniqueStaffTrained={uniqueStaffTrained}
-            uniqueWardsCount={uniqueWardsCount}
-            attendanceComplianceRate={attendanceComplianceRate}
+            totalCompletedClasses={impactStats?.totalCompletedClasses ?? 0}
+            uniqueStaffTrained={impactStats?.uniqueStaffTrained ?? 0}
+            uniqueWardsCount={impactStats?.uniqueWardsCount ?? 0}
+            attendanceComplianceRate={impactStats?.attendanceComplianceRate ?? 'N/A'}
+            loading={impactLoading}
+            error={impactError}
+            scope={impactStats?.scope || (user ? 'user' : 'institutional')}
             accentColor="teal"
           />
           <NewsCircularsWidget
