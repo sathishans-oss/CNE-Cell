@@ -13,7 +13,8 @@ import {
   X,
   Search,
   Filter,
-  Loader2
+  Loader2,
+  BookOpen
 } from 'lucide-react';
 import { CNEApplication, SessionUser, UpcomingClass } from '../types';
 import { ApiService } from '../services/api';
@@ -21,7 +22,7 @@ import { useToast } from './Toast';
 
 interface UpcomingClassesProps {
   user: SessionUser | null;
-  defaultTab?: 'classes' | 'my-applications';
+  defaultTab?: 'classes' | 'my-applications' | 'my-proposals';
   onRequireLogin?: (classId?: string) => void;
 }
 
@@ -30,7 +31,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   defaultTab = 'classes',
   onRequireLogin
 }) => {
-  const [activeTab, setActiveTab] = useState<'classes' | 'my-applications'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'classes' | 'my-applications' | 'my-proposals'>(defaultTab);
   const [classes, setClasses] = useState<UpcomingClass[]>([]);
   const [myApplications, setMyApplications] = useState<CNEApplication[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,7 +48,8 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   const [newToDate, setNewToDate] = useState('');
   const [newTime, setNewTime] = useState('14:00 - 15:30');
   const [newDuration, setNewDuration] = useState('1:30:00');
-  const [newRpEmpId, setNewRpEmpId] = useState('');
+  const [selectedRpEmpIds, setSelectedRpEmpIds] = useState<string[]>([]);
+  const [rpSearchQuery, setRpSearchQuery] = useState('');
   const [newExternalRpList, setNewExternalRpList] = useState<string[]>([]);
   const [newExternalRpInput, setNewExternalRpInput] = useState('');
   const [newMode, setNewMode] = useState('Lecture Cum Discussion');
@@ -100,77 +102,100 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
     setNewExternalRpList((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const handleCreateUpcomingClass = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTopic.trim() || !newArea.trim() || !newDate.trim()) {
-      error('Please fill in all required fields (Topic, Area, Date).');
-      return;
-    }
+    const toggleRpSelection = (empId: string) => {
+      setSelectedRpEmpIds((prev) =>
+        prev.includes(empId) ? prev.filter((id) => id !== empId) : [...prev, empId]
+      );
+    };
 
-    if (newDate < todayStr) {
-      error('Scheduled date cannot be in the past.');
-      return;
-    }
+    const filteredRpOfficers = officersList.filter((o) => {
+      if (!rpSearchQuery.trim()) return true;
+      const q = rpSearchQuery.toLowerCase();
+      return (
+        o.name.toLowerCase().includes(q) ||
+        o.employeeId.toLowerCase().includes(q) ||
+        (o.designation || '').toLowerCase().includes(q)
+      );
+    });
 
-    if (newToDate && newToDate < newDate) {
-      error('To Date cannot be earlier than Scheduled Date.');
-      return;
-    }
-
-    if (!newRpEmpId && newExternalRpList.length === 0) {
-      error('Please select an instructor or add at least one external resource person.');
-      return;
-    }
-
-    const rp = officersList.find((o) => o.employeeId === newRpEmpId);
-    const rpName = rp ? rp.name : newRpEmpId;
-
-    setIsSubmitting(true);
-    try {
-      const res = await ApiService.addUpcomingClass({
-        topic: newTopic.trim(),
-        area: newArea,
-        date: newDate,
-        toDate: newToDate || newDate,
-        time: newTime,
-        duration: newDuration,
-        resourcePersonEmpId: newRpEmpId,
-        resourcePersonName: rpName,
-        externalResourcePersons: newExternalRpList,
-        modeOfTeaching: newMode,
-        description: newDescription.trim(),
-        maxParticipants: newMaxParticipants,
-        proposedByEmpId: user?.employeeId,
-        proposedByName: user?.name,
-        status: isAdmin ? 'Approved' : 'Pending'
-      });
-
-      if (res.success) {
-        success(
-          isAdmin
-            ? 'Upcoming CNE workshop created and published successfully.'
-            : 'Upcoming CNE class proposal submitted for Admin approval.',
-          isAdmin ? 'Class Scheduled' : 'Proposal Submitted'
-        );
-        setIsAddClassOpen(false);
-        // Reset form
-        setNewTopic('');
-        setNewDescription('');
-        setNewDate('');
-        setNewToDate('');
-        setNewRpEmpId('');
-        setNewExternalRpList([]);
-        setNewExternalRpInput('');
-        loadData();
-      } else {
-        error(res.message || 'Failed to schedule class.');
+    const handleCreateUpcomingClass = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newTopic.trim() || !newArea.trim() || !newDate.trim()) {
+        error('Please fill in all required fields (Topic, Area, Date).');
+        return;
       }
-    } catch (err: any) {
-      error(err?.message || 'Error creating class.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+
+      if (newDate < todayStr) {
+        error('Scheduled From Date cannot be in the past. Please select today or a future date.');
+        return;
+      }
+
+      if (newToDate && newToDate < newDate) {
+        error('To Date cannot be earlier than From Date.');
+        return;
+      }
+
+      if (selectedRpEmpIds.length === 0 && newExternalRpList.length === 0) {
+        error('Please select at least one Resource Person (Internal or External).');
+        return;
+      }
+
+      const rpNames = selectedRpEmpIds.map((id) => {
+        const off = officersList.find((o) => o.employeeId === id);
+        return off ? off.name : id;
+      });
+      if (newExternalRpList.length > 0) {
+        rpNames.push(...newExternalRpList.map((n) => `${n} (External)`));
+      }
+
+      setIsSubmitting(true);
+      try {
+        const res = await ApiService.addUpcomingClass({
+          topic: newTopic.trim(),
+          area: newArea,
+          date: newDate,
+          toDate: newToDate || newDate,
+          time: newTime,
+          duration: newDuration,
+          resourcePersonEmpId: selectedRpEmpIds.join(', '),
+          resourcePersonEmpIds: selectedRpEmpIds,
+          resourcePersonName: rpNames.join(', '),
+          externalResourcePersons: newExternalRpList,
+          modeOfTeaching: newMode,
+          description: newDescription.trim(),
+          maxParticipants: newMaxParticipants,
+          proposedByEmpId: user?.employeeId,
+          proposedByName: user?.name,
+          status: isAdmin ? 'Approved' : 'Pending'
+        } as any);
+
+        if (res.success) {
+          success(
+            isAdmin
+              ? 'Upcoming CNE workshop created and published successfully.'
+              : 'Upcoming CNE class proposal submitted for Admin approval.',
+            isAdmin ? 'Class Scheduled' : 'Proposal Submitted'
+          );
+          setIsAddClassOpen(false);
+          // Reset form
+          setNewTopic('');
+          setNewDescription('');
+          setNewDate('');
+          setNewToDate('');
+          setSelectedRpEmpIds([]);
+          setRpSearchQuery('');
+          setNewExternalRpList([]);
+          setNewExternalRpInput('');
+          loadData();
+        } else {
+          error(res.message || 'Failed to schedule class.');
+        }
+      } catch (err: any) {
+        error(err?.message || 'Error creating class.');
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
 
   const handleApply = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -201,15 +226,39 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
     );
   };
 
+  const getResourcePersonsDisplay = (cls: UpcomingClass) => {
+    const internalNames = (cls.resourcePersonEmpId || '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean)
+      .map((id) => {
+        const off = officersList.find((o) => o.employeeId === id);
+        return off ? `${off.name} (${id})` : id;
+      });
+    const externalNames = (cls.externalResourcePersons || []).map((p) => `${p} (Ext)`);
+    const all = [...internalNames, ...externalNames];
+    return all.length > 0 ? all.join(', ') : cls.resourcePersonName || 'TBD';
+  };
+
+  const myProposedClasses = classes.filter((c) =>
+    user ? c.proposedByEmpId === user.employeeId || (isAdmin && Boolean(c.proposedByEmpId)) : false
+  );
+
   const filteredClasses = classes.filter((c) => {
     if (!searchTerm.trim()) return true;
     const q = searchTerm.toLowerCase();
+    const rpDisplay = getResourcePersonsDisplay(c).toLowerCase();
     return (
       c.topic.toLowerCase().includes(q) ||
       c.area.toLowerCase().includes(q) ||
-      (c.resourcePersonName || '').toLowerCase().includes(q)
+      (c.resourcePersonName || '').toLowerCase().includes(q) ||
+      rpDisplay.includes(q)
     );
   });
+
+  const availableClasses = filteredClasses.filter(
+    (c) => isAdmin || c.status === 'Approved' || c.status === 'OPEN'
+  );
 
   return (
     <div className="space-y-6 pb-12">
@@ -237,24 +286,24 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200">
+      <div className="flex items-center gap-2 border-b border-slate-200 overflow-x-auto">
         <button
           id="tab-btn-upcoming-classes"
           onClick={() => setActiveTab('classes')}
-          className={`pb-3 px-4 text-xs font-bold flex items-center gap-2 border-b-2 transition-all ${
+          className={`pb-3 px-4 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'classes'
               ? 'border-slate-900 text-slate-900'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
           <Sparkles className="w-4 h-4 text-amber-500" />
-          <span>Available Classes ({classes.length})</span>
+          <span>Available Classes ({availableClasses.length})</span>
         </button>
 
         <button
           id="tab-btn-my-applications"
           onClick={() => setActiveTab('my-applications')}
-          className={`pb-3 px-4 text-xs font-bold flex items-center gap-2 border-b-2 transition-all ${
+          className={`pb-3 px-4 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
             activeTab === 'my-applications'
               ? 'border-slate-900 text-slate-900'
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -263,6 +312,21 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
           <FileCheck className="w-4 h-4 text-emerald-600" />
           <span>My Applications ({myApplications.length})</span>
         </button>
+
+        {user && (
+          <button
+            id="tab-btn-my-proposals"
+            onClick={() => setActiveTab('my-proposals')}
+            className={`pb-3 px-4 text-xs font-bold flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'my-proposals'
+                ? 'border-slate-900 text-slate-900'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <BookOpen className="w-4 h-4 text-purple-600" />
+            <span>My Proposed Classes ({myProposedClasses.length})</span>
+          </button>
+        )}
       </div>
 
       {/* Tab Content: Available Classes */}
@@ -284,7 +348,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
 
           {loading ? (
             <div className="py-20 text-center text-xs text-slate-400">Loading upcoming classes...</div>
-          ) : filteredClasses.length === 0 ? (
+          ) : availableClasses.length === 0 ? (
             <div className="py-16 text-center bg-white rounded-2xl border border-slate-200 p-8 space-y-2">
               <Sparkles className="w-8 h-8 text-amber-500 mx-auto" />
               <h3 className="text-sm font-bold text-slate-800">No upcoming classes scheduled</h3>
@@ -292,7 +356,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {filteredClasses.map((cls) => {
+              {availableClasses.map((cls) => {
                 const applied = isClassApplied(cls.classId);
                 const isFull = (cls.currentApplicationsCount || 0) >= (cls.maxParticipants || 50);
 
@@ -465,6 +529,166 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab Content: My Proposed Classes */}
+      {activeTab === 'my-proposals' && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Your Submitted CNE Proposals</h2>
+              <p className="text-xs text-slate-500">
+                Track administrator review status, approval outcomes, and administrative remarks for your proposed classes.
+              </p>
+            </div>
+            <button
+              onClick={() => setIsAddClassOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+            >
+              <PlusCircle className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Propose New Class</span>
+            </button>
+          </div>
+
+          {loading ? (
+            <div className="py-16 text-center text-xs text-slate-400">Loading your proposed classes...</div>
+          ) : myProposedClasses.length === 0 ? (
+            <div className="py-16 text-center bg-white rounded-2xl border border-slate-200 p-8 space-y-2">
+              <BookOpen className="w-8 h-8 text-purple-400 mx-auto" />
+              <h3 className="text-sm font-bold text-slate-800">No CNE Class Proposals Yet</h3>
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                You have not submitted any CNE class proposals. Click "Propose New Class" to submit a topic and schedule for administrator review.
+              </p>
+              <button
+                onClick={() => setIsAddClassOpen(true)}
+                className="mt-3 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 cursor-pointer"
+              >
+                + Propose CNE Class
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {myProposedClasses.map((cls) => {
+                const statusUpper = (cls.status || 'PENDING').toUpperCase();
+                const isApproved = statusUpper === 'APPROVED' || statusUpper === 'OPEN';
+                const isRejected = statusUpper === 'REJECTED';
+                const isPending = !isApproved && !isRejected;
+
+                return (
+                  <div
+                    key={cls.classId}
+                    className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs hover:border-slate-300 transition-all space-y-3"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                            Proposal ID: {cls.classId}
+                          </span>
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                            {cls.area}
+                          </span>
+                        </div>
+                        <h3 className="text-base font-bold text-slate-900 mt-1">{cls.topic}</h3>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-start sm:self-auto">
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
+                            isApproved
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : isRejected
+                              ? 'bg-rose-50 text-rose-700 border-rose-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}
+                        >
+                          {isApproved ? (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Approved</span>
+                            </>
+                          ) : isRejected ? (
+                            <>
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              <span>Rejected</span>
+                            </>
+                          ) : (
+                            <>
+                              <Clock className="w-3.5 h-3.5" />
+                              <span>Pending Admin Review</span>
+                            </>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-slate-600">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <div>
+                          <span className="font-semibold text-slate-700 block">Date(s):</span>
+                          <span>
+                            {cls.toDate && cls.toDate !== cls.date
+                              ? `${cls.date} to ${cls.toDate}`
+                              : cls.date}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-slate-400 shrink-0" />
+                        <div>
+                          <span className="font-semibold text-slate-700 block">Time & Duration:</span>
+                          <span>{cls.time} ({cls.duration})</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-slate-400 shrink-0" />
+                        <div>
+                          <span className="font-semibold text-slate-700 block">Instructor(s):</span>
+                          <span className="line-clamp-1">{getResourcePersonsDisplay(cls)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {cls.description && (
+                      <p className="text-xs text-slate-600 bg-slate-50/70 p-2.5 rounded-lg border border-slate-100">
+                        <span className="font-semibold text-slate-700">Course Outline:</span> {cls.description}
+                      </p>
+                    )}
+
+                    {/* Administrator Remarks */}
+                    <div className="pt-2 border-t border-slate-100">
+                      {cls.adminRemarks ? (
+                        <div
+                          className={`p-3 rounded-xl border text-xs ${
+                            isApproved
+                              ? 'bg-emerald-50/50 border-emerald-200 text-emerald-950'
+                              : isRejected
+                              ? 'bg-rose-50/50 border-rose-200 text-rose-950'
+                              : 'bg-slate-50 border-slate-200 text-slate-800'
+                          }`}
+                        >
+                          <div className="font-bold text-[11px] uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                            <span>Administrator Remarks & Instructions</span>
+                          </div>
+                          <p className="leading-relaxed font-medium">{cls.adminRemarks}</p>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-slate-400 italic">
+                          {isPending
+                            ? 'Awaiting review and remarks from the Nursing Education Administration.'
+                            : 'No administrator remarks provided.'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -661,38 +885,97 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Internal Instructor (AIIMS)
+              {/* Internal Resource Persons Multi-Select */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                    Internal Resource Persons (AIIMS Faculty)
                   </label>
-                  <select
-                    value={newRpEmpId}
-                    onChange={(e) => setNewRpEmpId(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                  >
-                    <option value="">Select Officer (or use external below)...</option>
-                    {officersList.map((o) => (
-                      <option key={o.employeeId} value={o.employeeId}>
-                        {o.employeeId} - {o.name} ({o.designation})
-                      </option>
-                    ))}
-                  </select>
+                  <span className="text-[10px] text-slate-500 font-medium">
+                    {selectedRpEmpIds.length} selected
+                  </span>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Max Participant Seats
-                  </label>
-                  <input
-                    type="number"
-                    min={5}
-                    max={200}
-                    value={newMaxParticipants}
-                    onChange={(e) => setNewMaxParticipants(parseInt(e.target.value, 10))}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                  />
+                {/* Selected RP Tags */}
+                {selectedRpEmpIds.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pb-1">
+                    {selectedRpEmpIds.map((empId) => {
+                      const officer = officersList.find((o) => o.employeeId === empId);
+                      return (
+                        <span
+                          key={empId}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium bg-emerald-50 text-emerald-900 px-2 py-0.5 rounded-md border border-emerald-200"
+                        >
+                          <span>{empId} - {officer ? officer.name : ''}</span>
+                          <button
+                            type="button"
+                            onClick={() => toggleRpSelection(empId)}
+                            className="hover:text-rose-600 cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Search input for officers */}
+                <input
+                  type="text"
+                  placeholder="Filter officers by name, employee ID, or designation..."
+                  value={rpSearchQuery}
+                  onChange={(e) => setRpSearchQuery(e.target.value)}
+                  className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                />
+
+                {/* Officers Dropdown / Selection List */}
+                <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg bg-white divide-y divide-slate-100">
+                  {filteredRpOfficers.length === 0 ? (
+                    <div className="p-2 text-center text-xs text-slate-400">No officers found matching search</div>
+                  ) : (
+                    filteredRpOfficers.slice(0, 50).map((officer) => {
+                      const isSelected = selectedRpEmpIds.includes(officer.employeeId);
+                      return (
+                        <div
+                          key={officer.employeeId}
+                          onClick={() => toggleRpSelection(officer.employeeId)}
+                          className={`flex items-center justify-between p-2 text-xs cursor-pointer transition-colors ${
+                            isSelected ? 'bg-emerald-50 text-emerald-900 font-semibold' : 'hover:bg-slate-50 text-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {}} // handled by div
+                              className="rounded text-emerald-600 focus:ring-emerald-500 pointer-events-none"
+                            />
+                            <span className="truncate">
+                              {officer.employeeId} - {officer.name}{' '}
+                              {officer.designation ? `(${officer.designation})` : ''}
+                            </span>
+                          </div>
+                          {isSelected && <span className="text-[10px] text-emerald-600 font-bold shrink-0">Selected</span>}
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Max Participant Seats
+                </label>
+                <input
+                  type="number"
+                  min={5}
+                  max={200}
+                  value={newMaxParticipants}
+                  onChange={(e) => setNewMaxParticipants(parseInt(e.target.value, 10))}
+                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+                />
               </div>
 
               {/* External Resource Persons */}

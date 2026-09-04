@@ -1,4 +1,9 @@
 /**
+ * Google Apps Script Source Export
+ * Authoritative source: Code.gs
+ * This file is automatically synchronized from Code.gs
+ */
+export const APPS_SCRIPT_SOURCE_CODE = `/**
  * ============================================================================
  * CLINICAL NURSING EDUCATION (CNE) MANAGEMENT SYSTEM - GOOGLE APPS SCRIPT API
  * All India Institute of Medical Sciences, Rishikesh
@@ -12,12 +17,12 @@ function normalizeEmpId(id) {
   return String(id).trim().toUpperCase();
 }
 
-// Formula Injection Prevention: Prepend apostrophe to user strings starting with =, +, -, @, \t, \r
+// Formula Injection Prevention: Prepend apostrophe to user strings starting with =, +, -, @, \\t, \\r
 function sanitizeCellInput(val) {
   if (val === null || val === undefined) return '';
   if (typeof val === 'number' || typeof val === 'boolean') return val;
   var str = String(val).trim();
-  if (/^[=+\-@\t\r]/.test(str)) {
+  if (/^[=+\\-@\\t\\r]/.test(str)) {
     return "'" + str;
   }
   return str;
@@ -742,7 +747,7 @@ function normalizeDateForComparison(val) {
   };
   
   // DD-MMM-YYYY or DD MMM YYYY (e.g. 15-Aug-2020, 15 August 2020, 15.Aug.2020)
-  var matchTextMonth = str.match(/^(\d{1,2})[-/.\s]+([a-zA-Z]+)[-/.\s,]+(\d{4})(?:[T\s].*)?$/);
+  var matchTextMonth = str.match(/^(\\d{1,2})[-/.\\s]+([a-zA-Z]+)[-/.\\s,]+(\\d{4})(?:[T\\s].*)?$/);
   if (matchTextMonth) {
     var day = parseInt(matchTextMonth[1], 10);
     var mStr = matchTextMonth[2].toLowerCase();
@@ -755,7 +760,7 @@ function normalizeDateForComparison(val) {
   }
   
   // MMM DD YYYY (e.g. Aug 15 2020, August 15 2020, Aug 15, 2020)
-  var matchMonthText = str.match(/^([a-zA-Z]+)[-/.\s]+(\d{1,2})[-/.\s,]+(\d{4})(?:[T\s].*)?$/);
+  var matchMonthText = str.match(/^([a-zA-Z]+)[-/.\\s]+(\\d{1,2})[-/.\\s,]+(\\d{4})(?:[T\\s].*)?$/);
   if (matchMonthText) {
     var mStr = matchMonthText[1].toLowerCase();
     var day = parseInt(matchMonthText[2], 10);
@@ -768,7 +773,7 @@ function normalizeDateForComparison(val) {
   }
 
   // YYYY-MMM-DD (e.g. 2020-Aug-15, 2020 August 15)
-  var matchYearText = str.match(/^(\d{4})[-/.\s]+([a-zA-Z]+)[-/.\s]+(\d{1,2})(?:[T\s].*)?$/);
+  var matchYearText = str.match(/^(\\d{4})[-/.\\s]+([a-zA-Z]+)[-/.\\s]+(\\d{1,2})(?:[T\\s].*)?$/);
   if (matchYearText) {
     var year = parseInt(matchYearText[1], 10);
     var mStr = matchYearText[2].toLowerCase();
@@ -781,10 +786,10 @@ function normalizeDateForComparison(val) {
   }
   
   // 3. Strip time portion for purely numeric formats (e.g. "2020-08-15T00:00:00.000Z" or "15/08/2020 00:00:00")
-  var dateOnly = str.split(/[T\s]/)[0].trim();
+  var dateOnly = str.split(/[T\\s]/)[0].trim();
   
   // 4. YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
-  var matchYMD = dateOnly.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  var matchYMD = dateOnly.match(/^(\\d{4})[-/.](\\d{1,2})[-/.](\\d{1,2})$/);
   if (matchYMD) {
     var year = parseInt(matchYMD[1], 10);
     var month = parseInt(matchYMD[2], 10);
@@ -796,7 +801,7 @@ function normalizeDateForComparison(val) {
   }
   
   // 5. DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
-  var matchDMY = dateOnly.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+  var matchDMY = dateOnly.match(/^(\\d{1,2})[-/.](\\d{1,2})[-/.](\\d{4})$/);
   if (matchDMY) {
     var p1 = parseInt(matchDMY[1], 10);
     var p2 = parseInt(matchDMY[2], 10);
@@ -1380,7 +1385,7 @@ function formatDurationValue(rawValue, displayValue) {
   if (displayValue !== null && displayValue !== undefined) {
     var disp = String(displayValue).trim();
     if (disp) {
-      var durMatch = disp.match(/^(\d+):([0-5]?\d)(?::([0-5]?\d))?$/);
+      var durMatch = disp.match(/^(\\d+):([0-5]?\\d)(?::([0-5]?\\d))?$/);
       if (durMatch) {
         if (durMatch[3] !== undefined) {
           var m1 = durMatch[2].length === 1 ? '0' + durMatch[2] : durMatch[2];
@@ -1407,7 +1412,7 @@ function formatDurationValue(rawValue, displayValue) {
   // If rawValue is a duration string (e.g. "1:30:00" or "25:00:00")
   if (typeof rawValue === 'string') {
     var str = rawValue.trim();
-    var durMatchStr = str.match(/^(\d+):([0-5]?\d)(?::([0-5]?\d))?$/);
+    var durMatchStr = str.match(/^(\\d+):([0-5]?\\d)(?::([0-5]?\\d))?$/);
     if (durMatchStr) {
       if (durMatchStr[3] !== undefined) {
         var m2 = durMatchStr[2].length === 1 ? '0' + durMatchStr[2] : durMatchStr[2];
@@ -1445,7 +1450,7 @@ function parseDurationToDayFraction(val) {
   if (val === null || val === undefined || val === '') return null;
   if (typeof val === 'number' && !isNaN(val) && val >= 0) return val;
   var str = String(val).trim();
-  var match = str.match(/^(\d+):([0-5]?\d)(?::([0-5]?\d))?$/);
+  var match = str.match(/^(\\d+):([0-5]?\\d)(?::([0-5]?\\d))?$/);
   if (match) {
     var hrs = parseInt(match[1], 10);
     var mins = parseInt(match[2], 10);
@@ -1571,7 +1576,7 @@ function handleAddCNE(params, session) {
     var listRp = Array.isArray(rawRp) ? rawRp : (rawRp || '').split(',');
     var inputRp = [];
     for (var k = 0; k < listRp.length; k++) {
-      var splitParts = String(listRp[k] || '').split(/[,;\n]+/);
+      var splitParts = String(listRp[k] || '').split(/[,;\\n]+/);
       for (var sp = 0; sp < splitParts.length; sp++) {
         var trimmed = splitParts[sp].trim();
         if (trimmed) inputRp.push(trimmed);
@@ -1618,7 +1623,7 @@ function handleAddCNE(params, session) {
     var listStaff = Array.isArray(rawStaff) ? rawStaff : (rawStaff || '').split(',');
     var inputStaff = [];
     for (var sk = 0; sk < listStaff.length; sk++) {
-      var sParts = String(listStaff[sk] || '').split(/[,;\n]+/);
+      var sParts = String(listStaff[sk] || '').split(/[,;\\n]+/);
       for (var ssp = 0; ssp < sParts.length; ssp++) {
         var sTrimmed = sParts[ssp].trim();
         if (sTrimmed) inputStaff.push(sTrimmed);
@@ -1776,7 +1781,7 @@ function handleUpdateCNE(params, session) {
           var listRp = Array.isArray(rawRp) ? rawRp : (rawRp || '').split(',');
           var inputRp = [];
           for (var k = 0; k < listRp.length; k++) {
-            var splitParts = String(listRp[k] || '').split(/[,;\n]+/);
+            var splitParts = String(listRp[k] || '').split(/[,;\\n]+/);
             for (var sp = 0; sp < splitParts.length; sp++) {
               var trimmed = splitParts[sp].trim();
               if (trimmed) inputRp.push(trimmed);
@@ -1834,7 +1839,7 @@ function handleUpdateCNE(params, session) {
           var listStaff = Array.isArray(rawStaff) ? rawStaff : (rawStaff || '').split(',');
           var inputStaff = [];
           for (var sk = 0; sk < listStaff.length; sk++) {
-            var sParts = String(listStaff[sk] || '').split(/[,;\n]+/);
+            var sParts = String(listStaff[sk] || '').split(/[,;\\n]+/);
             for (var ssp = 0; ssp < sParts.length; ssp++) {
               var sTrimmed = sParts[ssp].trim();
               if (sTrimmed) inputStaff.push(sTrimmed);
@@ -1994,7 +1999,7 @@ function handleAddUpcomingClass(params, session) {
   var listRp = Array.isArray(rawRp) ? rawRp : (rawRp || '').split(',');
   var inputRp = [];
   for (var k = 0; k < listRp.length; k++) {
-    var splitParts = String(listRp[k] || '').split(/[,;\n]+/);
+    var splitParts = String(listRp[k] || '').split(/[,;\\n]+/);
     for (var sp = 0; sp < splitParts.length; sp++) {
       var trimmed = splitParts[sp].trim();
       if (trimmed) inputRp.push(trimmed);
@@ -2131,7 +2136,7 @@ function handleUpdateUpcomingClass(params, session) {
           var listRp = Array.isArray(rawRp) ? rawRp : (rawRp || '').split(',');
           var inputRp = [];
           for (var k = 0; k < listRp.length; k++) {
-            var splitParts = String(listRp[k] || '').split(/[,;\n]+/);
+            var splitParts = String(listRp[k] || '').split(/[,;\\n]+/);
             for (var sp = 0; sp < splitParts.length; sp++) {
               var trimmed = splitParts[sp].trim();
               if (trimmed) inputRp.push(trimmed);
@@ -3658,3 +3663,6 @@ function setupNewCNESpreadsheet() {
   Logger.log('>>> setupNewCNESpreadsheet COMPLETED SUCCESSFULLY.');
 }
 
+`;
+
+export const GOOGLE_APPS_SCRIPT_CODE = APPS_SCRIPT_SOURCE_CODE;

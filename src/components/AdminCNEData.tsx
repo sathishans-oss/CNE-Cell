@@ -232,6 +232,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
         duration: formDuration || '1:00:00',
         topic: formTopic.trim(),
         resourcePersonEmpId: selectedRpEmpIds.join(', '),
+        resourcePersonEmpIds: selectedRpEmpIds,
         resourcePersonName: rpNames.join(', '),
         externalResourcePersons: externalRpList,
         modeOfTeaching: formMode,
@@ -239,7 +240,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
         externalStaffParticipants: externalStaffList,
         staffCount: totalStaffCount,
         remarks: formRemarks.trim()
-      });
+      } as any);
 
       if (res.success && res.data) {
         success('CNE activity recorded and saved successfully.', 'Activity Added');
@@ -322,13 +323,14 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
 
     const totalStaffCount = editStaffIds.length + editExternalStaffList.length;
 
-    const updatedData: Partial<CNERecord> = {
+    const updatedData: any = {
       area: editArea,
       fromDate: editFromDate,
       toDate: editToDate || editFromDate,
       duration: editDuration || '1:00:00',
       topic: editTopic.trim(),
       resourcePersonEmpId: editRpEmpIds.join(', '),
+      resourcePersonEmpIds: editRpEmpIds,
       resourcePersonName: rpNames.join(', '),
       externalResourcePersons: editExternalRpList,
       modeOfTeaching: editMode,

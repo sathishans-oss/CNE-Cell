@@ -36,8 +36,11 @@ export const AdminApplications: React.FC<AdminApplicationsProps> = () => {
 
   // Class review states
   const [reviewingClassId, setReviewingClassId] = useState<string | null>(null);
-  const [rejectModalClass, setRejectModalClass] = useState<UpcomingClass | null>(null);
-  const [rejectRemarks, setRejectRemarks] = useState('');
+  const [reviewModal, setReviewModal] = useState<{
+    classItem: UpcomingClass;
+    action: 'Approved' | 'Rejected';
+  } | null>(null);
+  const [reviewRemarks, setReviewRemarks] = useState('');
 
   const { success, error } = useToast();
 
@@ -101,8 +104,8 @@ export const AdminApplications: React.FC<AdminApplicationsProps> = () => {
             c.classId === classId ? { ...c, status, adminRemarks: remarks || c.adminRemarks } : c
           )
         );
-        setRejectModalClass(null);
-        setRejectRemarks('');
+        setReviewModal(null);
+        setReviewRemarks('');
       } else {
         error(res.message || `Failed to ${status.toLowerCase()} class proposal.`);
       }
@@ -527,10 +530,13 @@ export const AdminApplications: React.FC<AdminApplicationsProps> = () => {
                                 <>
                                   {!isApproved && (
                                     <button
-                                      onClick={() => handleReviewClass(cls.classId, 'Approved')}
+                                      onClick={() => {
+                                        setReviewModal({ classItem: cls, action: 'Approved' });
+                                        setReviewRemarks(cls.adminRemarks || '');
+                                      }}
                                       disabled={reviewingClassId !== null}
                                       className="px-2.5 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded font-semibold text-[11px] disabled:opacity-40 cursor-pointer"
-                                      title="Approve and open registration"
+                                      title="Approve and publish proposal"
                                     >
                                       Approve
                                     </button>
@@ -539,8 +545,8 @@ export const AdminApplications: React.FC<AdminApplicationsProps> = () => {
                                   {!isRejected && (
                                     <button
                                       onClick={() => {
-                                        setRejectModalClass(cls);
-                                        setRejectRemarks('');
+                                        setReviewModal({ classItem: cls, action: 'Rejected' });
+                                        setReviewRemarks(cls.adminRemarks || '');
                                       }}
                                       disabled={reviewingClassId !== null}
                                       className="px-2.5 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded font-semibold text-[11px] disabled:opacity-40 cursor-pointer"
@@ -564,41 +570,62 @@ export const AdminApplications: React.FC<AdminApplicationsProps> = () => {
         </div>
       )}
 
-      {/* Reject Modal */}
-      {rejectModalClass && (
+      {/* Review Modal (Approve or Reject with Remarks) */}
+      {reviewModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 relative">
             <button
-              onClick={() => setRejectModalClass(null)}
+              onClick={() => setReviewModal(null)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center">
-                <XCircle className="w-5 h-5" />
+              <div
+                className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                  reviewModal.action === 'Approved'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-rose-100 text-rose-700'
+                }`}
+              >
+                {reviewModal.action === 'Approved' ? (
+                  <CheckCircle2 className="w-5 h-5" />
+                ) : (
+                  <XCircle className="w-5 h-5" />
+                )}
               </div>
               <div>
-                <h3 className="text-base font-bold text-slate-900">Reject Class Proposal</h3>
-                <p className="text-xs text-slate-500">Proposal ID: {rejectModalClass.classId}</p>
+                <h3 className="text-base font-bold text-slate-900">
+                  {reviewModal.action === 'Approved' ? 'Approve CNE Class' : 'Reject Class Proposal'}
+                </h3>
+                <p className="text-xs text-slate-500">Proposal ID: {reviewModal.classItem.classId}</p>
               </div>
             </div>
 
             <p className="text-xs text-slate-700 mb-3">
-              Are you sure you want to reject the class proposal for:
-              <strong className="block text-slate-900 mt-1">{rejectModalClass.topic}</strong>
+              {reviewModal.action === 'Approved'
+                ? 'Approve and publish this scheduled CNE class for registration:'
+                : 'Are you sure you want to reject this proposed class:'}
+              <strong className="block text-slate-900 mt-1">{reviewModal.classItem.topic}</strong>
+              <span className="text-[11px] text-slate-500 block mt-0.5">
+                Area: {reviewModal.classItem.area} | Date: {reviewModal.classItem.date}
+              </span>
             </p>
 
             <div className="space-y-1.5 mb-4">
               <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                Reason / Remarks (Optional)
+                Administrator Remarks & Instructions
               </label>
               <textarea
                 rows={3}
-                value={rejectRemarks}
-                onChange={(e) => setRejectRemarks(e.target.value)}
-                placeholder="Specify feedback or reason for rejection..."
+                value={reviewRemarks}
+                onChange={(e) => setReviewRemarks(e.target.value)}
+                placeholder={
+                  reviewModal.action === 'Approved'
+                    ? 'Add instructions, venue details, or remarks (optional)...'
+                    : 'Specify reason or feedback for rejection...'
+                }
                 className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
               />
             </div>
@@ -606,17 +633,27 @@ export const AdminApplications: React.FC<AdminApplicationsProps> = () => {
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setRejectModalClass(null)}
+                onClick={() => setReviewModal(null)}
                 className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium text-xs cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={() => handleReviewClass(rejectModalClass.classId, 'Rejected', rejectRemarks.trim())}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-xs cursor-pointer"
+                onClick={() =>
+                  handleReviewClass(
+                    reviewModal.classItem.classId,
+                    reviewModal.action,
+                    reviewRemarks.trim()
+                  )
+                }
+                className={`px-4 py-2 text-white rounded-lg font-bold text-xs cursor-pointer ${
+                  reviewModal.action === 'Approved'
+                    ? 'bg-emerald-600 hover:bg-emerald-700'
+                    : 'bg-rose-600 hover:bg-rose-700'
+                }`}
               >
-                Confirm Rejection
+                {reviewModal.action === 'Approved' ? 'Confirm Approval' : 'Confirm Rejection'}
               </button>
             </div>
           </div>
