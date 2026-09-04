@@ -51,9 +51,13 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
   const [formTopic, setFormTopic] = useState('');
   const [selectedRpEmpIds, setSelectedRpEmpIds] = useState<string[]>([]);
   const [rpSearchQuery, setRpSearchQuery] = useState('');
+  const [externalRpList, setExternalRpList] = useState<string[]>([]);
+  const [externalRpInput, setExternalRpInput] = useState('');
   const [formMode, setFormMode] = useState('Lecture Cum Discussion');
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
   const [staffSearchQuery, setStaffSearchQuery] = useState('');
+  const [externalStaffList, setExternalStaffList] = useState<string[]>([]);
+  const [externalStaffInput, setExternalStaffInput] = useState('');
   const [formRemarks, setFormRemarks] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -66,9 +70,13 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
   const [editTopic, setEditTopic] = useState('');
   const [editRpEmpIds, setEditRpEmpIds] = useState<string[]>([]);
   const [editRpSearchQuery, setEditRpSearchQuery] = useState('');
+  const [editExternalRpList, setEditExternalRpList] = useState<string[]>([]);
+  const [editExternalRpInput, setEditExternalRpInput] = useState('');
   const [editMode, setEditMode] = useState('Lecture Cum Discussion');
   const [editStaffIds, setEditStaffIds] = useState<string[]>([]);
   const [editStaffSearchQuery, setEditStaffSearchQuery] = useState('');
+  const [editExternalStaffList, setEditExternalStaffList] = useState<string[]>([]);
+  const [editExternalStaffInput, setEditExternalStaffInput] = useState('');
   const [editRemarks, setEditRemarks] = useState('');
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
 
@@ -137,10 +145,64 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
     return filteredRecords.slice(start, start + itemsPerPage);
   }, [filteredRecords, currentPage]);
 
+  // Helpers for external personnel (Add Modal)
+  const handleAddExternalRp = () => {
+    const val = externalRpInput.trim();
+    if (!val) return;
+    if (!externalRpList.includes(val)) {
+      setExternalRpList((prev) => [...prev, val]);
+    }
+    setExternalRpInput('');
+  };
+
+  const handleRemoveExternalRp = (idx: number) => {
+    setExternalRpList((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleAddExternalStaff = () => {
+    const val = externalStaffInput.trim();
+    if (!val) return;
+    if (!externalStaffList.includes(val)) {
+      setExternalStaffList((prev) => [...prev, val]);
+    }
+    setExternalStaffInput('');
+  };
+
+  const handleRemoveExternalStaff = (idx: number) => {
+    setExternalStaffList((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  // Helpers for external personnel (Edit Modal)
+  const handleAddEditExternalRp = () => {
+    const val = editExternalRpInput.trim();
+    if (!val) return;
+    if (!editExternalRpList.includes(val)) {
+      setEditExternalRpList((prev) => [...prev, val]);
+    }
+    setEditExternalRpInput('');
+  };
+
+  const handleRemoveEditExternalRp = (idx: number) => {
+    setEditExternalRpList((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleAddEditExternalStaff = () => {
+    const val = editExternalStaffInput.trim();
+    if (!val) return;
+    if (!editExternalStaffList.includes(val)) {
+      setEditExternalStaffList((prev) => [...prev, val]);
+    }
+    setEditExternalStaffInput('');
+  };
+
+  const handleRemoveEditExternalStaff = (idx: number) => {
+    setEditExternalStaffList((prev) => prev.filter((_, i) => i !== idx));
+  };
+
   // Handle Add CNE Activity
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formTopic.trim() || !formArea.trim() || !formFromDate.trim() || selectedRpEmpIds.length === 0) {
+    if (!formTopic.trim() || !formArea.trim() || !formFromDate.trim() || (selectedRpEmpIds.length === 0 && externalRpList.length === 0)) {
       error('Please complete all required fields (Topic, Area, Date, at least one Resource Person).');
       return;
     }
@@ -155,6 +217,11 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
       const off = officers.find((o) => o.employeeId === id);
       return off ? off.name : id;
     });
+    if (externalRpList.length > 0) {
+      rpNames.push(...externalRpList.map((n) => `${n} (External)`));
+    }
+
+    const totalStaffCount = selectedStaffIds.length + externalStaffList.length;
 
     setIsSubmitting(true);
     try {
@@ -166,9 +233,11 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
         topic: formTopic.trim(),
         resourcePersonEmpId: selectedRpEmpIds.join(', '),
         resourcePersonName: rpNames.join(', '),
+        externalResourcePersons: externalRpList,
         modeOfTeaching: formMode,
         staffEmpIds: selectedStaffIds,
-        staffCount: selectedStaffIds.length,
+        externalStaffParticipants: externalStaffList,
+        staffCount: totalStaffCount,
         remarks: formRemarks.trim()
       });
 
@@ -180,6 +249,10 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
         setFormTopic('');
         setSelectedRpEmpIds([]);
         setSelectedStaffIds([]);
+        setExternalRpList([]);
+        setExternalRpInput('');
+        setExternalStaffList([]);
+        setExternalStaffInput('');
         setFormRemarks('');
         setRpSearchQuery('');
         setStaffSearchQuery('');
@@ -208,11 +281,18 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
     const parsedRp = (rec.resourcePersonEmpId || '')
       .split(',')
       .map((s) => s.trim())
-      .filter(Boolean);
+      .filter((s) => s && !s.toLowerCase().startsWith('ext:'));
     setEditRpEmpIds(parsedRp);
+
+    // External RPs
+    setEditExternalRpList(rec.externalResourcePersons ? [...rec.externalResourcePersons] : []);
+    setEditExternalRpInput('');
 
     // Staff IDs
     setEditStaffIds(rec.staffEmpIds ? [...rec.staffEmpIds] : []);
+    setEditExternalStaffList(rec.externalStaffParticipants ? [...rec.externalStaffParticipants] : []);
+    setEditExternalStaffInput('');
+
     setEditRpSearchQuery('');
     setEditStaffSearchQuery('');
   };
@@ -222,7 +302,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
     e.preventDefault();
     if (!editingRecord) return;
 
-    if (!editTopic.trim() || !editArea.trim() || !editFromDate.trim() || editRpEmpIds.length === 0) {
+    if (!editTopic.trim() || !editArea.trim() || !editFromDate.trim() || (editRpEmpIds.length === 0 && editExternalRpList.length === 0)) {
       error('Please complete all required fields (Topic, Area, Date, at least one Resource Person).');
       return;
     }
@@ -236,6 +316,11 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
       const off = officers.find((o) => o.employeeId === id);
       return off ? off.name : id;
     });
+    if (editExternalRpList.length > 0) {
+      rpNames.push(...editExternalRpList.map((n) => `${n} (External)`));
+    }
+
+    const totalStaffCount = editStaffIds.length + editExternalStaffList.length;
 
     const updatedData: Partial<CNERecord> = {
       area: editArea,
@@ -245,9 +330,11 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
       topic: editTopic.trim(),
       resourcePersonEmpId: editRpEmpIds.join(', '),
       resourcePersonName: rpNames.join(', '),
+      externalResourcePersons: editExternalRpList,
       modeOfTeaching: editMode,
       staffEmpIds: editStaffIds,
-      staffCount: editStaffIds.length,
+      externalStaffParticipants: editExternalStaffList,
+      staffCount: totalStaffCount,
       remarks: editRemarks.trim()
     };
 
@@ -293,20 +380,34 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
   // Export CSV
   const handleExportCsv = () => {
     if (records.length === 0) return;
-    const headers = ['Sr. No.', 'Ward Name / Area', 'From Date', 'To Date', 'Duration', 'Topic', 'Resource Person Emp Id', 'Mode of Teaching', 'Staff Emp ID', 'Staff Count', 'Remarks'];
-    const rows = sortedRecords.map((r, i) => [
-      `"${i + 1}"`,
-      `"${r.area}"`,
-      `"${r.fromDate}"`,
-      `"${r.toDate || ''}"`,
-      `"${r.duration}"`,
-      `"${(r.topic || '').replace(/"/g, '""')}"`,
-      `"${r.resourcePersonEmpId}"`,
-      `"${r.modeOfTeaching}"`,
-      `"${(r.staffEmpIds || []).join(', ')}"`,
-      `"${r.staffCount}"`,
-      `"${(r.remarks || '').replace(/"/g, '""')}"`
-    ]);
+    const headers = ['Sr. No.', 'Ward Name / Area', 'From Date', 'To Date', 'Duration', 'Topic', 'Resource Person Emp Id / External', 'Mode of Teaching', 'Staff Emp ID / External', 'Staff Count', 'Remarks'];
+    const rows = sortedRecords.map((r, i) => {
+      const rpParts = [r.resourcePersonEmpId];
+      if (r.externalResourcePersons && r.externalResourcePersons.length > 0) {
+        rpParts.push(r.externalResourcePersons.map((p) => `Ext: ${p}`).join(', '));
+      }
+      const rpDisplay = rpParts.filter(Boolean).join('; ');
+
+      const staffParts = [...(r.staffEmpIds || [])];
+      if (r.externalStaffParticipants && r.externalStaffParticipants.length > 0) {
+        staffParts.push(...r.externalStaffParticipants.map((p) => `Ext: ${p}`));
+      }
+      const staffDisplay = staffParts.join(', ');
+
+      return [
+        `"${i + 1}"`,
+        `"${r.area}"`,
+        `"${r.fromDate}"`,
+        `"${r.toDate || ''}"`,
+        `"${r.duration}"`,
+        `"${(r.topic || '').replace(/"/g, '""')}"`,
+        `"${rpDisplay.replace(/"/g, '""')}"`,
+        `"${r.modeOfTeaching}"`,
+        `"${staffDisplay.replace(/"/g, '""')}"`,
+        `"${r.staffCount}"`,
+        `"${(r.remarks || '').replace(/"/g, '""')}"`
+      ];
+    });
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
@@ -588,9 +689,16 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
 
                         {/* Resource Person(s) */}
                         <td className="py-3 px-3 text-slate-700">
-                          <span className="line-clamp-2">
-                            {rec.resourcePersonName || rec.resourcePersonEmpId || '—'}
-                          </span>
+                          <div className="line-clamp-2">
+                            <span>{rec.resourcePersonName || rec.resourcePersonEmpId || ''}</span>
+                            {rec.externalResourcePersons && rec.externalResourcePersons.length > 0 && (
+                              <span className="text-amber-800 font-medium">
+                                {rec.resourcePersonName || rec.resourcePersonEmpId ? ', ' : ''}
+                                {rec.externalResourcePersons.map((p) => `${p} (Ext)`).join(', ')}
+                              </span>
+                            )}
+                            {!rec.resourcePersonName && !rec.resourcePersonEmpId && (!rec.externalResourcePersons || rec.externalResourcePersons.length === 0) && '—'}
+                          </div>
                         </td>
 
                         {/* Mode */}
@@ -600,8 +708,15 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
 
                         {/* Staff Count */}
                         <td className="py-3 px-3 text-center">
-                          <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-full text-[11px]">
-                            {rec.staffCount || (rec.staffEmpIds ? rec.staffEmpIds.length : 0)}
+                          <span
+                            className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-full text-[11px]"
+                            title={
+                              rec.externalStaffParticipants && rec.externalStaffParticipants.length > 0
+                                ? `${rec.staffEmpIds?.length || 0} Internal + ${rec.externalStaffParticipants.length} External`
+                                : undefined
+                            }
+                          >
+                            {rec.staffCount || ((rec.staffEmpIds ? rec.staffEmpIds.length : 0) + (rec.externalStaffParticipants ? rec.externalStaffParticipants.length : 0))}
                           </span>
                         </td>
 
@@ -857,6 +972,57 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                     );
                   })}
                 </div>
+
+                {/* External Resource Persons */}
+                <div className="pt-2 border-t border-slate-200">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                      External Resource Persons (Outside Faculty / Professors / Guests)
+                    </label>
+                    <span className="text-[10px] text-slate-400">No Employee ID required</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="e.g. Prof. R. Sharma (PGI Chandigarh)..."
+                      value={externalRpInput}
+                      onChange={(e) => setExternalRpInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddExternalRp();
+                        }
+                      }}
+                      className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddExternalRp}
+                      className="px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-900 font-semibold rounded-lg text-xs cursor-pointer"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                  {externalRpList.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {externalRpList.map((rp, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium bg-amber-50 text-amber-900 px-2 py-0.5 rounded-md border border-amber-200"
+                        >
+                          <span>{rp} (External)</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveExternalRp(idx)}
+                            className="hover:text-rose-600 cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* MULTI-SELECT 2: Staff Participants */}
@@ -866,7 +1032,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                     Staff Participants (Multi-Select)
                   </label>
                   <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-                    Selected Count: {selectedStaffIds.length}
+                    Selected Count: {selectedStaffIds.length + externalStaffList.length} ({selectedStaffIds.length} internal + {externalStaffList.length} external)
                   </span>
                 </div>
 
@@ -932,6 +1098,57 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                       </div>
                     );
                   })}
+                </div>
+
+                {/* External Staff Participants */}
+                <div className="pt-2 border-t border-slate-200">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                      External Staff Participants (Outside Observers / Trainees / Students)
+                    </label>
+                    <span className="text-[10px] text-slate-400">No Employee ID required</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="e.g. Sneha Patel (MSc Nursing Trainee)..."
+                      value={externalStaffInput}
+                      onChange={(e) => setExternalStaffInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddExternalStaff();
+                        }
+                      }}
+                      className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddExternalStaff}
+                      className="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-semibold rounded-lg text-xs cursor-pointer"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                  {externalStaffList.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {externalStaffList.map((staff, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium bg-emerald-50 text-emerald-900 px-2 py-0.5 rounded-md border border-emerald-200"
+                        >
+                          <span>{staff} (External)</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveExternalStaff(idx)}
+                            className="hover:text-rose-600 cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1168,6 +1385,57 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                     );
                   })}
                 </div>
+
+                {/* External Resource Persons */}
+                <div className="pt-2 border-t border-slate-200">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                      External Resource Persons (Outside Faculty / Professors / Guests)
+                    </label>
+                    <span className="text-[10px] text-slate-400">No Employee ID required</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="e.g. Prof. R. Sharma (PGI Chandigarh)..."
+                      value={editExternalRpInput}
+                      onChange={(e) => setEditExternalRpInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddEditExternalRp();
+                        }
+                      }}
+                      className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddEditExternalRp}
+                      className="px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-900 font-semibold rounded-lg text-xs cursor-pointer"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                  {editExternalRpList.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {editExternalRpList.map((rp, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium bg-amber-50 text-amber-900 px-2 py-0.5 rounded-md border border-amber-200"
+                        >
+                          <span>{rp} (External)</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveEditExternalRp(idx)}
+                            className="hover:text-rose-600 cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* EDIT MULTI-SELECT 2: Staff Participants */}
@@ -1177,7 +1445,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                     Staff Participants (Multi-Select)
                   </label>
                   <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-                    Selected Count: {editStaffIds.length}
+                    Selected Count: {editStaffIds.length + editExternalStaffList.length} ({editStaffIds.length} internal + {editExternalStaffList.length} external)
                   </span>
                 </div>
 
@@ -1243,6 +1511,57 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                       </div>
                     );
                   })}
+                </div>
+
+                {/* External Staff Participants */}
+                <div className="pt-2 border-t border-slate-200">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                      External Staff Participants (Outside Observers / Trainees / Students)
+                    </label>
+                    <span className="text-[10px] text-slate-400">No Employee ID required</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="e.g. Sneha Patel (MSc Nursing Trainee)..."
+                      value={editExternalStaffInput}
+                      onChange={(e) => setEditExternalStaffInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddEditExternalStaff();
+                        }
+                      }}
+                      className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddEditExternalStaff}
+                      className="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-semibold rounded-lg text-xs cursor-pointer"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                  {editExternalStaffList.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {editExternalStaffList.map((staff, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium bg-emerald-50 text-emerald-900 px-2 py-0.5 rounded-md border border-emerald-200"
+                        >
+                          <span>{staff} (External)</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveEditExternalStaff(idx)}
+                            className="hover:text-rose-600 cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 

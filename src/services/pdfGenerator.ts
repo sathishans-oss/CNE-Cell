@@ -5,7 +5,7 @@ import { CNERecord, SessionUser } from '../types';
 export function generateAnnualCNEPdf(
   user: SessionUser,
   records: CNERecord[],
-  year: number
+  year: number | string
 ): void {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -13,7 +13,12 @@ export function generateAnnualCNEPdf(
     format: 'a4'
   });
 
-  // Calculate totals
+  // Normalize Assessment Year string (e.g., 2026 -> "2026–2027" if single year passed, or preserve "2026–2027")
+  const ayStr = typeof year === 'number'
+    ? `${year}–${year + 1}`
+    : (year.includes('–') || year.includes('-') ? year.replace('-', '–') : `${year}–${parseInt(year, 10) + 1}`);
+
+  // Calculate totals accurately
   let totalMinutes = 0;
   records.forEach((rec) => {
     const parts = (rec.duration || '1:00:00').split(':');
@@ -24,63 +29,85 @@ export function generateAnnualCNEPdf(
 
   const totalHours = Math.floor(totalMinutes / 60);
   const remainingMins = totalMinutes % 60;
-  const durationSummaryStr = `${totalHours} Hour${totalHours === 1 ? '' : 's'} ${remainingMins} Min${remainingMins === 1 ? '' : 's'}`;
+  const durationSummaryStr = remainingMins > 0 
+    ? `${totalHours} Hours ${remainingMins} Mins`
+    : `${totalHours} Hours`;
 
-  // Institutional Header
+  // 1. Institutional Header
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
+  doc.setFontSize(13);
   doc.setTextColor(15, 23, 42); // slate-900
-  doc.text('ALL INDIA INSTITUTE OF MEDICAL SCIENCES, RISHIKESH', 105, 18, { align: 'center' });
+  doc.text('ALL INDIA INSTITUTE OF MEDICAL SCIENCES, RISHIKESH', 105, 16, { align: 'center' });
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
+  doc.setFontSize(9.5);
   doc.setTextColor(71, 85, 105); // slate-600
-  doc.text('DEPARTMENT OF NURSING SERVICES — CLINICAL NURSING EDUCATION (CNE)', 105, 24, { align: 'center' });
+  doc.text('DEPARTMENT OF NURSING SERVICES — CLINICAL NURSING EDUCATION (CNE)', 105, 22, { align: 'center' });
+
+  // 2. Professional PDF Document Heading
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(30, 41, 59); // slate-800
+  doc.text('ANNUAL CONTINUING NURSING EDUCATION (CNE) RECORD', 105, 30, { align: 'center' });
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(30, 41, 59);
-  doc.text(`ANNUAL CNE PARTICIPATION RECORD (${year})`, 105, 32, { align: 'center' });
+  doc.setFontSize(10);
+  doc.setTextColor(51, 65, 85);
+  doc.text(`Assessment Year: ${ayStr}`, 105, 36, { align: 'center' });
 
-  // Divider Line
+  // Top Divider
   doc.setDrawColor(203, 213, 225);
   doc.setLineWidth(0.5);
-  doc.line(14, 36, 196, 36);
+  doc.line(14, 40, 196, 40);
 
-  // Employee Meta Details Grid
+  // 3. EMPLOYEE INFORMATION SECTION (With Summary Metrics inside)
   doc.setFillColor(248, 250, 252); // slate-50
-  doc.roundedRect(14, 40, 182, 26, 2, 2, 'F');
+  doc.roundedRect(14, 44, 182, 34, 2, 2, 'F');
   doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(14, 40, 182, 26, 2, 2, 'D');
+  doc.roundedRect(14, 44, 182, 34, 2, 2, 'D');
 
-  doc.setFontSize(9);
+  // Section Header inside card
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(100, 116, 139); // slate-500
+  doc.text('EMPLOYEE INFORMATION & ANNUAL SUMMARY', 18, 50);
+
+  // Left Column: Employee Identity
+  doc.setFontSize(8.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(51, 65, 85);
-  doc.text('Employee Name:', 18, 47);
-  doc.text('Employee ID No:', 18, 55);
-  doc.text('Designation:', 18, 62);
+  doc.text('Employee Name:', 18, 57);
+  doc.text('Employee ID:', 18, 64);
+  doc.text('Designation:', 18, 71);
 
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(15, 23, 42);
-  doc.text(user.name || 'N/A', 54, 47);
-  doc.text(user.employeeId || 'N/A', 54, 55);
-  doc.text(user.designation || 'N/A', 54, 62);
+  doc.text(user.name || 'N/A', 50, 57);
+  doc.text(user.employeeId || 'N/A', 50, 64);
+  doc.text(user.designation || 'N/A', 50, 71);
 
+  // Right Column: Summary Metrics (Total Activities & Duration ABOVE Table)
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(51, 65, 85);
-  doc.text('Assessment Year:', 120, 47);
-  doc.text('Generated Date:', 120, 55);
-  doc.text('Total Sessions:', 120, 62);
+  doc.text('Assessment Year:', 110, 57);
+  doc.text('Total CNE Activities:', 110, 64);
+  doc.text('Total Training Duration:', 110, 71);
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(`${year}`, 156, 47);
-  doc.text(new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }), 156, 55);
-  doc.text(`${records.length} Activity / Activities`, 156, 62);
+  doc.text(`${ayStr}`, 154, 57);
+  doc.text(`${records.length} Activities`, 154, 64);
+  doc.text(`${durationSummaryStr}`, 154, 71);
+
+  // 4. CNE ACTIVITY DETAILS Header
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(30, 41, 59);
+  doc.text('CNE ACTIVITY DETAILS', 14, 84);
 
   // Table Data Preparation
   const tableData = records.map((rec, index) => {
-    const isResourcePerson = rec.resourcePersonEmpId.toLowerCase() === user.employeeId.toLowerCase();
+    const isResourcePerson = (rec.resourcePersonEmpId || '').toLowerCase().includes((user.employeeId || '').toLowerCase());
     const roleLabel = isResourcePerson ? 'Resource Person' : 'Participant';
     const dateDisplay = rec.toDate && rec.toDate !== rec.fromDate 
       ? `${rec.fromDate} to ${rec.toDate}` 
@@ -98,9 +125,9 @@ export function generateAnnualCNEPdf(
   });
 
   autoTable(doc, {
-    startY: 72,
-    head: [['Sr', 'Date', 'Area / Ward', 'CNE Topic / Skills', 'Mode', 'Role', 'Duration']],
-    body: tableData.length > 0 ? tableData : [['-', '-', 'No CNE activities recorded for this year', '-', '-', '-', '-']],
+    startY: 87,
+    head: [['Sr', 'Date / Period', 'Area / Ward', 'CNE Topic / Skills', 'Mode', 'Role', 'Duration']],
+    body: tableData.length > 0 ? tableData : [['-', '-', 'No CNE activities recorded for this assessment year', '-', '-', '-', '-']],
     theme: 'grid',
     headStyles: {
       fillColor: [30, 41, 59], // Slate-800
@@ -111,9 +138,9 @@ export function generateAnnualCNEPdf(
     },
     columnStyles: {
       0: { cellWidth: 10, halign: 'center' },
-      1: { cellWidth: 24, halign: 'center' },
+      1: { cellWidth: 26, halign: 'center' },
       2: { cellWidth: 32 },
-      3: { cellWidth: 54 },
+      3: { cellWidth: 52 },
       4: { cellWidth: 26 },
       5: { cellWidth: 20, halign: 'center' },
       6: { cellWidth: 16, halign: 'center' }
@@ -131,32 +158,17 @@ export function generateAnnualCNEPdf(
     margin: { left: 14, right: 14 }
   });
 
-  // Summary Metrics & Signatures
-  const finalY = (doc as any).lastAutoTable.finalY + 8;
+  // Signatures Section
+  const finalY = (doc as any).lastAutoTable.finalY + 12;
   const pageHeight = doc.internal.pageSize.getHeight();
 
   // If close to page bottom, add new page
-  if (finalY > pageHeight - 45) {
+  if (finalY > pageHeight - 40) {
     doc.addPage();
   }
 
-  const summaryY = finalY > pageHeight - 45 ? 20 : finalY;
-
-  // Summary Box
-  doc.setFillColor(241, 245, 249);
-  doc.roundedRect(14, summaryY, 182, 16, 2, 2, 'F');
-  doc.setDrawColor(203, 213, 225);
-  doc.roundedRect(14, summaryY, 182, 16, 2, 2, 'D');
-
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(30, 41, 59);
-  doc.text(`Total CNE Activities Attended / Conducted: ${records.length}`, 20, summaryY + 10);
-  doc.text(`Total Training Duration: ${durationSummaryStr}`, 115, summaryY + 10);
-
-  // Signatures
-  const sigY = summaryY + 32;
-  doc.setFontSize(8.5);
+  const sigY = finalY > pageHeight - 40 ? 30 : finalY;
+  doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(71, 85, 105);
 
@@ -178,6 +190,7 @@ export function generateAnnualCNEPdf(
   doc.text('This is a verified institutional record from the Clinical Nursing Education (CNE) Portal • AIIMS Rishikesh.', 105, pageHeight - 8, { align: 'center' });
 
   // Trigger download
+  const cleanAy = ayStr.replace(/[^a-zA-Z0-9-]/g, '_');
   const cleanName = (user.name || 'Officer').replace(/[^a-zA-Z0-9]/g, '_');
-  doc.save(`CNE_Annual_Record_${user.employeeId}_${year}_${cleanName}.pdf`);
+  doc.save(`CNE_Annual_Record_${user.employeeId}_AY_${cleanAy}_${cleanName}.pdf`);
 }

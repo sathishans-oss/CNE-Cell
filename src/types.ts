@@ -93,9 +93,11 @@ export interface CNERecord {
   topic: string;
   resourcePersonEmpId: string;
   resourcePersonName?: string;
+  externalResourcePersons?: string[]; // Outside resource persons without employee ID
   modeOfTeaching: string;
-  staffEmpIds: string[]; // List of employee IDs
+  staffEmpIds: string[]; // List of internal employee IDs
   staffNames?: string[]; // Populated when authorized
+  externalStaffParticipants?: string[]; // Outside staff participants without employee ID
   staffCount: number;
   remarks?: string;
   createdAt?: string;
@@ -108,20 +110,25 @@ export interface UpcomingClass {
   dataId?: string;
   topic: string;
   area: string;
-  date: string;
+  date: string; // From Date or display date
+  toDate?: string; // To Date for multi-day programmes
   time: string;
   duration: string;
   resourcePersonEmpId: string;
   resourcePersonName?: string;
+  externalResourcePersons?: string[]; // Outside resource persons
   modeOfTeaching: string;
   description?: string;
   maxParticipants?: number;
   currentApplicationsCount?: number;
-  status: 'OPEN' | 'CLOSED' | 'COMPLETED';
+  status: 'Pending' | 'Approved' | 'Rejected' | 'OPEN' | 'CLOSED' | 'COMPLETED' | 'CANCELLED';
+  proposedByEmpId?: string;
+  proposedByName?: string;
+  adminRemarks?: string;
   createdAt?: string;
 }
 
-export type ApplicationStatus = 'Applied' | 'Approved' | 'Rejected' | 'Attended' | 'Cancelled';
+export type ApplicationStatus = 'Pending' | 'Applied' | 'Approved' | 'Rejected' | 'Attended' | 'Cancelled';
 
 export interface CNEApplication {
   applicationId: string;
@@ -134,6 +141,7 @@ export interface CNEApplication {
   appliedAt: string;
   status: ApplicationStatus;
   remarks?: string;
+  adminRemarks?: string;
 }
 
 export interface GalleryItem {

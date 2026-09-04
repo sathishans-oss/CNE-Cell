@@ -39,14 +39,17 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Admin Add Class Modal State
+  // Schedule Class Modal State
   const [isAddClassOpen, setIsAddClassOpen] = useState(false);
   const [newTopic, setNewTopic] = useState('');
   const [newArea, setNewArea] = useState('');
   const [newDate, setNewDate] = useState('');
+  const [newToDate, setNewToDate] = useState('');
   const [newTime, setNewTime] = useState('14:00 - 15:30');
   const [newDuration, setNewDuration] = useState('1:30:00');
   const [newRpEmpId, setNewRpEmpId] = useState('');
+  const [newExternalRpList, setNewExternalRpList] = useState<string[]>([]);
+  const [newExternalRpInput, setNewExternalRpInput] = useState('');
   const [newMode, setNewMode] = useState('Lecture Cum Discussion');
   const [newDescription, setNewDescription] = useState('');
   const [newMaxParticipants, setNewMaxParticipants] = useState(40);
@@ -55,6 +58,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
 
   const { success, error, info } = useToast();
   const isAdmin = user?.role === 'ADMIN';
+  const todayStr = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
     loadData();
@@ -67,7 +71,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
         ApiService.getUpcomingClasses(),
         user ? ApiService.getMyApplications() : Promise.resolve({ success: true, data: [] }),
         ApiService.getAreas(),
-        isAdmin ? ApiService.getOfficersDropdown() : Promise.resolve({ success: true, data: [] })
+        user ? ApiService.getOfficersDropdown() : Promise.resolve({ success: true, data: [] })
       ]);
 
       if (clsRes.success && clsRes.data) setClasses(clsRes.data);
@@ -80,6 +84,91 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
       error(e?.message || 'Failed to load upcoming classes.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAddExternalRp = () => {
+    const val = newExternalRpInput.trim();
+    if (!val) return;
+    if (!newExternalRpList.includes(val)) {
+      setNewExternalRpList((prev) => [...prev, val]);
+    }
+    setNewExternalRpInput('');
+  };
+
+  const handleRemoveExternalRp = (idx: number) => {
+    setNewExternalRpList((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleCreateUpcomingClass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTopic.trim() || !newArea.trim() || !newDate.trim()) {
+      error('Please fill in all required fields (Topic, Area, Date).');
+      return;
+    }
+
+    if (newDate < todayStr) {
+      error('Scheduled date cannot be in the past.');
+      return;
+    }
+
+    if (newToDate && newToDate < newDate) {
+      error('To Date cannot be earlier than Scheduled Date.');
+      return;
+    }
+
+    if (!newRpEmpId && newExternalRpList.length === 0) {
+      error('Please select an instructor or add at least one external resource person.');
+      return;
+    }
+
+    const rp = officersList.find((o) => o.employeeId === newRpEmpId);
+    const rpName = rp ? rp.name : newRpEmpId;
+
+    setIsSubmitting(true);
+    try {
+      const res = await ApiService.addUpcomingClass({
+        topic: newTopic.trim(),
+        area: newArea,
+        date: newDate,
+        toDate: newToDate || newDate,
+        time: newTime,
+        duration: newDuration,
+        resourcePersonEmpId: newRpEmpId,
+        resourcePersonName: rpName,
+        externalResourcePersons: newExternalRpList,
+        modeOfTeaching: newMode,
+        description: newDescription.trim(),
+        maxParticipants: newMaxParticipants,
+        proposedByEmpId: user?.employeeId,
+        proposedByName: user?.name,
+        status: isAdmin ? 'Approved' : 'Pending'
+      });
+
+      if (res.success) {
+        success(
+          isAdmin
+            ? 'Upcoming CNE workshop created and published successfully.'
+            : 'Upcoming CNE class proposal submitted for Admin approval.',
+          isAdmin ? 'Class Scheduled' : 'Proposal Submitted'
+        );
+        setIsAddClassOpen(false);
+        // Reset form
+        setNewTopic('');
+        setNewDescription('');
+        setNewDate('');
+        setNewToDate('');
+        setNewRpEmpId('');
+        setNewExternalRpList([]);
+        setNewExternalRpInput('');
+        loadData();
+      } else {
+        error(res.message || 'Failed to schedule class.');
+      }
+    } catch (err: any) {
+      error(err?.message || 'Error creating class.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -101,48 +190,6 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
       }
     } catch (err: any) {
       error(err?.message || 'Error submitting application.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleCreateUpcomingClass = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTopic.trim() || !newArea.trim() || !newDate.trim()) {
-      error('Please fill in all required fields.');
-      return;
-    }
-
-    const rp = officersList.find((o) => o.employeeId === newRpEmpId);
-
-    setIsSubmitting(true);
-    try {
-      const res = await ApiService.addUpcomingClass({
-        topic: newTopic,
-        area: newArea,
-        date: newDate,
-        time: newTime,
-        duration: newDuration,
-        resourcePersonEmpId: newRpEmpId,
-        resourcePersonName: rp ? rp.name : newRpEmpId,
-        modeOfTeaching: newMode,
-        description: newDescription,
-        maxParticipants: newMaxParticipants,
-        status: 'OPEN'
-      });
-
-      if (res.success) {
-        success('Upcoming CNE workshop created successfully.', 'Class Scheduled');
-        setIsAddClassOpen(false);
-        // Reset form
-        setNewTopic('');
-        setNewDescription('');
-        loadData();
-      } else {
-        error(res.message || 'Failed to schedule class.');
-      }
-    } catch (err: any) {
-      error(err?.message || 'Error creating class.');
     } finally {
       setIsSubmitting(false);
     }
@@ -176,14 +223,14 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
-          {isAdmin && (
+          {user && (
             <button
               id="btn-admin-add-upcoming-class"
               onClick={() => setIsAddClassOpen(true)}
               className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <PlusCircle className="w-4 h-4 text-emerald-400" />
-              <span>Schedule New Class</span>
+              <span>{isAdmin ? 'Schedule New Class' : 'Propose CNE Class'}</span>
             </button>
           )}
         </div>
@@ -259,17 +306,24 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
                           {cls.area}
                         </span>
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            applied
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : isFull
-                              ? 'bg-rose-100 text-rose-800'
-                              : 'bg-sky-100 text-sky-800'
-                          }`}
-                        >
-                          {applied ? '✓ Applied' : isFull ? 'Seats Full' : 'Registration Open'}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          {cls.status && cls.status.toUpperCase() !== 'APPROVED' && cls.status.toUpperCase() !== 'OPEN' && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                              {cls.status}
+                            </span>
+                          )}
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              applied
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : isFull
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-sky-100 text-sky-800'
+                            }`}
+                          >
+                            {applied ? '✓ Applied' : isFull ? 'Seats Full' : 'Registration Open'}
+                          </span>
+                        </div>
                       </div>
 
                       <h3 className="text-base font-bold text-slate-900 leading-snug">
@@ -285,7 +339,11 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                       <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-100 text-xs text-slate-600">
                         <div className="flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                          <span>{cls.date}</span>
+                          <span>
+                            {cls.toDate && cls.toDate !== cls.date
+                              ? `${cls.date} to ${cls.toDate}`
+                              : cls.date}
+                          </span>
                         </div>
                         <div className="flex items-center gap-1.5">
                           <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -294,7 +352,11 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                         <div className="flex items-center gap-1.5 col-span-2">
                           <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                           <span className="truncate">
-                            Instructor: {cls.resourcePersonName || cls.resourcePersonEmpId}
+                            Instructor:{' '}
+                            {[
+                              cls.resourcePersonName || cls.resourcePersonEmpId,
+                              ...(cls.externalResourcePersons ? cls.externalResourcePersons.map((p) => `${p} (Ext)`) : [])
+                            ].filter(Boolean).join(', ') || 'TBD'}
                           </span>
                         </div>
                       </div>
@@ -499,8 +561,14 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                 <PlusCircle className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-slate-900">Schedule Upcoming CNE Class</h3>
-                <p className="text-xs text-slate-500">Publish training session for nursing registration</p>
+                <h3 className="text-base font-bold text-slate-900">
+                  {isAdmin ? 'Schedule Upcoming CNE Class' : 'Propose Upcoming CNE Class'}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {isAdmin
+                    ? 'Publish training session for nursing registration'
+                    : 'Submit workshop proposal for Admin review and approval'}
+                </p>
               </div>
             </div>
 
@@ -519,33 +587,47 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Clinical Ward / Area *
+                </label>
+                <select
+                  required
+                  value={newArea}
+                  onChange={(e) => setNewArea(e.target.value)}
+                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+                >
+                  <option value="">Select Area...</option>
+                  {areasList.map((a) => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Clinical Ward / Area *
-                  </label>
-                  <select
-                    required
-                    value={newArea}
-                    onChange={(e) => setNewArea(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                  >
-                    <option value="">Select Area...</option>
-                    {areasList.map((a) => (
-                      <option key={a} value={a}>{a}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Scheduled Date *
+                    Scheduled / From Date *
                   </label>
                   <input
                     type="date"
                     required
+                    min={todayStr}
                     value={newDate}
                     onChange={(e) => setNewDate(e.target.value)}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    To Date (Optional)
+                  </label>
+                  <input
+                    type="date"
+                    min={newDate || todayStr}
+                    value={newToDate}
+                    onChange={(e) => setNewToDate(e.target.value)}
                     className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
                   />
                 </div>
@@ -582,14 +664,14 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Resource Person / Instructor
+                    Internal Instructor (AIIMS)
                   </label>
                   <select
                     value={newRpEmpId}
                     onChange={(e) => setNewRpEmpId(e.target.value)}
                     className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
                   >
-                    <option value="">Select Officer...</option>
+                    <option value="">Select Officer (or use external below)...</option>
                     {officersList.map((o) => (
                       <option key={o.employeeId} value={o.employeeId}>
                         {o.employeeId} - {o.name} ({o.designation})
@@ -611,6 +693,57 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                     className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
                   />
                 </div>
+              </div>
+
+              {/* External Resource Persons */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                    External Resource Persons (Guest Faculty / Outside Experts)
+                  </label>
+                  <span className="text-[10px] text-slate-400">No Employee ID required</span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. Dr. A. Sen (Visiting Faculty)..."
+                    value={newExternalRpInput}
+                    onChange={(e) => setNewExternalRpInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddExternalRp();
+                      }
+                    }}
+                    className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddExternalRp}
+                    className="px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-900 font-semibold rounded-lg text-xs cursor-pointer"
+                  >
+                    + Add
+                  </button>
+                </div>
+                {newExternalRpList.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {newExternalRpList.map((rp, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1 text-[11px] font-medium bg-amber-50 text-amber-900 px-2 py-0.5 rounded-md border border-amber-200"
+                      >
+                        <span>{rp} (External)</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveExternalRp(idx)}
+                          className="hover:text-rose-600 cursor-pointer"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -643,10 +776,10 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                   {isSubmitting ? (
                     <>
                       <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
-                      <span>Publishing...</span>
+                      <span>{isAdmin ? 'Publishing...' : 'Submitting Proposal...'}</span>
                     </>
                   ) : (
-                    <span>Publish Upcoming Class</span>
+                    <span>{isAdmin ? 'Publish Upcoming Class' : 'Submit Proposal for Approval'}</span>
                   )}
                 </button>
               </div>

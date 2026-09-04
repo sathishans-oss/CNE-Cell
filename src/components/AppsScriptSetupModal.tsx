@@ -15,7 +15,7 @@ import {
   ShieldCheck,
   Wrench
 } from 'lucide-react';
-import { GOOGLE_APPS_SCRIPT_CODE } from '../backend/googleAppsScript';
+import GOOGLE_APPS_SCRIPT_CODE from '../../Code.gs?raw';
 import { ApiService } from '../services/api';
 import { useToast } from './Toast';
 

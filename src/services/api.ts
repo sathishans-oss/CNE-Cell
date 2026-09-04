@@ -429,6 +429,14 @@ export class ApiService {
     return this.executeAction('updateUpcomingClass', { classId, ...classData });
   }
 
+  static async reviewUpcomingClass(
+    classId: string,
+    status: 'Approved' | 'Rejected',
+    adminRemarks?: string
+  ): Promise<ApiResponse> {
+    return this.executeAction('reviewUpcomingClass', { classId, status, adminRemarks });
+  }
+
   static async applyForClass(classId: string, remarks?: string): Promise<ApiResponse<CNEApplication>> {
     return this.executeAction<CNEApplication>('applyForClass', { classId, remarks });
   }

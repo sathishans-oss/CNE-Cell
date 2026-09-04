@@ -346,11 +346,19 @@ function handleRequest(e, method) {
         break;
         
       case 'addUpcomingClass':
-        output = handleAdminAction(params, session, handleAddUpcomingClass, 'ADD_UPCOMING_CLASS');
+        if (!session) {
+          output = { success: false, errorCode: 'UNAUTHORIZED', message: 'Authentication required. Please sign in.' };
+        } else {
+          output = handleAddUpcomingClass(params, session);
+        }
         break;
         
       case 'updateUpcomingClass':
         output = handleAdminAction(params, session, handleUpdateUpcomingClass, 'UPDATE_UPCOMING_CLASS');
+        break;
+
+      case 'reviewUpcomingClass':
+        output = handleAdminAction(params, session, handleReviewUpcomingClass, 'REVIEW_UPCOMING_CLASS');
         break;
         
       case 'getAllApplications':
@@ -1495,7 +1503,11 @@ function handleGetCNERecords(params, session) {
       staffCount = staffArray.length;
     }
     
-    var isResourcePerson = (resourcePersonEmpId === loggedInId);
+    var rpArray = resourcePersonEmpId.split(',').map(function(s) {
+      return normalizeEmpId(s);
+    }).filter(Boolean);
+    
+    var isResourcePerson = (rpArray.indexOf(loggedInId) !== -1);
     var isStaffParticipant = (staffArray.indexOf(loggedInId) !== -1);
     
     // Ordinary employees ONLY receive records where they were RP or participant
@@ -1503,6 +1515,9 @@ function handleGetCNERecords(params, session) {
       continue;
     }
     
+    var extRp = row[13] ? String(row[13]).split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+    var extStaff = row[14] ? String(row[14]).split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+
     // PRIVACY HARDENING: Non-admins ONLY receive their own ID in staffEmpIds (never other staff IDs)
     var sanitizedStaffEmpIds = isAdmin ? staffArray : (isStaffParticipant ? [session.employeeId] : []);
     
@@ -1514,6 +1529,8 @@ function handleGetCNERecords(params, session) {
       duration: duration,
       topic: topic,
       resourcePersonEmpId: resourcePersonEmpId,
+      externalResourcePersons: extRp,
+      externalStaffParticipants: isAdmin ? extStaff : [],
       modeOfTeaching: mode,
       staffEmpIds: sanitizedStaffEmpIds,
       staffCount: staffCount,
@@ -1548,16 +1565,43 @@ function handleAddCNE(params, session) {
     var toDate = (params.toDate || fromDate).trim();
     var topic = sanitizeCellInput(params.topic);
     var area = sanitizeCellInput(params.area);
-    var rpEmpId = normalizeEmpId(params.resourcePersonEmpId);
     
-    if (!topic || !area || !fromDate || !rpEmpId) {
-      return { success: false, message: 'Topic, Area, Date, and Resource Person are required.' };
+    // Validate multiple internal Resource Person IDs individually
+    var inputRp = Array.isArray(params.resourcePersonEmpId) 
+      ? params.resourcePersonEmpId 
+      : (params.resourcePersonEmpId || '').split(',');
+    var cleanRpMap = {};
+    var rpClean = [];
+    var invalidRpIds = [];
+
+    for (var i = 0; i < inputRp.length; i++) {
+      var rpid = normalizeEmpId(inputRp[i]);
+      if (rpid && !cleanRpMap[rpid]) {
+        cleanRpMap[rpid] = true;
+        var rpOfficerCheck = findOfficerById(rpid);
+        if (!rpOfficerCheck) {
+          invalidRpIds.push(rpid);
+        } else {
+          rpClean.push(rpid);
+        }
+      }
     }
-    
-    // Validate Resource Person against Rosters Master Data
-    var rpOfficer = findOfficerById(rpEmpId);
-    if (!rpOfficer) {
-      return { success: false, message: 'Resource Person Employee ID (' + rpEmpId + ') was not found in the employee master roster.' };
+
+    if (invalidRpIds.length > 0) {
+      return {
+        success: false,
+        message: 'Invalid Resource Person Employee ID(s) not found in master roster: ' + invalidRpIds.join(', ')
+      };
+    }
+
+    // External Resource Persons (names, no ID validation)
+    var extRp = Array.isArray(params.externalResourcePersons)
+      ? params.externalResourcePersons
+      : (params.externalResourcePersons || '').split(',');
+    var extRpClean = extRp.map(function(s) { return sanitizeCellInput(String(s).trim()); }).filter(Boolean);
+
+    if (!topic || !area || !fromDate || (rpClean.length === 0 && extRpClean.length === 0)) {
+      return { success: false, message: 'Topic, Area, Date, and at least one Resource Person (Internal or External) are required.' };
     }
     
     // Sanitize, deduplicate, and validate staff IDs against Rosters Master Data
@@ -1585,9 +1629,15 @@ function handleAddCNE(params, session) {
         message: 'Invalid participant Employee ID(s) not found in master roster: ' + invalidStaffIds.join(', ')
       };
     }
+
+    // External Staff Participants (names, no ID validation)
+    var extStaff = Array.isArray(params.externalStaffParticipants)
+      ? params.externalStaffParticipants
+      : (params.externalStaffParticipants || '').split(',');
+    var extStaffClean = extStaff.map(function(s) { return sanitizeCellInput(String(s).trim()); }).filter(Boolean);
     
     var staffString = staffClean.join(', ');
-    var staffCount = staffClean.length;
+    var totalStaffCount = staffClean.length + extStaffClean.length;
     
     // Collision-resistant Data ID generation under ScriptLock
     var curYear = new Date().getFullYear();
@@ -1614,13 +1664,15 @@ function handleAddCNE(params, session) {
       toDate,
       durationValueToStore,
       topic,
-      rpEmpId,
+      rpClean.join(', '),
       sanitizeCellInput(params.modeOfTeaching || 'Lecture Cum Discussion'),
       staffString,
-      staffCount,
+      totalStaffCount,
       sanitizeCellInput(params.remarks || ''),
       new Date().toISOString(),
-      session.employeeId || ''
+      session.employeeId || '',
+      extRpClean.join(', '),
+      extStaffClean.join(', ')
     ]);
     
     // Preserve Duration cell number format on newly appended row if not already formatted
@@ -1691,18 +1743,50 @@ function handleUpdateCNE(params, session) {
         }
         if (params.topic !== undefined) sheet.getRange(r + 1, 6).setValue(sanitizeCellInput(params.topic));
         
-        if (params.resourcePersonEmpId !== undefined) {
-          var rpEmpId = normalizeEmpId(params.resourcePersonEmpId);
-          var rpOfficer = findOfficerById(rpEmpId);
-          if (!rpOfficer) {
-            return { success: false, message: 'Resource Person Employee ID (' + rpEmpId + ') was not found in roster.' };
+        if (params.resourcePersonEmpId !== undefined || params.externalResourcePersons !== undefined) {
+          var inputRp = Array.isArray(params.resourcePersonEmpId) 
+            ? params.resourcePersonEmpId 
+            : (params.resourcePersonEmpId || '').split(',');
+          var cleanRpMap = {};
+          var rpClean = [];
+          var invalidRpIds = [];
+
+          for (var i = 0; i < inputRp.length; i++) {
+            var rpid = normalizeEmpId(inputRp[i]);
+            if (rpid && !cleanRpMap[rpid]) {
+              cleanRpMap[rpid] = true;
+              var rpOfficerCheck = findOfficerById(rpid);
+              if (!rpOfficerCheck) {
+                invalidRpIds.push(rpid);
+              } else {
+                rpClean.push(rpid);
+              }
+            }
           }
-          sheet.getRange(r + 1, 7).setValue(rpEmpId);
+
+          if (invalidRpIds.length > 0) {
+            return {
+              success: false,
+              message: 'Invalid Resource Person Employee ID(s) not found in roster: ' + invalidRpIds.join(', ')
+            };
+          }
+
+          var extRp = Array.isArray(params.externalResourcePersons)
+            ? params.externalResourcePersons
+            : (params.externalResourcePersons || '').split(',');
+          var extRpClean = extRp.map(function(s) { return sanitizeCellInput(String(s).trim()); }).filter(Boolean);
+
+          if (rpClean.length === 0 && extRpClean.length === 0) {
+            return { success: false, message: 'At least one Resource Person (Internal or External) is required.' };
+          }
+
+          sheet.getRange(r + 1, 7).setValue(rpClean.join(', '));
+          sheet.getRange(r + 1, 14).setValue(extRpClean.join(', '));
         }
         
         if (params.modeOfTeaching !== undefined) sheet.getRange(r + 1, 8).setValue(sanitizeCellInput(params.modeOfTeaching));
         
-        if (params.staffEmpIds !== undefined) {
+        if (params.staffEmpIds !== undefined || params.externalStaffParticipants !== undefined) {
           var inputStaff = Array.isArray(params.staffEmpIds) ? params.staffEmpIds : (params.staffEmpIds || '').split(',');
           var cleanMap = {};
           var staffClean = [];
@@ -1727,9 +1811,15 @@ function handleUpdateCNE(params, session) {
               message: 'Invalid participant Employee ID(s) not found in master roster: ' + invalidStaffIds.join(', ')
             };
           }
+
+          var extStaff = Array.isArray(params.externalStaffParticipants)
+            ? params.externalStaffParticipants
+            : (params.externalStaffParticipants || '').split(',');
+          var extStaffClean = extStaff.map(function(s) { return sanitizeCellInput(String(s).trim()); }).filter(Boolean);
           
           sheet.getRange(r + 1, 9).setValue(staffClean.join(', '));
-          sheet.getRange(r + 1, 10).setValue(staffClean.length);
+          sheet.getRange(r + 1, 10).setValue(staffClean.length + extStaffClean.length);
+          sheet.getRange(r + 1, 15).setValue(extStaffClean.join(', '));
         }
         
         if (params.remarks !== undefined) sheet.getRange(r + 1, 11).setValue(sanitizeCellInput(params.remarks));
@@ -1785,7 +1875,7 @@ function handleDeleteCNE(params, session) {
  */
 function handleGetUpcomingClasses(params) {
   var sheet = getOrCreateSheet('Upcoming Classes', [
-    'Class ID', 'Topic', 'Area', 'Date', 'Time', 'Duration', 'Resource Person Emp Id', 'Mode', 'Description', 'Max Participants', 'Status'
+    'Class ID', 'Topic', 'Area', 'Date', 'Time', 'Duration', 'Resource Person Emp Id', 'Mode', 'Description', 'Max Participants', 'Status', 'To Date', 'External Resource Persons', 'Proposed By', 'Admin Remarks'
   ]);
   
   var data = sheet.getDataRange().getValues();
@@ -1795,18 +1885,24 @@ function handleGetUpcomingClasses(params) {
     var id = String(data[r][0] || '').trim();
     if (!id) continue;
     
+    var extRp = data[r][12] ? String(data[r][12]).split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+    
     list.push({
       classId: id,
       topic: String(data[r][1] || ''),
       area: String(data[r][2] || ''),
       date: formatDateValue(data[r][3]),
+      toDate: data[r][11] ? formatDateValue(data[r][11]) : formatDateValue(data[r][3]),
       time: String(data[r][4] || ''),
       duration: String(data[r][5] || '1:00:00'),
       resourcePersonEmpId: normalizeEmpId(data[r][6]),
+      externalResourcePersons: extRp,
       modeOfTeaching: String(data[r][7] || 'Lecture Cum Discussion'),
       description: String(data[r][8] || ''),
       maxParticipants: parseInt(data[r][9], 10) || 50,
-      status: String(data[r][10] || 'OPEN').toUpperCase()
+      status: String(data[r][10] || 'OPEN').trim(),
+      proposedByEmpId: String(data[r][13] || ''),
+      adminRemarks: String(data[r][14] || '')
     });
   }
   
@@ -1814,26 +1910,76 @@ function handleGetUpcomingClasses(params) {
 }
 
 function handleAddUpcomingClass(params, session) {
-  var adminError = requireAdmin(session);
-  if (adminError) return adminError;
+  if (!session) {
+    return { success: false, errorCode: 'UNAUTHORIZED', message: 'Unauthorized session.' };
+  }
 
   var topic = sanitizeCellInput(params.topic);
   var area = sanitizeCellInput(params.area);
   var date = (params.date || '').trim();
-  var rpEmpId = normalizeEmpId(params.resourcePersonEmpId);
+  var toDate = (params.toDate || date).trim();
   
-  if (!topic || !area || !date || !rpEmpId) {
-    return { success: false, message: 'Topic, Area, Date, and Resource Person are required.' };
+  if (!topic || !area || !date) {
+    return { success: false, message: 'Topic, Area, and Date are required.' };
   }
-  
-  var rpOfficer = findOfficerById(rpEmpId);
-  if (!rpOfficer) {
-    return { success: false, message: 'Resource Person Employee ID (' + rpEmpId + ') not found in master roster.' };
+
+  // Strict Date Validation: Past dates are NOT allowed!
+  var todayStr = new Date().toISOString().split('T')[0];
+  if (date < todayStr) {
+    return { success: false, message: 'Past dates are not allowed. Please select today or a future date.' };
   }
-  
-  var rawStatus = String(params.status || 'OPEN').toUpperCase().trim();
-  var allowedStatuses = ['OPEN', 'CLOSED', 'CANCELLED'];
-  var status = (allowedStatuses.indexOf(rawStatus) !== -1) ? rawStatus : 'OPEN';
+  if (toDate < date) {
+    return { success: false, message: 'To Date cannot be earlier than From Date.' };
+  }
+
+  // Validate internal Resource Persons individually
+  var inputRp = Array.isArray(params.resourcePersonEmpId) 
+    ? params.resourcePersonEmpId 
+    : (params.resourcePersonEmpId || '').split(',');
+  var cleanRpMap = {};
+  var rpClean = [];
+  var invalidRpIds = [];
+
+  for (var i = 0; i < inputRp.length; i++) {
+    var rpid = normalizeEmpId(inputRp[i]);
+    if (rpid && !cleanRpMap[rpid]) {
+      cleanRpMap[rpid] = true;
+      var rpOfficerCheck = findOfficerById(rpid);
+      if (!rpOfficerCheck) {
+        invalidRpIds.push(rpid);
+      } else {
+        rpClean.push(rpid);
+      }
+    }
+  }
+
+  if (invalidRpIds.length > 0) {
+    return {
+      success: false,
+      message: 'Invalid Resource Person Employee ID(s) not found in master roster: ' + invalidRpIds.join(', ')
+    };
+  }
+
+  // External Resource Persons (names, no ID validation)
+  var extRp = Array.isArray(params.externalResourcePersons)
+    ? params.externalResourcePersons
+    : (params.externalResourcePersons || '').split(',');
+  var extRpClean = extRp.map(function(s) { return sanitizeCellInput(String(s).trim()); }).filter(Boolean);
+
+  if (rpClean.length === 0 && extRpClean.length === 0) {
+    return { success: false, message: 'At least one Resource Person (Internal or External) is required.' };
+  }
+
+  var isAdmin = session.role === 'ADMIN';
+  var status = 'Pending';
+  if (isAdmin) {
+    var reqStatus = String(params.status || 'Approved').trim();
+    if (reqStatus === 'OPEN' || reqStatus === 'Approved') {
+      status = 'Approved';
+    } else {
+      status = reqStatus;
+    }
+  }
   
   var lock = LockService.getScriptLock();
   try {
@@ -1844,7 +1990,7 @@ function handleAddUpcomingClass(params, session) {
   
   try {
     var sheet = getOrCreateSheet('Upcoming Classes', [
-      'Class ID', 'Topic', 'Area', 'Date', 'Time', 'Duration', 'Resource Person Emp Id', 'Mode', 'Description', 'Max Participants', 'Status'
+      'Class ID', 'Topic', 'Area', 'Date', 'Time', 'Duration', 'Resource Person Emp Id', 'Mode', 'Description', 'Max Participants', 'Status', 'To Date', 'External Resource Persons', 'Proposed By', 'Admin Remarks'
     ]);
     
     var curYear = new Date().getFullYear();
@@ -1859,15 +2005,23 @@ function handleAddUpcomingClass(params, session) {
       date,
       params.time || '14:00',
       sanitizeCellInput(params.duration || '1:00:00'),
-      rpEmpId,
+      rpClean.join(', '),
       sanitizeCellInput(params.modeOfTeaching || 'Lecture Cum Discussion'),
       sanitizeCellInput(params.description || ''),
       parseInt(params.maxParticipants, 10) || 50,
-      status
+      status,
+      toDate,
+      extRpClean.join(', '),
+      session.employeeId || '',
+      sanitizeCellInput(params.adminRemarks || '')
     ]);
     
-    logAuditAction('ADD_UPCOMING_CLASS', session.employeeId, 'Scheduled class: ' + classId + ' (' + topic + ')', 'SUCCESS');
-    return { success: true, message: 'Upcoming class scheduled successfully.', data: { classId: classId } };
+    logAuditAction('ADD_UPCOMING_CLASS', session.employeeId, 'Scheduled class: ' + classId + ' (' + topic + ') Status: ' + status, 'SUCCESS');
+    return { 
+      success: true, 
+      message: status === 'Pending' ? 'CNE class proposal submitted for Admin approval.' : 'Upcoming class scheduled successfully.', 
+      data: { classId: classId, status: status } 
+    };
   } finally {
     lock.releaseLock();
   }
@@ -1901,13 +2055,41 @@ function handleUpdateUpcomingClass(params, session) {
         if (params.time !== undefined) sheet.getRange(r + 1, 5).setValue(params.time);
         if (params.duration !== undefined) sheet.getRange(r + 1, 6).setValue(sanitizeCellInput(params.duration));
         
-        if (params.resourcePersonEmpId !== undefined) {
-          var rpEmpId = normalizeEmpId(params.resourcePersonEmpId);
-          var rpOfficer = findOfficerById(rpEmpId);
-          if (!rpOfficer) {
-            return { success: false, message: 'Resource Person Employee ID (' + rpEmpId + ') not found in master roster.' };
+        if (params.resourcePersonEmpId !== undefined || params.externalResourcePersons !== undefined) {
+          var inputRp = Array.isArray(params.resourcePersonEmpId) 
+            ? params.resourcePersonEmpId 
+            : (params.resourcePersonEmpId || '').split(',');
+          var cleanRpMap = {};
+          var rpClean = [];
+          var invalidRpIds = [];
+
+          for (var i = 0; i < inputRp.length; i++) {
+            var rpid = normalizeEmpId(inputRp[i]);
+            if (rpid && !cleanRpMap[rpid]) {
+              cleanRpMap[rpid] = true;
+              var rpOfficerCheck = findOfficerById(rpid);
+              if (!rpOfficerCheck) {
+                invalidRpIds.push(rpid);
+              } else {
+                rpClean.push(rpid);
+              }
+            }
           }
-          sheet.getRange(r + 1, 7).setValue(rpEmpId);
+
+          if (invalidRpIds.length > 0) {
+            return {
+              success: false,
+              message: 'Invalid Resource Person Employee ID(s) not found in master roster: ' + invalidRpIds.join(', ')
+            };
+          }
+
+          var extRp = Array.isArray(params.externalResourcePersons)
+            ? params.externalResourcePersons
+            : (params.externalResourcePersons || '').split(',');
+          var extRpClean = extRp.map(function(s) { return sanitizeCellInput(String(s).trim()); }).filter(Boolean);
+
+          sheet.getRange(r + 1, 7).setValue(rpClean.join(', '));
+          sheet.getRange(r + 1, 13).setValue(extRpClean.join(', '));
         }
         
         if (params.modeOfTeaching !== undefined) sheet.getRange(r + 1, 8).setValue(sanitizeCellInput(params.modeOfTeaching));
@@ -1915,19 +2097,56 @@ function handleUpdateUpcomingClass(params, session) {
         if (params.maxParticipants !== undefined) sheet.getRange(r + 1, 10).setValue(parseInt(params.maxParticipants, 10) || 50);
         
         if (params.status !== undefined) {
-          var rawStatus = String(params.status).toUpperCase().trim();
-          var allowedStatuses = ['OPEN', 'CLOSED', 'CANCELLED'];
-          if (allowedStatuses.indexOf(rawStatus) === -1) {
-            return { success: false, message: 'Invalid status. Allowed values: OPEN, CLOSED, CANCELLED.' };
-          }
+          var rawStatus = String(params.status).trim();
           sheet.getRange(r + 1, 11).setValue(rawStatus);
         }
+        if (params.toDate !== undefined) sheet.getRange(r + 1, 12).setValue(params.toDate);
+        if (params.adminRemarks !== undefined) sheet.getRange(r + 1, 15).setValue(sanitizeCellInput(params.adminRemarks));
         
         logAuditAction('UPDATE_UPCOMING_CLASS', session.employeeId, 'Updated class: ' + classId, 'SUCCESS');
         return { success: true, message: 'Upcoming class updated successfully.' };
       }
     }
     return { success: false, message: 'Class not found.' };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function handleReviewUpcomingClass(params, session) {
+  var adminError = requireAdmin(session);
+  if (adminError) return adminError;
+
+  var classId = (params.classId || '').trim();
+  var newStatus = (params.status || '').trim();
+  var adminRemarks = sanitizeCellInput(params.adminRemarks || params.remarks || '');
+
+  if (newStatus !== 'Approved' && newStatus !== 'Rejected' && newStatus !== 'Pending') {
+    return { success: false, message: 'Status must be Pending, Approved, or Rejected.' };
+  }
+
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { success: false, message: 'Server is busy. Please try again.' };
+  }
+
+  try {
+    var ss = getSpreadsheet('CNE');
+    var sheet = ss.getSheetByName('Upcoming Classes');
+    if (!sheet) return { success: false, message: 'Upcoming Classes sheet not found.' };
+
+    var data = sheet.getDataRange().getValues();
+    for (var r = 1; r < data.length; r++) {
+      if (String(data[r][0]).trim().toLowerCase() === classId.toLowerCase()) {
+        sheet.getRange(r + 1, 11).setValue(newStatus);
+        sheet.getRange(r + 1, 15).setValue(adminRemarks);
+        logAuditAction('REVIEW_UPCOMING_CLASS', session.employeeId, 'Class ID ' + classId + ' set to ' + newStatus + ' with remarks: ' + adminRemarks, 'SUCCESS');
+        return { success: true, message: 'Upcoming CNE class has been ' + newStatus.toLowerCase() + '.' };
+      }
+    }
+    return { success: false, message: 'Upcoming class with ID ' + classId + ' not found.' };
   } finally {
     lock.releaseLock();
   }

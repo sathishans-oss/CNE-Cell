@@ -26,7 +26,7 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedYear, setSelectedYear] = useState<string>('2026');
+  const [selectedYear, setSelectedYear] = useState<string>('2026-2027');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedRecord, setSelectedRecord] = useState<CNERecord | null>(null);
@@ -53,13 +53,23 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
     }
   };
 
+  // Assessment Year helper (1 April to 31 March)
+  const isDateInAssessmentYear = (dateStr: string, ayKey: string): boolean => {
+    if (ayKey === 'ALL') return true;
+    const startYear = parseInt(ayKey.split('-')[0], 10);
+    if (isNaN(startYear)) return true;
+    const ayStart = `${startYear}-04-01`;
+    const ayEnd = `${startYear + 1}-03-31`;
+    return dateStr >= ayStart && dateStr <= ayEnd;
+  };
+
   // Filter logic
   const filteredRecords = useMemo(() => {
     return records.filter((rec) => {
-      // Year filter
-      if (selectedYear !== 'ALL') {
-        const recYear = new Date(rec.fromDate).getFullYear().toString();
-        if (recYear !== selectedYear) return false;
+      // Assessment Year filter (1 April - 31 March)
+      const recDate = rec.fromDate || rec.toDate || '';
+      if (!isDateInAssessmentYear(recDate, selectedYear)) {
+        return false;
       }
 
       // Date Range filter
@@ -73,7 +83,8 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
         const matchArea = rec.area.toLowerCase().includes(q);
         const matchMode = rec.modeOfTeaching.toLowerCase().includes(q);
         const matchRp = (rec.resourcePersonName || rec.resourcePersonEmpId).toLowerCase().includes(q);
-        if (!matchTopic && !matchArea && !matchMode && !matchRp) return false;
+        const matchExtRp = rec.externalResourcePersons?.some(p => p.toLowerCase().includes(q));
+        if (!matchTopic && !matchArea && !matchMode && !matchRp && !matchExtRp) return false;
       }
 
       return true;
@@ -95,15 +106,15 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
   }, [filteredRecords]);
 
   const handleGeneratePdf = async () => {
-    const yearToExport = selectedYear === 'ALL' ? new Date().getFullYear() : parseInt(selectedYear, 10);
+    const ayDisplay = selectedYear === 'ALL' ? '2026–2027' : selectedYear.replace('-', '–');
     if (filteredRecords.length === 0) {
-      error(`No CNE records found for the selected filter (${yearToExport}).`);
+      error(`No CNE records found for Assessment Year ${ayDisplay}.`);
       return;
     }
     setIsGeneratingPdf(true);
     try {
-      generateAnnualCNEPdf(user, filteredRecords, yearToExport);
-      success(`Annual CNE Record for ${yearToExport} downloaded successfully.`, 'PDF Generated');
+      generateAnnualCNEPdf(user, filteredRecords, ayDisplay);
+      success(`Annual CNE Record for AY ${ayDisplay} downloaded successfully.`, 'PDF Generated');
     } catch (e: any) {
       error('Failed to generate PDF document.');
     } finally {
@@ -184,9 +195,10 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
               onChange={(e) => setSelectedYear(e.target.value)}
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:bg-white font-semibold text-slate-800"
             >
-              <option value="2026">Assessment Year 2026</option>
-              <option value="2025">Assessment Year 2025</option>
-              <option value="2024">Assessment Year 2024</option>
+              <option value="2026-2027">Assessment Year 2026–2027 (1 Apr 2026 – 31 Mar 2027)</option>
+              <option value="2025-2026">Assessment Year 2025–2026 (1 Apr 2025 – 31 Mar 2026)</option>
+              <option value="2024-2025">Assessment Year 2024–2025 (1 Apr 2024 – 31 Mar 2025)</option>
+              <option value="2023-2024">Assessment Year 2023–2024 (1 Apr 2023 – 31 Mar 2024)</option>
               <option value="ALL">All Recorded Years</option>
             </select>
           </div>
@@ -225,11 +237,11 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
             </span>
           </div>
 
-          {(searchTerm || startDate || endDate || selectedYear !== '2026') && (
+          {(searchTerm || startDate || endDate || selectedYear !== '2026-2027') && (
             <button
               onClick={() => {
                 setSearchTerm('');
-                setSelectedYear('2026');
+                setSelectedYear('2026-2027');
                 setStartDate('');
                 setEndDate('');
               }}
@@ -276,7 +288,7 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredRecords.map((rec, index) => {
-                    const isResourcePerson = rec.resourcePersonEmpId.toLowerCase() === user.employeeId.toLowerCase();
+                    const isResourcePerson = (rec.resourcePersonEmpId || '').toLowerCase().includes((user.employeeId || '').toLowerCase());
                     return (
                       <tr
                         key={rec.dataId}
@@ -428,9 +440,12 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
                   <span className="font-semibold text-slate-900 mt-0.5 block">{selectedRecord.modeOfTeaching}</span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="block text-slate-500 font-semibold uppercase text-[10px]">Resource Person</span>
+                  <span className="block text-slate-500 font-semibold uppercase text-[10px]">Resource Person(s)</span>
                   <span className="font-semibold text-slate-900 mt-0.5 block">
-                    {selectedRecord.resourcePersonName || selectedRecord.resourcePersonEmpId}
+                    {[
+                      selectedRecord.resourcePersonName || selectedRecord.resourcePersonEmpId,
+                      ...(selectedRecord.externalResourcePersons?.map(p => `${p} (External)`) || [])
+                    ].filter(Boolean).join(', ')}
                   </span>
                 </div>
               </div>
