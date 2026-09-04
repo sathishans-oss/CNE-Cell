@@ -1,5 +1,7 @@
 /**
  * Google Apps Script Source Export
+ * Authoritative source: Code.gs
+ * This file is automatically synchronized from Code.gs
  */
 export const APPS_SCRIPT_SOURCE_CODE = `/**
  * ============================================================================
@@ -291,6 +293,10 @@ function handleRequest(e, method) {
         output = handleGetQuickLinks(params);
         break;
         
+      case 'getCoordinatorDesk':
+        output = handleGetCoordinatorDesk(params);
+        break;
+        
       case 'getProgramImpact':
         output = handleGetProgramImpact(params, session);
         break;
@@ -368,6 +374,10 @@ function handleRequest(e, method) {
         output = handleAdminAction(params, session, handleUpdateGalleryItem, 'UPDATE_GALLERY');
         break;
         
+      case 'deleteGalleryItem':
+        output = handleAdminAction(params, session, handleDeleteGalleryItem, 'DELETE_GALLERY');
+        break;
+        
       case 'addNewsEvent':
         output = handleAdminAction(params, session, handleAddNewsEvent, 'ADD_NEWS');
         break;
@@ -382,6 +392,22 @@ function handleRequest(e, method) {
         
       case 'updateChairpersonMessage':
         output = handleAdminAction(params, session, handleUpdateChairpersonMessage, 'UPDATE_CHAIRPERSON_MSG');
+        break;
+        
+      case 'updateCoordinatorDesk':
+        output = handleAdminAction(params, session, handleUpdateCoordinatorDesk, 'UPDATE_COORDINATOR_DESK');
+        break;
+        
+      case 'addQuickLink':
+        output = handleAdminAction(params, session, handleAddQuickLink, 'ADD_QUICK_LINK');
+        break;
+        
+      case 'updateQuickLink':
+        output = handleAdminAction(params, session, handleUpdateQuickLink, 'UPDATE_QUICK_LINK');
+        break;
+        
+      case 'deleteQuickLink':
+        output = handleAdminAction(params, session, handleDeleteQuickLink, 'DELETE_QUICK_LINK');
         break;
         
       case 'initializeSheets':
@@ -881,7 +907,7 @@ function findOfficerById(employeeId) {
 }
 
 /**
- * Officers Dropdown (Admin Only, Sanitized: NO Aadhaar, UAN, DOJ, DOB exposed)
+ * Officers Dropdown (Admin Only, Sanitized: ONLY employeeId, name, designation returned)
  */
 function handleGetOfficersDropdown(params, session) {
   var adminError = requireAdmin(session);
@@ -910,10 +936,12 @@ function handleGetOfficersDropdown(params, session) {
       var empId = String((displayData[r] && displayData[r][colMap.empCol]) || data[r][colMap.empCol] || '').trim();
       var name = String((displayData[r] && displayData[r][colMap.nameCol]) || data[r][colMap.nameCol] || '').trim();
       var desig = (colMap.desigCol !== -1) ? String((displayData[r] && displayData[r][colMap.desigCol]) || data[r][colMap.desigCol] || '').trim() : '';
-      var empType = (colMap.empTypeCol !== -1) ? String((displayData[r] && displayData[r][colMap.empTypeCol]) || data[r][colMap.empTypeCol] || '').trim() : '';
-      var contact = (colMap.contactCol !== -1) ? String((displayData[r] && displayData[r][colMap.contactCol]) || data[r][colMap.contactCol] || '').trim() : '';
       if (empId) {
-        list.push({ employeeId: empId, name: name, designation: desig, employmentType: empType, contactNo: contact });
+        list.push({
+          employeeId: empId,
+          name: name,
+          designation: desig
+        });
       }
     }
   }
@@ -2297,6 +2325,39 @@ function handleUpdateGalleryItem(params, session) {
   }
 }
 
+function handleDeleteGalleryItem(params, session) {
+  var adminError = requireAdmin(session);
+  if (adminError) return adminError;
+
+  var id = (params.id || '').trim();
+  if (!id) return { success: false, message: 'Item ID is required.' };
+  
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { success: false, message: 'Server is busy. Please try again.' };
+  }
+  
+  try {
+    var ss = getSpreadsheet('CNE');
+    var sheet = ss.getSheetByName('Gallery');
+    if (!sheet) return { success: false, message: 'Gallery sheet not found.' };
+    
+    var data = sheet.getDataRange().getValues();
+    for (var r = 1; r < data.length; r++) {
+      if (String(data[r][0]).trim().toLowerCase() === id.toLowerCase()) {
+        sheet.getRange(r + 1, 9).setValue('INACTIVE');
+        logAuditAction('DELETE_GALLERY', session.employeeId, 'Deactivated Gallery Photo ID: ' + id, 'SUCCESS');
+        return { success: true, message: 'Photo deactivated from gallery successfully.' };
+      }
+    }
+    return { success: false, message: 'Gallery item not found.' };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 /**
  * 7. Secure Role Management (With Last Administrator Protection)
  */
@@ -2678,7 +2739,18 @@ function handleUpdateChairpersonMessage(params, session) {
  * 13. Institutional Quick Links (Public Read-Only)
  */
 function handleGetQuickLinks(params) {
-  var links = [
+  var props = PropertiesService.getScriptProperties();
+  var custom = props.getProperty('QUICK_LINKS_CUSTOM');
+  if (custom) {
+    try {
+      var parsed = JSON.parse(custom);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return { success: true, data: parsed };
+      }
+    } catch (e) {}
+  }
+
+  var defaultLinks = [
     {
       id: 'ql-upcoming',
       title: 'Upcoming CNE Schedule',
@@ -2737,7 +2809,132 @@ function handleGetQuickLinks(params) {
       url: 'https://indiannursingcouncil.org'
     }
   ];
-  return { success: true, data: links };
+  return { success: true, data: defaultLinks };
+}
+
+function handleAddQuickLink(params, session) {
+  var adminError = requireAdmin(session);
+  if (adminError) return adminError;
+
+  var title = sanitizeCellInput(params.title || '');
+  if (!title) return { success: false, message: 'Link title is required.' };
+
+  var currentLinksRes = handleGetQuickLinks({});
+  var links = currentLinksRes.data || [];
+
+  var newId = 'ql-' + Date.now();
+  var newLink = {
+    id: newId,
+    title: title,
+    description: sanitizeCellInput(params.description || ''),
+    iconName: sanitizeCellInput(params.iconName || 'Link'),
+    target: sanitizeCellInput(params.target || params.url || ''),
+    badge: sanitizeCellInput(params.badge || ''),
+    actionType: params.actionType || (params.target && params.target.startsWith('http') ? 'external' : 'navigate'),
+    url: sanitizeCellInput(params.url || (params.target && params.target.startsWith('http') ? params.target : ''))
+  };
+
+  links.push(newLink);
+  PropertiesService.getScriptProperties().setProperty('QUICK_LINKS_CUSTOM', JSON.stringify(links));
+  logAuditAction('ADD_QUICK_LINK', session.employeeId, 'Added Quick Link: ' + title, 'SUCCESS');
+  return { success: true, message: 'Quick Link added successfully.', data: { id: newId } };
+}
+
+function handleUpdateQuickLink(params, session) {
+  var adminError = requireAdmin(session);
+  if (adminError) return adminError;
+
+  var id = (params.id || '').trim();
+  if (!id) return { success: false, message: 'Link ID is required.' };
+
+  var currentLinksRes = handleGetQuickLinks({});
+  var links = currentLinksRes.data || [];
+  var found = false;
+
+  for (var i = 0; i < links.length; i++) {
+    if (links[i].id === id) {
+      if (params.title !== undefined) links[i].title = sanitizeCellInput(params.title);
+      if (params.description !== undefined) links[i].description = sanitizeCellInput(params.description);
+      if (params.iconName !== undefined) links[i].iconName = sanitizeCellInput(params.iconName);
+      if (params.target !== undefined) links[i].target = sanitizeCellInput(params.target);
+      if (params.badge !== undefined) links[i].badge = sanitizeCellInput(params.badge);
+      if (params.actionType !== undefined) links[i].actionType = params.actionType;
+      if (params.url !== undefined) links[i].url = sanitizeCellInput(params.url);
+      found = true;
+      break;
+    }
+  }
+
+  if (!found) return { success: false, message: 'Quick link not found.' };
+
+  PropertiesService.getScriptProperties().setProperty('QUICK_LINKS_CUSTOM', JSON.stringify(links));
+  logAuditAction('UPDATE_QUICK_LINK', session.employeeId, 'Updated Quick Link ID: ' + id, 'SUCCESS');
+  return { success: true, message: 'Quick link updated successfully.' };
+}
+
+function handleDeleteQuickLink(params, session) {
+  var adminError = requireAdmin(session);
+  if (adminError) return adminError;
+
+  var id = (params.id || '').trim();
+  if (!id) return { success: false, message: 'Link ID is required.' };
+
+  var currentLinksRes = handleGetQuickLinks({});
+  var links = currentLinksRes.data || [];
+  var initialLen = links.length;
+  links = links.filter(function(l) { return l.id !== id; });
+
+  if (links.length === initialLen) return { success: false, message: 'Quick link not found.' };
+
+  PropertiesService.getScriptProperties().setProperty('QUICK_LINKS_CUSTOM', JSON.stringify(links));
+  logAuditAction('DELETE_QUICK_LINK', session.employeeId, 'Deleted Quick Link ID: ' + id, 'SUCCESS');
+  return { success: true, message: 'Quick link removed successfully.' };
+}
+
+/**
+ * 13a. Coordinator Desk (Public Read, Admin Write)
+ */
+function handleGetCoordinatorDesk(params) {
+  var props = PropertiesService.getScriptProperties();
+  var note = props.getProperty('COORDINATOR_NOTE') || 'Have questions regarding class credits, attendance verification, or training schedules?';
+  var namesRaw = props.getProperty('COORDINATOR_NAMES');
+  var coordinators = ['Ms. Suman Choudhary', 'Ms. Ramya T'];
+  if (namesRaw) {
+    try {
+      var parsed = JSON.parse(namesRaw);
+      if (Array.isArray(parsed) && parsed.length > 0) coordinators = parsed;
+    } catch (e) {
+      coordinators = namesRaw.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    }
+  }
+  var email = props.getProperty('COORDINATOR_EMAIL') || 'training.nur@aiimsrishikesh.edu.in';
+
+  return {
+    success: true,
+    data: {
+      note: note,
+      coordinators: coordinators,
+      email: email
+    }
+  };
+}
+
+function handleUpdateCoordinatorDesk(params, session) {
+  var adminError = requireAdmin(session);
+  if (adminError) return adminError;
+
+  var props = PropertiesService.getScriptProperties();
+  if (params.note !== undefined) props.setProperty('COORDINATOR_NOTE', sanitizeCellInput(params.note));
+  if (params.email !== undefined) props.setProperty('COORDINATOR_EMAIL', sanitizeCellInput(params.email));
+  if (params.coordinators !== undefined) {
+    var coords = Array.isArray(params.coordinators) 
+      ? params.coordinators.map(function(c) { return sanitizeCellInput(c); }).filter(Boolean)
+      : [sanitizeCellInput(params.coordinators)];
+    props.setProperty('COORDINATOR_NAMES', JSON.stringify(coords));
+  }
+
+  logAuditAction('UPDATE_COORDINATOR_DESK', session.employeeId, 'Updated Coordinator Desk info', 'SUCCESS');
+  return handleGetCoordinatorDesk(params);
 }
 
 /**

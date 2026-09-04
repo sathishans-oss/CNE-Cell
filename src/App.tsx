@@ -20,7 +20,7 @@ import { AdminRoles } from './components/AdminRoles';
 import { AdminApplications } from './components/AdminApplications';
 import { AdminReports } from './components/AdminReports';
 import { AdminContent } from './components/AdminContent';
-import { AlertTriangle, Database, FlaskConical, Wrench } from 'lucide-react';
+import { AlertTriangle, Database, Wrench } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const [user, setUser] = useState<SessionUser | null>(() => ApiService.getSessionUser());
@@ -37,8 +37,6 @@ const AppContent: React.FC = () => {
   const { success, info } = useToast();
 
   const isLive = ApiService.isLiveBackendConnected();
-  const envMode = ApiService.getEnvironmentMode();
-  const isSandbox = envMode === 'sandbox';
 
   const handleLoginSuccess = (loggedInUser: SessionUser) => {
     setUser(loggedInUser);
@@ -92,26 +90,8 @@ const AppContent: React.FC = () => {
         />
       )}
 
-      {/* Institutional Environment Warning Banners */}
-      {isSandbox ? (
-        <div className="bg-amber-500 text-slate-950 px-4 py-2 text-xs font-bold flex items-center justify-between shadow-xs">
-          <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-4">
-            <span className="flex items-center gap-2">
-              <FlaskConical className="w-4 h-4" />
-              <span>
-                SANDBOX MODE ACTIVE: Running in local offline test mode. Data changes are temporary and NOT saved to Google Sheets.
-              </span>
-            </span>
-            <button
-              type="button"
-              onClick={() => setIsSetupModalOpen(true)}
-              className="underline hover:text-white text-[11px] font-semibold cursor-pointer shrink-0"
-            >
-              Switch to Production
-            </button>
-          </div>
-        </div>
-      ) : !isLive ? (
+      {/* Institutional Environment Warning Banner */}
+      {!isLive && (
         <div className="bg-rose-600 text-white px-4 py-2.5 text-xs font-bold flex items-center justify-between shadow-xs">
           <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-4">
             <span className="flex items-center gap-2">
@@ -129,7 +109,7 @@ const AppContent: React.FC = () => {
             </button>
           </div>
         </div>
-      ) : null}
+      )}
 
       <div className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-12">
         {/* Main Content Area */}

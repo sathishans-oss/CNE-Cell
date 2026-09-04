@@ -12,7 +12,8 @@ import {
   PlusCircle,
   X,
   Search,
-  Filter
+  Filter,
+  Loader2
 } from 'lucide-react';
 import { CNEApplication, SessionUser, UpcomingClass } from '../types';
 import { ApiService } from '../services/api';
@@ -413,7 +414,8 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 relative">
             <button
               onClick={() => setApplyingClass(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1"
+              disabled={isSubmitting}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 disabled:opacity-40 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -455,16 +457,24 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                 <button
                   type="button"
                   onClick={() => setApplyingClass(null)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium disabled:opacity-40"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
                 >
-                  {isSubmitting ? 'Submitting...' : 'Confirm Application'}
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                      <span>Submitting...</span>
+                    </>
+                  ) : (
+                    <span>Confirm Application</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -478,7 +488,8 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200 relative">
             <button
               onClick={() => setIsAddClassOpen(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1"
+              disabled={isSubmitting}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 disabled:opacity-40 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -619,16 +630,24 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsAddClassOpen(false)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium disabled:opacity-40"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
                 >
-                  {isSubmitting ? 'Publishing...' : 'Publish Upcoming Class'}
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                      <span>Publishing...</span>
+                    </>
+                  ) : (
+                    <span>Publish Upcoming Class</span>
+                  )}
                 </button>
               </div>
             </form>

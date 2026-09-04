@@ -435,10 +435,6 @@ export const INITIAL_GALLERY: GalleryItem[] = [
   }
 ];
 
-export const INITIAL_USER_CREDS: Record<string, string> = {
-  // Sandbox mock credentials (hashed/simulated)
-};
-
 export const INITIAL_CHAIRPERSON_MESSAGE: ChairpersonMessageData = {
   name: "Dr. Anita Rani Kansal",
   designation: "Chief Nursing Officer (C.N.O) & Chairperson, CNE Committee",

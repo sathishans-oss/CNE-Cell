@@ -1009,7 +1009,8 @@ export const AdminContent: React.FC<AdminContentProps> = ({
             <button
               type="button"
               onClick={() => setIsAddNewsOpen(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1"
+              disabled={newsSubmitting}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 disabled:opacity-40 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -1219,7 +1220,8 @@ export const AdminContent: React.FC<AdminContentProps> = ({
             <button
               type="button"
               onClick={() => setIsAddLinkOpen(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1"
+              disabled={linkSubmitting}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 disabled:opacity-40 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -1392,7 +1394,8 @@ export const AdminContent: React.FC<AdminContentProps> = ({
             <button
               type="button"
               onClick={() => setIsUploadOpen(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1"
+              disabled={photoSubmitting}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 disabled:opacity-40 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>

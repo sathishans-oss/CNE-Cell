@@ -902,7 +902,7 @@ function findOfficerById(employeeId) {
 }
 
 /**
- * Officers Dropdown (Admin Only, Sanitized: NO Aadhaar, UAN, DOJ, DOB exposed)
+ * Officers Dropdown (Admin Only, Sanitized: ONLY employeeId, name, designation returned)
  */
 function handleGetOfficersDropdown(params, session) {
   var adminError = requireAdmin(session);
@@ -931,10 +931,12 @@ function handleGetOfficersDropdown(params, session) {
       var empId = String((displayData[r] && displayData[r][colMap.empCol]) || data[r][colMap.empCol] || '').trim();
       var name = String((displayData[r] && displayData[r][colMap.nameCol]) || data[r][colMap.nameCol] || '').trim();
       var desig = (colMap.desigCol !== -1) ? String((displayData[r] && displayData[r][colMap.desigCol]) || data[r][colMap.desigCol] || '').trim() : '';
-      var empType = (colMap.empTypeCol !== -1) ? String((displayData[r] && displayData[r][colMap.empTypeCol]) || data[r][colMap.empTypeCol] || '').trim() : '';
-      var contact = (colMap.contactCol !== -1) ? String((displayData[r] && displayData[r][colMap.contactCol]) || data[r][colMap.contactCol] || '').trim() : '';
       if (empId) {
-        list.push({ employeeId: empId, name: name, designation: desig, employmentType: empType, contactNo: contact });
+        list.push({
+          employeeId: empId,
+          name: name,
+          designation: desig
+        });
       }
     }
   }

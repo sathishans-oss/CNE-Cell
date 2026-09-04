@@ -24,6 +24,7 @@ interface MyCNEProps {
 export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
   const [records, setRecords] = useState<CNERecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedYear, setSelectedYear] = useState<string>('2026');
   const [startDate, setStartDate] = useState('');
@@ -93,14 +94,21 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
     return `${hrs}h ${mins > 0 ? `${mins}m` : ''}`;
   }, [filteredRecords]);
 
-  const handleGeneratePdf = () => {
+  const handleGeneratePdf = async () => {
     const yearToExport = selectedYear === 'ALL' ? new Date().getFullYear() : parseInt(selectedYear, 10);
     if (filteredRecords.length === 0) {
       error(`No CNE records found for the selected filter (${yearToExport}).`);
       return;
     }
-    generateAnnualCNEPdf(user, filteredRecords, yearToExport);
-    success(`Annual CNE Record for ${yearToExport} downloaded successfully.`, 'PDF Generated');
+    setIsGeneratingPdf(true);
+    try {
+      generateAnnualCNEPdf(user, filteredRecords, yearToExport);
+      success(`Annual CNE Record for ${yearToExport} downloaded successfully.`, 'PDF Generated');
+    } catch (e: any) {
+      error('Failed to generate PDF document.');
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
   return (
@@ -124,8 +132,8 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
           <button
             id="btn-refresh-my-cne"
             onClick={loadMyRecords}
-            disabled={loading}
-            className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+            disabled={loading || isGeneratingPdf}
+            className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors disabled:opacity-40"
             title="Refresh records"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -134,10 +142,20 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
           <button
             id="btn-generate-annual-cne-pdf"
             onClick={handleGeneratePdf}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm shadow-xs transition-all cursor-pointer"
+            disabled={isGeneratingPdf || loading}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm shadow-xs transition-all cursor-pointer disabled:opacity-50"
           >
-            <FileDown className="w-4 h-4 text-emerald-400" />
-            <span>Generate Annual CNE Record</span>
+            {isGeneratingPdf ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" />
+                <span>Generating PDF...</span>
+              </>
+            ) : (
+              <>
+                <FileDown className="w-4 h-4 text-emerald-400" />
+                <span>Generate Annual CNE Record</span>
+              </>
+            )}
           </button>
         </div>
       </div>

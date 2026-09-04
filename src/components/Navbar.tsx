@@ -6,7 +6,6 @@ import {
   Database,
   CheckCircle2,
   AlertTriangle,
-  FlaskConical,
   LogIn
 } from 'lucide-react';
 import { SessionUser } from '../types';
@@ -28,8 +27,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenLogin
 }) => {
   const isLive = ApiService.isLiveBackendConnected();
-  const envMode = ApiService.getEnvironmentMode();
-  const isSandbox = envMode === 'sandbox';
 
   return (
     <header id="cne-navbar" className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-xs">
@@ -65,19 +62,12 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={onOpenBackendSetup}
               title="Google Sheets & Apps Script Configuration"
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
-                isSandbox
-                  ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
-                  : isLive
+                isLive
                   ? 'bg-teal-50 text-teal-800 border-teal-300 hover:bg-teal-100'
                   : 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100'
               }`}
             >
-              {isSandbox ? (
-                <>
-                  <FlaskConical className="w-3.5 h-3.5 text-amber-600" />
-                  <span className="hidden md:inline">Sandbox Mode</span>
-                </>
-              ) : isLive ? (
+              {isLive ? (
                 <>
                   <Database className="w-3.5 h-3.5 text-teal-600" />
                   <span className="hidden md:inline">Google Sheets Live</span>

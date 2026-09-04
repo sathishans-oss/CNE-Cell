@@ -7,7 +7,8 @@ import {
   UserCheck,
   Search,
   Filter,
-  RefreshCw
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 import { CNEApplication, SessionUser, UpcomingClass } from '../types';
 import { ApiService } from '../services/api';
@@ -24,6 +25,7 @@ export const AdminApplications: React.FC<AdminApplicationsProps> = () => {
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [classFilter, setClassFilter] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
+  const [updatingAppId, setUpdatingAppId] = useState<string | null>(null);
 
   const { success, error } = useToast();
 
@@ -52,6 +54,8 @@ export const AdminApplications: React.FC<AdminApplicationsProps> = () => {
     applicationId: string,
     newStatus: CNEApplication['status']
   ) => {
+    if (updatingAppId) return;
+    setUpdatingAppId(applicationId);
     try {
       const res = await ApiService.updateApplicationStatus(applicationId, newStatus);
       if (res.success) {
@@ -64,6 +68,8 @@ export const AdminApplications: React.FC<AdminApplicationsProps> = () => {
       }
     } catch (err: any) {
       error('Error updating status.');
+    } finally {
+      setUpdatingAppId(null);
     }
   };
 
@@ -216,34 +222,46 @@ export const AdminApplications: React.FC<AdminApplicationsProps> = () => {
 
                     <td className="py-3 px-4 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1.5">
-                        {app.status !== 'Approved' && (
-                          <button
-                            onClick={() => handleUpdateStatus(app.applicationId, 'Approved')}
-                            className="px-2 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded font-semibold text-[11px]"
-                            title="Approve candidate"
-                          >
-                            Approve
-                          </button>
-                        )}
+                        {updatingAppId === app.applicationId ? (
+                          <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-100 text-slate-700 rounded text-[11px] font-semibold">
+                            <Loader2 className="w-3 h-3 animate-spin text-emerald-600" />
+                            <span>Updating...</span>
+                          </div>
+                        ) : (
+                          <>
+                            {app.status !== 'Approved' && (
+                              <button
+                                onClick={() => handleUpdateStatus(app.applicationId, 'Approved')}
+                                disabled={updatingAppId !== null}
+                                className="px-2.5 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded font-semibold text-[11px] disabled:opacity-40 cursor-pointer"
+                                title="Approve candidate"
+                              >
+                                Approve
+                              </button>
+                            )}
 
-                        {app.status !== 'Attended' && (
-                          <button
-                            onClick={() => handleUpdateStatus(app.applicationId, 'Attended')}
-                            className="px-2 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded font-semibold text-[11px]"
-                            title="Mark as Attended & completed"
-                          >
-                            Attended
-                          </button>
-                        )}
+                            {app.status !== 'Attended' && (
+                              <button
+                                onClick={() => handleUpdateStatus(app.applicationId, 'Attended')}
+                                disabled={updatingAppId !== null}
+                                className="px-2.5 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded font-semibold text-[11px] disabled:opacity-40 cursor-pointer"
+                                title="Mark as Attended & completed"
+                              >
+                                Attended
+                              </button>
+                            )}
 
-                        {app.status !== 'Rejected' && (
-                          <button
-                            onClick={() => handleUpdateStatus(app.applicationId, 'Rejected')}
-                            className="px-2 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded font-semibold text-[11px]"
-                            title="Reject candidate"
-                          >
-                            Reject
-                          </button>
+                            {app.status !== 'Rejected' && (
+                              <button
+                                onClick={() => handleUpdateStatus(app.applicationId, 'Rejected')}
+                                disabled={updatingAppId !== null}
+                                className="px-2.5 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded font-semibold text-[11px] disabled:opacity-40 cursor-pointer"
+                                title="Reject candidate"
+                              >
+                                Reject
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     </td>

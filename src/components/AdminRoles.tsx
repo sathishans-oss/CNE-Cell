@@ -7,7 +7,8 @@ import {
   AlertCircle,
   RefreshCw,
   KeyRound,
-  Loader2
+  Loader2,
+  X
 } from 'lucide-react';
 import { Employee, RoleConfig, SessionUser, UserRole } from '../types';
 import { ApiService } from '../services/api';
@@ -24,6 +25,7 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [resettingId, setResettingId] = useState<string | null>(null);
   const [updatingEmpId, setUpdatingEmpId] = useState<string | null>(null);
+  const [confirmResetOfficer, setConfirmResetOfficer] = useState<{ empId: string; name: string } | null>(null);
 
   const { success, error } = useToast();
 
@@ -92,16 +94,14 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
     }
   };
 
-  const handleAdminResetPassword = async (empId: string, name: string) => {
-    if (!window.confirm(`Reset password for ${name} (${empId}) to default "pass1234"?`)) {
-      return;
-    }
-
+  const executeAdminResetPassword = async (empId: string, name: string) => {
+    if (resettingId) return;
     setResettingId(empId);
     try {
       const res = await ApiService.adminResetPassword(empId);
       if (res.success) {
         success(res.message || `Password for ${name} reset to pass1234`, 'Password Reset');
+        setConfirmResetOfficer(null);
       } else {
         error(res.message || 'Failed to reset password.');
       }
@@ -228,9 +228,9 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
                       <td className="py-3 px-4 text-right whitespace-nowrap">
                         <button
                           type="button"
-                          onClick={() => handleAdminResetPassword(officer.employeeId, officer.name)}
+                          onClick={() => setConfirmResetOfficer({ empId: officer.employeeId, name: officer.name })}
                           disabled={isResetting || updatingEmpId === officer.employeeId}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
                           title="Reset employee password to default pass1234"
                         >
                           {isResetting ? (
@@ -249,6 +249,48 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
           </div>
         )}
       </div>
+
+      {/* Admin Reset Password Confirmation Modal */}
+      {confirmResetOfficer && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-200 text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-700 mx-auto flex items-center justify-center">
+              <KeyRound className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Reset Employee Password?</h3>
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                Reset password for <strong className="text-slate-800">{confirmResetOfficer.name}</strong> ({confirmResetOfficer.empId}) to the default credentials: <code className="bg-slate-100 px-1 py-0.5 rounded font-mono font-bold text-amber-700">pass1234</code>?
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmResetOfficer(null)}
+                disabled={resettingId !== null}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => executeAdminResetPassword(confirmResetOfficer.empId, confirmResetOfficer.name)}
+                disabled={resettingId !== null}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg disabled:opacity-50 cursor-pointer"
+              >
+                {resettingId === confirmResetOfficer.empId ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Resetting Password...</span>
+                  </>
+                ) : (
+                  <span>Reset to pass1234</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

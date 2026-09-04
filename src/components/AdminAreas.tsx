@@ -316,7 +316,8 @@ export const AdminAreas: React.FC<AdminAreasProps> = () => {
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 relative">
             <button
               onClick={() => setIsAddOpen(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1"
+              disabled={isSubmitting}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 disabled:opacity-40"
             >
               <X className="w-5 h-5" />
             </button>
@@ -350,7 +351,8 @@ export const AdminAreas: React.FC<AdminAreasProps> = () => {
                 <button
                   type="button"
                   onClick={() => setIsAddOpen(false)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium disabled:opacity-40"
                 >
                   Cancel
                 </button>

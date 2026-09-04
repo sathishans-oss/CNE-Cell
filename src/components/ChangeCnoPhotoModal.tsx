@@ -178,7 +178,8 @@ export const ChangeCnoPhotoModal: React.FC<ChangeCnoPhotoModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-emerald-200 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            disabled={saving}
+            className="p-1.5 rounded-lg text-emerald-200 hover:text-white hover:bg-white/10 transition-colors cursor-pointer disabled:opacity-40"
           >
             <X className="w-5 h-5" />
           </button>
@@ -455,6 +456,7 @@ export const ChangeCnoPhotoModal: React.FC<ChangeCnoPhotoModalProps> = ({
         <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex items-center justify-between shrink-0">
           <button
             type="button"
+            disabled={saving}
             onClick={() => {
               setPhotoUrl('https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=600&q=80');
               setBase64Image(null);
@@ -463,7 +465,7 @@ export const ChangeCnoPhotoModal: React.FC<ChangeCnoPhotoModalProps> = ({
               setDesignation('Chief Nursing Officer (C.N.O) & Chairperson, CNE Committee');
               setImgError(false);
             }}
-            className="text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 cursor-pointer"
+            className="text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>Reset to Default</span>
@@ -473,7 +475,8 @@ export const ChangeCnoPhotoModal: React.FC<ChangeCnoPhotoModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+              disabled={saving}
+              className="px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer disabled:opacity-40"
             >
               Cancel
             </button>

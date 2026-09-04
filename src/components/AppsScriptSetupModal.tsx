@@ -37,7 +37,6 @@ export const AppsScriptSetupModal: React.FC<AppsScriptSetupModalProps> = ({
       (import.meta as any).env?.VITE_APPS_SCRIPT_URL ||
       ''
   );
-  const [envMode, setEnvMode] = useState<'production' | 'sandbox'>(() => ApiService.getEnvironmentMode());
   const [isTesting, setIsTesting] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
   const [testResult, setTestResult] = useState<{
@@ -54,7 +53,6 @@ export const AppsScriptSetupModal: React.FC<AppsScriptSetupModalProps> = ({
         (import.meta as any).env?.VITE_APPS_SCRIPT_URL ||
         ''
     );
-    setEnvMode(ApiService.getEnvironmentMode());
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -64,17 +62,6 @@ export const AppsScriptSetupModal: React.FC<AppsScriptSetupModalProps> = ({
     setCopied(true);
     success('Google Apps Script backend code copied to clipboard.', 'Code Copied');
     setTimeout(() => setCopied(false), 3000);
-  };
-
-  const handleModeChange = (mode: 'production' | 'sandbox') => {
-    setEnvMode(mode);
-    ApiService.setEnvironmentMode(mode);
-    if (mode === 'production') {
-      info('Switched to Production Mode: Google Apps Script Web App is required.', 'Production Mode Active');
-    } else {
-      info('Switched to Sandbox Mode: Local offline simulation active.', 'Sandbox Mode Active');
-    }
-    if (onBackendConfigured) onBackendConfigured();
   };
 
   const handleSaveAndTest = async () => {
@@ -156,42 +143,6 @@ export const AppsScriptSetupModal: React.FC<AppsScriptSetupModalProps> = ({
           </button>
         </div>
 
-        {/* Environment Mode Switcher Banner */}
-        <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          <div>
-            <span className="font-bold text-slate-800 block">Application Environment Mode</span>
-            <span className="text-slate-500 text-[11px]">
-              {envMode === 'production'
-                ? 'Production Mode: Requires real Google Apps Script backend. No silent fallback to mock data.'
-                : 'Sandbox Mode: Local offline simulation enabled for development testing.'}
-            </span>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => handleModeChange('production')}
-              className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all ${
-                envMode === 'production'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              Production Mode
-            </button>
-            <button
-              type="button"
-              onClick={() => handleModeChange('sandbox')}
-              className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all ${
-                envMode === 'sandbox'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-              }`}
-            >
-              Sandbox (Offline Test)
-            </button>
-          </div>
-        </div>
-
         {/* Tab Navigation */}
         <div className="flex items-center gap-2 border-b border-slate-200 pt-3">
           <button
@@ -261,15 +212,24 @@ export const AppsScriptSetupModal: React.FC<AppsScriptSetupModalProps> = ({
                   <span className="w-6 h-6 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs">
                     2
                   </span>
-                  Configure Script Properties (Optional if using single Sheet)
+                  Configure Script Properties (Strict Two-Spreadsheet Architecture)
                 </div>
-                <div className="text-slate-600 pl-8 space-y-1 leading-relaxed">
-                  <p>In Apps Script, click <strong>Project Settings (gear icon) &gt; Script Properties &gt; Add script property</strong>:</p>
-                  <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-700">
-                    <li><code>DROPDOWN_SPREADSHEET_ID</code>: ID of Spreadsheet containing <code>Rosters Master Data</code> (leave empty if in same sheet).</li>
-                    <li><code>CNE_SPREADSHEET_ID</code>: ID of Spreadsheet containing CNE tabs (leave empty if in same sheet).</li>
-                    <li><code>DRIVE_FOLDER_ID</code>: Google Drive Folder ID for storing uploaded CNE activity photos.</li>
+                <div className="text-slate-600 pl-8 space-y-1.5 leading-relaxed">
+                  <p>In Apps Script, click <strong>Project Settings (gear icon) &gt; Script Properties &gt; Add script property</strong> and configure the following properties:</p>
+                  <ul className="list-disc pl-4 space-y-1.5 text-[11px] text-slate-700">
+                    <li>
+                      <code>CNE_SPREADSHEET_ID</code> <span className="text-rose-600 font-bold uppercase text-[10px] ml-1 bg-rose-50 px-1 py-0.5 rounded border border-rose-200">REQUIRED</span>: The ID of the dedicated CNE Management System Google Spreadsheet.
+                    </li>
+                    <li>
+                      <code>DROPDOWN_SPREADSHEET_ID</code> <span className="text-rose-600 font-bold uppercase text-[10px] ml-1 bg-rose-50 px-1 py-0.5 rounded border border-rose-200">REQUIRED</span>: The ID of the EXISTING Officers master spreadsheet containing the Officers/Rosters Master Data used by the application.
+                    </li>
+                    <li>
+                      <code>DRIVE_FOLDER_ID</code> <span className="text-amber-700 font-bold uppercase text-[10px] ml-1 bg-amber-50 px-1 py-0.5 rounded border border-amber-200">REQUIRED FOR IMAGE UPLOADS</span>: The Google Drive folder ID where Gallery and CNO/Chairperson images are stored.
+                    </li>
                   </ul>
+                  <p className="text-[11px] text-slate-500 pt-1">
+                    Note: The application strictly isolates operational CNE records and the institutional employee roster. Both spreadsheet IDs must be configured; single-spreadsheet and fallback modes are prohibited.
+                  </p>
                 </div>
               </div>
 
