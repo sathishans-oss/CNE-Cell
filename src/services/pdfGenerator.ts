@@ -178,7 +178,6 @@ export function generateAnnualCNEPdf(
 
   doc.line(76, sigY, 130, sigY);
   doc.text('Signature of CNE Coordinator', 76, sigY + 5);
-  doc.text('(Ms. Suman Choudhary / Ms. Ramya T)', 76, sigY + 9);
 
   doc.line(138, sigY, 194, sigY);
   doc.text('Chairperson, CNE Committee / CNO', 138, sigY + 5);

@@ -16,6 +16,7 @@ import { CNERecord, SessionUser } from '../types';
 import { ApiService } from '../services/api';
 import { generateAnnualCNEPdf } from '../services/pdfGenerator';
 import { useToast } from './Toast';
+import { formatCneDateDisplay, formatCneDateRangeDisplay } from '../utils';
 
 interface MyCNEProps {
   user: SessionUser;
@@ -195,10 +196,10 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
               onChange={(e) => setSelectedYear(e.target.value)}
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:bg-white font-semibold text-slate-800"
             >
-              <option value="2026-2027">Assessment Year 2026–2027 (1 Apr 2026 – 31 Mar 2027)</option>
-              <option value="2025-2026">Assessment Year 2025–2026 (1 Apr 2025 – 31 Mar 2026)</option>
-              <option value="2024-2025">Assessment Year 2024–2025 (1 Apr 2024 – 31 Mar 2025)</option>
-              <option value="2023-2024">Assessment Year 2023–2024 (1 Apr 2023 – 31 Mar 2024)</option>
+              <option value="2026-2027">Assessment Year 2026–2027 (01-Apr-2026 – 31-Mar-2027)</option>
+              <option value="2025-2026">Assessment Year 2025–2026 (01-Apr-2025 – 31-Mar-2026)</option>
+              <option value="2024-2025">Assessment Year 2024–2025 (01-Apr-2024 – 31-Mar-2025)</option>
+              <option value="2023-2024">Assessment Year 2023–2024 (01-Apr-2023 – 31-Mar-2024)</option>
               <option value="ALL">All Recorded Years</option>
             </select>
           </div>
@@ -298,7 +299,7 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
                           {index + 1}
                         </td>
                         <td className="py-3 px-4 whitespace-nowrap font-medium text-slate-800">
-                          {rec.fromDate}
+                          {formatCneDateRangeDisplay(rec.fromDate, rec.toDate)}
                         </td>
                         <td className="py-3 px-4">
                           <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
@@ -349,7 +350,7 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
                 return (
                   <div key={rec.dataId} className="p-4 space-y-2">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-slate-500">#{index + 1} • {rec.fromDate}</span>
+                      <span className="font-semibold text-slate-500">#{index + 1} • {formatCneDateRangeDisplay(rec.fromDate, rec.toDate)}</span>
                       <span
                         className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                           isResourcePerson
@@ -429,7 +430,7 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                   <span className="block text-slate-500 font-semibold uppercase text-[10px]">Date & Duration</span>
                   <span className="font-semibold text-slate-900 mt-0.5 block">
-                    {selectedRecord.fromDate} ({selectedRecord.duration || '1 hr'})
+                    {formatCneDateRangeDisplay(selectedRecord.fromDate, selectedRecord.toDate)} ({selectedRecord.duration || '1 hr'})
                   </span>
                 </div>
               </div>

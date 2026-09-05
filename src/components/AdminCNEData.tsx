@@ -19,6 +19,7 @@ import {
 import { Area, CNERecord, Employee, SessionUser } from '../types';
 import { ApiService } from '../services/api';
 import { useToast } from './Toast';
+import { formatCneDateDisplay, formatCneDateRangeDisplay } from '../utils';
 
 interface AdminCNEDataProps {
   user: SessionUser;
@@ -674,7 +675,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
 
                         {/* Date */}
                         <td className="py-3 px-3 whitespace-nowrap text-slate-800 font-medium">
-                          {rec.fromDate}
+                          {formatCneDateRangeDisplay(rec.fromDate, rec.toDate)}
                         </td>
 
                         {/* Area */}
@@ -1622,7 +1623,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
             <div>
               <h3 className="text-base font-bold text-slate-900">Delete CNE Activity?</h3>
               <p className="text-xs text-slate-500 mt-1">
-                Are you sure you want to delete the CNE activity on <strong className="text-slate-800">"{deletingRecord.topic}"</strong> held on <strong className="text-slate-800">{deletingRecord.fromDate}</strong>? This will remove participation records from connected staff portfolios.
+                Are you sure you want to delete the CNE activity on <strong className="text-slate-800">"{deletingRecord.topic}"</strong> held on <strong className="text-slate-800">{formatCneDateRangeDisplay(deletingRecord.fromDate, deletingRecord.toDate)}</strong>? This will remove participation records from connected staff portfolios.
               </p>
             </div>
             <div className="flex items-center justify-center gap-2 pt-2">
