@@ -36,14 +36,12 @@ interface CneHomePageProps {
   user: SessionUser | null;
   onNavigate: (view: ViewMode) => void;
   onOpenLogin: () => void;
-  onOpenBackendSetup: () => void;
 }
 
 export const CneHomePage: React.FC<CneHomePageProps> = ({
   user,
   onNavigate,
-  onOpenLogin,
-  onOpenBackendSetup
+  onOpenLogin
 }) => {
   const [upcomingClasses, setUpcomingClasses] = useState<UpcomingClass[]>([]);
   const [gallery, setGallery] = useState<GalleryItem[]>([]);

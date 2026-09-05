@@ -3,19 +3,14 @@ import {
   GraduationCap,
   LogOut,
   KeyRound,
-  Database,
-  CheckCircle2,
-  AlertTriangle,
   LogIn
 } from 'lucide-react';
 import { SessionUser } from '../types';
-import { ApiService } from '../services/api';
 
 interface NavbarProps {
   user: SessionUser | null;
   onLogout: () => void;
   onChangePasswordClick: () => void;
-  onOpenBackendSetup: () => void;
   onOpenLogin?: () => void;
 }
 
@@ -23,11 +18,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   user,
   onLogout,
   onChangePasswordClick,
-  onOpenBackendSetup,
   onOpenLogin
 }) => {
-  const isLive = ApiService.isLiveBackendConnected();
-
   return (
     <header id="cne-navbar" className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -56,32 +48,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Right Action Bar */}
           <div className="flex items-center gap-2 sm:gap-4">
-            {/* Backend Status Pill */}
-            <button
-              id="btn-backend-status-pill"
-              onClick={onOpenBackendSetup}
-              title="Google Sheets & Apps Script Configuration"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
-                isLive
-                  ? 'bg-teal-50 text-teal-800 border-teal-300 hover:bg-teal-100'
-                  : 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100'
-              }`}
-            >
-              {isLive ? (
-                <>
-                  <Database className="w-3.5 h-3.5 text-teal-600" />
-                  <span className="hidden md:inline">Google Sheets Live</span>
-                  <CheckCircle2 className="w-3 h-3 text-teal-600" />
-                </>
-              ) : (
-                <>
-                  <Database className="w-3.5 h-3.5 text-rose-600" />
-                  <span className="hidden md:inline">Backend Not Connected</span>
-                  <AlertTriangle className="w-3 h-3 text-rose-600" />
-                </>
-              )}
-            </button>
-
             {user && user.employeeId ? (
               <div className="flex items-center gap-2 sm:gap-3">
                 {/* User Profile Info */}

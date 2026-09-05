@@ -608,6 +608,6 @@ export const INITIAL_QUICK_LINKS: QuickLinkItem[] = [
 
 export const INITIAL_COORDINATOR_DESK: CoordinatorDeskInfo = {
   note: 'Have questions regarding class credits, attendance verification, or training schedules?',
-  coordinators: ['Ms. Suman Choudhary', 'Ms. Ramya T'],
+  coordinators: ['Ms. Ramya T', 'Ms. Suman Choudhary'],
   email: 'training.nur@aiimsrishikesh.edu.in'
 };

@@ -9,7 +9,6 @@ interface LoginModalProps {
   onClose?: () => void;
   onLoginSuccess: (user: SessionUser) => void;
   onOpenForgotPassword: () => void;
-  onOpenBackendSetup?: () => void;
 }
 
 export const LoginModal: React.FC<LoginModalProps> = ({
@@ -17,7 +16,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   onClose,
   onLoginSuccess,
   onOpenForgotPassword,
-  onOpenBackendSetup,
 }) => {
   const [employeeId, setEmployeeId] = useState('');
   const [password, setPassword] = useState('');
@@ -100,23 +98,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             {errorMsg && (
               <div
                 id="login-error-alert"
-                className="p-3.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-900 text-xs leading-relaxed space-y-2"
+                className="p-3.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-900 text-xs leading-relaxed"
               >
                 <div className="flex items-start gap-2.5">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
                   <div className="font-medium">{errorMsg}</div>
                 </div>
-                {onOpenBackendSetup && (errorMsg.toLowerCase().includes('backend') || errorMsg.toLowerCase().includes('configured')) && (
-                  <div className="pt-1.5 border-t border-rose-200/70">
-                    <button
-                      type="button"
-                      onClick={onOpenBackendSetup}
-                      className="text-xs text-rose-800 hover:underline font-medium cursor-pointer"
-                    >
-                      Configure Google Apps Script Backend
-                    </button>
-                  </div>
-                )}
               </div>
             )}
 

@@ -47,11 +47,11 @@ export const CoordinatorDeskCard: React.FC<CoordinatorDeskCardProps> = ({
           <div className="text-slate-700 space-y-1 pl-1 font-medium">
             <div className="flex items-center gap-1.5">
               <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-              <span>Ms. Suman Choudhary</span>
+              <span>Ms. Ramya T</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-              <span>Ms. Ramya T</span>
+              <span>Ms. Suman Choudhary</span>
             </div>
           </div>
         </div>

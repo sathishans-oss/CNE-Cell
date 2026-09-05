@@ -8,7 +8,6 @@ import { CneHomePage } from './components/CneHomePage';
 import { LoginModal } from './components/LoginModal';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { ForgotPasswordModal } from './components/ForgotPasswordModal';
-import { AppsScriptSetupModal } from './components/AppsScriptSetupModal';
 import { Dashboard } from './components/Dashboard';
 import { MyCNE } from './components/MyCNE';
 import { CNECalendar } from './components/CNECalendar';
@@ -20,7 +19,6 @@ import { AdminRoles } from './components/AdminRoles';
 import { AdminApplications } from './components/AdminApplications';
 import { AdminReports } from './components/AdminReports';
 import { AdminContent } from './components/AdminContent';
-import { AlertTriangle, Database, Wrench } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const [user, setUser] = useState<SessionUser | null>(() => ApiService.getSessionUser());
@@ -30,13 +28,9 @@ const AppContent: React.FC = () => {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
-  const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
   const [openAddCneOnAdmin, setOpenAddCneOnAdmin] = useState(false);
-  const [backendRefreshTrigger, setBackendRefreshTrigger] = useState(0);
 
   const { success, info } = useToast();
-
-  const isLive = ApiService.isLiveBackendConnected();
 
   const handleLoginSuccess = (loggedInUser: SessionUser) => {
     setUser(loggedInUser);
@@ -77,7 +71,6 @@ const AppContent: React.FC = () => {
         user={user}
         onOpenLogin={() => setIsLoginOpen(true)}
         onChangePasswordClick={() => setIsChangePasswordOpen(true)}
-        onOpenBackendSetup={() => setIsSetupModalOpen(true)}
         onLogout={handleLogout}
       />
 
@@ -90,27 +83,6 @@ const AppContent: React.FC = () => {
         />
       )}
 
-      {/* Institutional Environment Warning Banner */}
-      {!isLive && (
-        <div className="bg-rose-600 text-white px-4 py-2.5 text-xs font-bold flex items-center justify-between shadow-xs">
-          <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-4">
-            <span className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4" />
-              <span>
-                BACKEND NOT CONFIGURED: Google Apps Script Web App URL is not connected. Connect your Google Sheets backend to enable live data.
-              </span>
-            </span>
-            <button
-              type="button"
-              onClick={() => setIsSetupModalOpen(true)}
-              className="bg-white text-rose-700 px-2.5 py-1 rounded-md text-[11px] font-extrabold hover:bg-rose-50 transition-colors shrink-0 cursor-pointer shadow-xs"
-            >
-              Configure Backend
-            </button>
-          </div>
-        </div>
-      )}
-
       <div className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-12">
         {/* Main Content Area */}
         <main className="w-full">
@@ -119,7 +91,6 @@ const AppContent: React.FC = () => {
               user={user}
               onNavigate={handleNavigate}
               onOpenLogin={() => setIsLoginOpen(true)}
-              onOpenBackendSetup={() => setIsSetupModalOpen(true)}
             />
           )}
 
@@ -186,10 +157,6 @@ const AppContent: React.FC = () => {
           setIsLoginOpen(false);
           setIsForgotPasswordOpen(true);
         }}
-        onOpenBackendSetup={() => {
-          setIsLoginOpen(false);
-          setIsSetupModalOpen(true);
-        }}
       />
 
       <ChangePasswordModal
@@ -205,12 +172,6 @@ const AppContent: React.FC = () => {
           setIsForgotPasswordOpen(false);
           setIsLoginOpen(true);
         }}
-      />
-
-      <AppsScriptSetupModal
-        isOpen={isSetupModalOpen}
-        onClose={() => setIsSetupModalOpen(false)}
-        onBackendConfigured={() => setBackendRefreshTrigger((prev) => prev + 1)}
       />
     </div>
   );
