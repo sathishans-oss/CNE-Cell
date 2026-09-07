@@ -275,7 +275,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               className="text-xs font-semibold text-slate-700 hover:text-slate-900 flex items-center gap-1.5 cursor-pointer"
             >
               <Calendar className="w-3.5 h-3.5" />
-              <span>Open Calendar View</span>
+              <span>Open CNE Calendar</span>
             </button>
           </div>
         </div>

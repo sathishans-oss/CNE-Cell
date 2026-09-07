@@ -157,7 +157,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
       } as any);
 
       if (res.success) {
-        success('Upcoming CNE workshop created and published successfully.', 'Class Scheduled');
+        success('Upcoming CNE workshop created and published successfully.', 'CNE Scheduled');
         setIsAddClassOpen(false);
         // Reset form
         setNewTopic('');
@@ -170,10 +170,10 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
         setNewExternalRpInput('');
         loadData();
       } else {
-        error(res.message || 'Failed to schedule class.');
+        error(res.message || 'Failed to schedule CNE.');
       }
     } catch (err: any) {
-      error(err?.message || 'Error creating class.');
+      error(err?.message || 'Error creating CNE.');
     } finally {
       setIsSubmitting(false);
     }
@@ -228,7 +228,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
               className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <PlusCircle className="w-4 h-4 text-emerald-400" />
-              <span>Schedule New Class</span>
+              <span>Schedule New CNE</span>
             </button>
           </div>
         )}
@@ -359,7 +359,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
               </div>
               <div>
                 <h3 className="text-base font-bold text-slate-900">
-                  Schedule Upcoming CNE Class
+                  Schedule New CNE
                 </h3>
                 <p className="text-xs text-slate-500">
                   Publish training session to the institutional CNE Schedule
@@ -633,7 +633,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                       <span>Publishing...</span>
                     </>
                   ) : (
-                    <span>Publish Upcoming Class</span>
+                    <span>Schedule New CNE</span>
                   )}
                 </button>
               </div>

@@ -31,23 +31,23 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
   const isAdmin = user?.role === 'ADMIN';
 
   const staffTabs = [
-    { id: 'dashboard' as ViewMode, label: 'Home', icon: LayoutDashboard },
+    { id: 'dashboard' as ViewMode, label: 'Menu', icon: LayoutDashboard },
+    { id: 'calendar' as ViewMode, label: 'CNE Calendar', icon: Calendar },
     {
       id: 'upcoming' as ViewMode,
       label: 'CNE Schedule',
       icon: Sparkles,
       badge: upcomingCount > 0 ? upcomingCount : undefined
     },
-    { id: 'calendar' as ViewMode, label: 'Calendar', icon: Calendar },
     { id: 'my-cne' as ViewMode, label: 'My CNE Records', icon: Award }
   ];
 
   const adminTabs = [
     { id: 'admin-cne' as ViewMode, label: 'CNE Data Master', icon: Database },
-    { id: 'admin-areas' as ViewMode, label: 'Area Master', icon: MapPin },
-    { id: 'admin-roles' as ViewMode, label: 'Role Master', icon: ShieldCheck },
-    { id: 'admin-content' as ViewMode, label: 'Content Master', icon: FileText },
-    { id: 'admin-reports' as ViewMode, label: 'Reports & Stats', icon: BarChart3 }
+    { id: 'admin-content' as ViewMode, label: 'Admin Content', icon: FileText },
+    { id: 'admin-reports' as ViewMode, label: 'Report and Stats', icon: BarChart3 },
+    { id: 'admin-roles' as ViewMode, label: 'Role', icon: ShieldCheck },
+    { id: 'admin-areas' as ViewMode, label: 'Ward List', icon: MapPin }
   ];
 
   return (

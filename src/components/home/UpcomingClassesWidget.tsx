@@ -147,7 +147,7 @@ export const UpcomingClassesWidget: React.FC<UpcomingClassesWidgetProps> = ({
             className="w-full py-2 text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
           >
             <Calendar className="w-3.5 h-3.5 text-slate-600" />
-            <span>Open Training Calendar</span>
+            <span>Open CNE Calendar</span>
           </button>
         </div>
       )}
