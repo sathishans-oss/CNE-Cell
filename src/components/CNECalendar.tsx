@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { CNERecord, UpcomingClass } from '../types';
 import { ApiService } from '../services/api';
+import { formatCneDateDisplay } from '../utils';
 
 type CalendarViewMode = 'month' | 'week' | 'agenda';
 
@@ -355,7 +356,7 @@ export const CNECalendar: React.FC = () => {
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
                 <span className="text-slate-500 font-semibold">Date & Time</span>
                 <span className="font-bold text-slate-900">
-                  {selectedEvent.date} • {selectedEvent.time}
+                  {formatCneDateDisplay(selectedEvent.date)} • {selectedEvent.time}
                 </span>
               </div>
 

@@ -953,6 +953,35 @@ function handleGetOfficersDropdown(params, session) {
 }
 
 /**
+ * Helper: Build an in-memory map of { [employeeId]: officerName }
+ * from the authoritative 'Rosters Master Data' tab in DROPDOWN_SPREADSHEET_ID.
+ */
+function getOfficerNameMap() {
+  var map = {};
+  try {
+    var sheet = getRosterSheet();
+    var range = sheet.getDataRange();
+    var data = range.getValues();
+    var displayData = range.getDisplayValues();
+    if (data.length > 1) {
+      var colMap = findOfficerHeaders(data[0]);
+      if (colMap.empCol !== -1 && colMap.nameCol !== -1) {
+        for (var r = 1; r < data.length; r++) {
+          var empId = normalizeEmpId((displayData[r] && displayData[r][colMap.empCol]) || data[r][colMap.empCol]);
+          var name = String((displayData[r] && displayData[r][colMap.nameCol]) || data[r][colMap.nameCol] || '').trim();
+          if (empId && name) {
+            map[empId] = name;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    Logger.log('[Roster Map Warning] ' + e.message);
+  }
+  return map;
+}
+
+/**
  * Login Handler with Initial Default Password (pass1234) & Salted SHA-256 (Zero Backdoors)
  */
 function handleLogin(params) {
@@ -1475,6 +1504,7 @@ function handleGetCNERecords(params, session) {
   var data = dataRange.getValues();
   if (data.length <= 1) return { success: true, data: [] };
   var displayValues = dataRange.getDisplayValues();
+  var officerMap = getOfficerNameMap();
   
   var records = [];
   for (var r = 1; r < data.length; r++) {
@@ -1521,6 +1551,15 @@ function handleGetCNERecords(params, session) {
     // PRIVACY HARDENING: Non-admins ONLY receive their own ID in staffEmpIds (never other staff IDs)
     var sanitizedStaffEmpIds = isAdmin ? staffArray : (isStaffParticipant ? [session.employeeId] : []);
     
+    var rpNames = rpArray.map(function(id) {
+      return officerMap[id] || id;
+    }).filter(Boolean);
+    var rpNameString = rpNames.join(', ');
+
+    var staffNameList = sanitizedStaffEmpIds.map(function(id) {
+      return officerMap[id] || id;
+    });
+
     records.push({
       dataId: dataId,
       area: area,
@@ -1529,10 +1568,12 @@ function handleGetCNERecords(params, session) {
       duration: duration,
       topic: topic,
       resourcePersonEmpId: resourcePersonEmpId,
+      resourcePersonName: rpNameString,
       externalResourcePersons: extRp,
       externalStaffParticipants: isAdmin ? extStaff : [],
       modeOfTeaching: mode,
       staffEmpIds: sanitizedStaffEmpIds,
+      staffNames: staffNameList,
       staffCount: staffCount,
       remarks: remarks
     });
@@ -1558,7 +1599,8 @@ function handleAddCNE(params, session) {
   try {
     var sheet = getOrCreateSheet('Data', [
       'Data ID', 'Ward Name / Area', 'From Date', 'To Date', 'Duration',
-      'Topic', 'Resource Person Emp Id', 'Mode of Teaching', 'Staff Emp ID', 'Staff Count', 'Remarks', 'CreatedAt', 'CreatedBy'
+      'Topic', 'Resource Person Emp Id', 'Mode of Teaching', 'Staff Emp ID', 'Staff Count', 'Remarks', 'CreatedAt', 'CreatedBy',
+      'External Resource Persons', 'External Staff Participants'
     ]);
     
     var fromDate = (params.fromDate || '').trim();
@@ -1936,6 +1978,7 @@ function handleGetUpcomingClasses(params) {
   ]);
   
   var data = sheet.getDataRange().getValues();
+  var officerMap = getOfficerNameMap();
   var list = [];
   
   for (var r = 1; r < data.length; r++) {
@@ -1943,6 +1986,9 @@ function handleGetUpcomingClasses(params) {
     if (!id) continue;
     
     var extRp = data[r][12] ? String(data[r][12]).split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+    var rawRp = String(data[r][6] || '').trim();
+    var rpIds = rawRp.split(/[,;\n]+/).map(function(s) { return normalizeEmpId(s); }).filter(Boolean);
+    var rpNames = rpIds.map(function(rpId) { return officerMap[rpId] || rpId; }).filter(Boolean);
     
     list.push({
       classId: id,
@@ -1952,7 +1998,8 @@ function handleGetUpcomingClasses(params) {
       toDate: data[r][11] ? formatDateValue(data[r][11]) : formatDateValue(data[r][3]),
       time: String(data[r][4] || ''),
       duration: String(data[r][5] || '1:00:00'),
-      resourcePersonEmpId: String(data[r][6] || '').trim(),
+      resourcePersonEmpId: rawRp,
+      resourcePersonName: rpNames.join(', '),
       externalResourcePersons: extRp,
       modeOfTeaching: String(data[r][7] || 'Lecture Cum Discussion'),
       description: String(data[r][8] || ''),
@@ -3522,10 +3569,18 @@ function getOrCreateSheet(sheetName, defaultHeaders) {
  */
 function internalInitializeSheets(executorEmpId) {
   var cneTabs = [
-    { name: 'Data', headers: ['Data ID', 'Ward Name / Area', 'From Date', 'To Date', 'Duration', 'Topic', 'Resource Person Emp Id', 'Mode of Teaching', 'Staff Emp ID', 'Staff Count', 'Remarks', 'CreatedAt', 'CreatedBy'] },
+    { name: 'Data', headers: [
+      'Data ID', 'Ward Name / Area', 'From Date', 'To Date', 'Duration',
+      'Topic', 'Resource Person Emp Id', 'Mode of Teaching', 'Staff Emp ID', 'Staff Count', 'Remarks', 'CreatedAt', 'CreatedBy',
+      'External Resource Persons', 'External Staff Participants'
+    ] },
     { name: 'Area', headers: ['Area', 'Status', 'CreatedAt'] },
     { name: 'Role', headers: ['Employee ID No.', 'Name of the Officers', 'Designation', 'Role'] },
-    { name: 'Upcoming Classes', headers: ['Class ID', 'Topic', 'Area', 'Date', 'Time', 'Duration', 'Resource Person Emp Id', 'Mode', 'Description', 'Max Participants', 'Status'] },
+    { name: 'Upcoming Classes', headers: [
+      'Class ID', 'Topic', 'Area', 'Date', 'Time', 'Duration',
+      'Resource Person Emp Id', 'Mode', 'Description', 'Max Participants', 'Status',
+      'To Date', 'External Resource Persons', 'Proposed By', 'Admin Remarks'
+    ] },
     { name: 'CNE Applications', headers: ['Application ID', 'Class ID', 'Employee ID', 'Employee Name', 'Applied At', 'Status', 'Remarks'] },
     { name: 'Gallery', headers: ['Image ID', 'Title', 'Description', 'Date', 'Drive File ID', 'Image URL', 'Uploaded By', 'Uploaded At', 'Status'] },
     { name: 'News and Events', headers: ['Event ID', 'Title', 'Category', 'Date', 'Summary', 'Full Content', 'Status', 'CreatedAt', 'CreatedBy'] },

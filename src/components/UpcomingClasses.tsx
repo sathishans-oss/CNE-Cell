@@ -15,6 +15,7 @@ import {
 import { SessionUser, UpcomingClass } from '../types';
 import { ApiService } from '../services/api';
 import { useToast } from './Toast';
+import { formatCneDateRangeDisplay, formatResourcePersonsDisplay } from '../utils';
 
 interface UpcomingClassesProps {
   user: SessionUser | null;
@@ -300,9 +301,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                       <div className="flex items-center gap-1.5">
                         <Calendar className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                         <span>
-                          {cls.toDate && cls.toDate !== cls.date
-                            ? `${cls.date} to ${cls.toDate}`
-                            : cls.date}
+                          {formatCneDateRangeDisplay(cls.date, cls.toDate)}
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5">
@@ -311,12 +310,19 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                       </div>
                       <div className="flex items-center gap-1.5 col-span-2">
                         <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="truncate">
+                        <span className="truncate" title={formatResourcePersonsDisplay({
+                          resourcePersonEmpId: cls.resourcePersonEmpId,
+                          resourcePersonName: cls.resourcePersonName,
+                          externalResourcePersons: cls.externalResourcePersons,
+                          officers: officersList
+                        })}>
                           Instructor:{' '}
-                          {[
-                            cls.resourcePersonName || cls.resourcePersonEmpId,
-                            ...(cls.externalResourcePersons ? cls.externalResourcePersons.map((p) => `${p} (Ext)`) : [])
-                          ].filter(Boolean).join(', ') || 'TBD'}
+                          {formatResourcePersonsDisplay({
+                            resourcePersonEmpId: cls.resourcePersonEmpId,
+                            resourcePersonName: cls.resourcePersonName,
+                            externalResourcePersons: cls.externalResourcePersons,
+                            officers: officersList
+                          })}
                         </span>
                       </div>
                     </div>

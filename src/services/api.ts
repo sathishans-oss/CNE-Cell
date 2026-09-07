@@ -17,14 +17,19 @@ import {
   CoordinatorDeskInfo
 } from '../types';
 const STORAGE_KEYS = {
-  SESSION: 'cne_session_user',
-  API_URL: 'CNE_CUSTOM_APPS_SCRIPT_URL'
+  SESSION: 'cne_session_user'
 };
 
 // Actively purge legacy mock credential storage or environment mode flags from browser storage
 try {
   localStorage.removeItem('cne_user_creds');
   localStorage.removeItem('CNE_ENVIRONMENT_MODE');
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('CNE_CUSTOM_APPS_SCRIPT')) {
+      localStorage.removeItem(k);
+    }
+  }
 } catch (e) {}
 
 /**
@@ -104,23 +109,11 @@ export class ApiService {
   }
 
   static getAppsScriptUrl(): string {
-    const fromStorage = localStorage.getItem(STORAGE_KEYS.API_URL);
-    if (fromStorage && fromStorage.trim() !== '') {
-      return fromStorage.trim();
-    }
     const envUrl = (import.meta as any).env?.VITE_APPS_SCRIPT_URL;
-    if (envUrl && envUrl.trim() !== '') {
+    if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
       return envUrl.trim();
     }
     return '';
-  }
-
-  static setAppsScriptUrl(url: string) {
-    if (url && url.trim() !== '') {
-      localStorage.setItem(STORAGE_KEYS.API_URL, url.trim());
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.API_URL);
-    }
   }
 
   /**
