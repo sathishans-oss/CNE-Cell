@@ -2197,7 +2197,7 @@ function handleGetUpcomingClasses(params) {
       externalResourcePersons: extRp,
       modeOfTeaching: String(data[r][colMap['modeofteaching'] !== undefined ? colMap['modeofteaching'] : (colMap['mode'] !== undefined ? colMap['mode'] : data[r][8])] || 'Lecture Cum Discussion'),
       description: String(data[r][colMap['description'] !== undefined ? colMap['description'] : 9] || ''),
-      maxParticipants: parseInt(data[r][colMap['maxparticipants'] !== undefined ? data[r][colMap['maxparticipants'] : 10], 10) || 50,
+      maxParticipants: parseInt(data[r][colMap['maxparticipants'] !== undefined ? colMap['maxparticipants'] : 10], 10) || 50,
       status: normalizeCNEStatus(rawStatus),
       cneType: normalizeCNEType(rawType),
       proposedByEmpId: String(data[r][colMap['proposedby'] !== undefined ? colMap['proposedby'] : 14] || ''),
