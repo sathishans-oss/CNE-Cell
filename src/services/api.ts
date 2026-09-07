@@ -447,7 +447,7 @@ export class ApiService {
 
   static async reviewUpcomingClass(
     classId: string,
-    status: 'Approved' | 'Rejected',
+    status: 'Scheduled' | 'Completed' | 'Canceled',
     adminRemarks?: string
   ): Promise<ApiResponse> {
     return this.executeAction('reviewUpcomingClass', { classId, status, adminRemarks });
@@ -658,7 +658,9 @@ export class ApiService {
   }
 
   static async submitPostTest(params: {
-    cneId: string;
+    cneId?: string;
+    qrToken?: string;
+    token?: string;
     employeeId: string;
     answers: Record<string, string>;
   }): Promise<ApiResponse<PostTestSubmissionResult>> {

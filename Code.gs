@@ -12,12 +12,13 @@ function normalizeEmpId(id) {
   return String(id).trim().toUpperCase();
 }
 
-// Authoritative Normalization: CNE Type (Strictly CENTRAL or DEPARTMENTAL)
+// Authoritative Normalization: CNE Type (Strictly CENTRAL or DEPARTMENTAL) - FAIL CLOSED
 function normalizeCNEType(typeStr) {
-  if (!typeStr) return 'CENTRAL';
+  if (typeStr === null || typeStr === undefined) return null;
   var s = String(typeStr).trim().toUpperCase();
-  if (s === 'DEPARTMENTAL' || s === 'DEPT') return 'DEPARTMENTAL';
-  return 'CENTRAL';
+  if (s === 'CENTRAL' || s === 'CENTRAL CNE') return 'CENTRAL';
+  if (s === 'DEPARTMENTAL' || s === 'DEPT' || s === 'DEPARTMENTAL CNE') return 'DEPARTMENTAL';
+  return null;
 }
 
 // Authoritative Normalization: CNE Scheduling Status (Strictly Scheduled, Completed, or Canceled)
@@ -715,8 +716,9 @@ function checkCNEAuthorized(session, cneArea, cneType) {
   }
   
   if (role === 'AREA_INCHARGE' || role === 'INCHARGE') {
-    var type = String(cneType || '').toUpperCase();
-    if (type !== 'CENTRAL') {
+    var type = normalizeCNEType(cneType);
+    // FAIL CLOSED: Only strictly valid DEPARTMENTAL CNE is manageable by Area Incharge
+    if (type === 'DEPARTMENTAL') {
       var userAssigned = String(session.assignedArea || getUserRoleInfo(session.employeeId).assignedArea || '').trim().toLowerCase();
       var targetArea = String(cneArea || '').trim().toLowerCase();
       if (userAssigned && targetArea && (userAssigned === targetArea || targetArea.indexOf(userAssigned) !== -1 || userAssigned.indexOf(targetArea) !== -1)) {
@@ -1819,6 +1821,11 @@ function handleAddCNE(params, session) {
     if (!topic || !area || !fromDate || (rpClean.length === 0 && extRpClean.length === 0)) {
       return { success: false, message: 'Topic, Area, Date, and at least one Resource Person (Internal or External) are required.' };
     }
+
+    var cneType = normalizeCNEType(params.cneType);
+    if (!cneType) {
+      return { success: false, errorCode: 'INVALID_CNE_TYPE', message: 'Type of CNE is required and must be either CENTRAL or DEPARTMENTAL.' };
+    }
     
     // Sanitize, deduplicate, and validate staff IDs against Rosters Master Data individually
     var rawStaff = params.staffEmpIds !== undefined ? params.staffEmpIds : params.staffEmpId;
@@ -1899,7 +1906,7 @@ function handleAddCNE(params, session) {
       session.employeeId || '',
       extRpClean.join(', '),
       extStaffClean.join(', '),
-      normalizeCNEType(params.cneType || 'CENTRAL')
+      cneType
     ]);
     
     // Preserve Duration cell number format on newly appended row if not already formatted
@@ -2089,9 +2096,13 @@ function handleUpdateCNE(params, session) {
         
         if (params.remarks !== undefined) sheet.getRange(r + 1, 11).setValue(sanitizeCellInput(params.remarks));
         if (params.cneType !== undefined) {
+          var normType = normalizeCNEType(params.cneType);
+          if (!normType) {
+            return { success: false, errorCode: 'INVALID_CNE_TYPE', message: 'Type of CNE is invalid or missing. Must be either CENTRAL or DEPARTMENTAL.' };
+          }
           var dataColMap = getHeaderMap(sheet);
           var cneTypeCol = (dataColMap['typeofcne'] !== undefined) ? (dataColMap['typeofcne'] + 1) : 16;
-          sheet.getRange(r + 1, cneTypeCol).setValue(normalizeCNEType(params.cneType));
+          sheet.getRange(r + 1, cneTypeCol).setValue(normType);
         }
         
         logAuditAction('UPDATE_CNE', session.employeeId, 'Updated Data ID: ' + dataId, 'SUCCESS');
@@ -2206,8 +2217,15 @@ function handleAddUpcomingClass(params, session) {
   var area = sanitizeCellInput(params.area);
   var date = (params.date || '').trim();
   var toDate = (params.toDate || date).trim();
-  var cneType = normalizeCNEType(params.cneType || 'CENTRAL');
-  
+  var cneType = normalizeCNEType(params.cneType);
+  if (!cneType) {
+    return {
+      success: false,
+      errorCode: 'INVALID_CNE_TYPE',
+      message: 'Type of CNE is required and must be either CENTRAL or DEPARTMENTAL.'
+    };
+  }
+
   if (!topic || !area || !date) {
     return { success: false, message: 'Topic, Area, and Date are required.' };
   }
@@ -2233,9 +2251,15 @@ function handleAddUpcomingClass(params, session) {
         message: 'Permission denied. Only Administrators can schedule Central CNE programs.'
       };
     }
-  } else {
+  } else if (cneType === 'DEPARTMENTAL') {
     var authErr = checkCNEAuthorized(session, area, 'DEPARTMENTAL');
     if (authErr) return authErr;
+  } else {
+    return {
+      success: false,
+      errorCode: 'INVALID_CNE_TYPE',
+      message: 'Type of CNE must be either CENTRAL or DEPARTMENTAL.'
+    };
   }
 
   // Validate internal Resource Persons individually
@@ -2635,7 +2659,15 @@ function handleUpdateUpcomingClass(params, session) {
           setColVal('status', 11, normalizeCNEStatus(params.status));
         }
         if (params.cneType !== undefined) {
-          setColVal('typeofcne', 12, normalizeCNEType(params.cneType));
+          var normType = normalizeCNEType(params.cneType);
+          if (!normType) {
+            return {
+              success: false,
+              errorCode: 'INVALID_CNE_TYPE',
+              message: 'Type of CNE is invalid or missing. Must be either CENTRAL or DEPARTMENTAL.'
+            };
+          }
+          setColVal('typeofcne', 12, normType);
         }
         if (params.adminRemarks !== undefined) setColVal('adminremarks', 15, sanitizeCellInput(params.adminRemarks));
         
@@ -3980,6 +4012,25 @@ function formatDateValue(val) {
 }
 
 /**
+ * Header Normalization Map Helper
+ * Maps all headers to lowercase alphanumeric keys for resilient column lookups
+ */
+function getHeaderMap(sheet) {
+  var map = {};
+  if (!sheet) return map;
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 1) return map;
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  for (var c = 0; c < headers.length; c++) {
+    var key = String(headers[c] || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (key) {
+      map[key] = c;
+    }
+  }
+  return map;
+}
+
+/**
  * Strictly NON-DESTRUCTIVE Sheet Tab & Header Resolver
  * If tab exists: leaves existing rows, structure, and formatting completely untouched.
  * If tab is missing: creates tab and writes initial bold headers.
@@ -4697,7 +4748,7 @@ function handleResolveQRToken(params) {
  * Get Post-Test Questions for Participant
  * Public post-test access MUST require a valid opaque QR token.
  * Does NOT allow public access using CNE ID alone.
- * Legacy QRT-<CNE-ID> parsing is completely removed.
+ * Legacy QRT token fallback parsing is completely removed.
  * Token must be resolved through CNE_QR_Tokens.
  * Strips correctOption and explanation!
  * Checks if participant has already submitted.
@@ -5171,7 +5222,16 @@ function handleFinalizeCNE(params, session) {
   var record = getCNEClassRecord(cneId);
   if (!record) return { success: false, message: 'CNE record not found.' };
   
-  var authErr = checkCNEAuthorized(session, record.area, record.cneType);
+  var cneType = normalizeCNEType(record.cneType);
+  if (!cneType) {
+    return {
+      success: false,
+      errorCode: 'INVALID_CNE_TYPE',
+      message: 'Cannot finalize CNE: Session record has an invalid or missing Type of CNE (must be CENTRAL or DEPARTMENTAL).'
+    };
+  }
+
+  var authErr = checkCNEAuthorized(session, record.area, cneType);
   if (authErr) return authErr;
   
   if (normalizeCNEStatus(record.status) === 'Completed') {
@@ -5253,7 +5313,7 @@ function handleFinalizeCNE(params, session) {
   setDataCell('createdby', 12, session.employeeId);
   setDataCell('externalresourcepersons', 13, record.externalResourcePersons || '');
   setDataCell('externalstaffparticipants', 14, externalParticipants.join(', '));
-  setDataCell('typeofcne', 15, normalizeCNEType(record.cneType || 'CENTRAL'));
+  setDataCell('typeofcne', 15, cneType);
 
   dataSheet.appendRow(rowVals);
   

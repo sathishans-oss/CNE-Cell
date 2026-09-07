@@ -125,8 +125,8 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
     }
   };
 
-  // Open upcoming classes filter
-  const openClasses = upcomingClasses.filter((c) => c.status === 'OPEN').slice(0, 4);
+  // Scheduled upcoming classes filter
+  const openClasses = upcomingClasses.filter((c) => c.status === 'Scheduled').slice(0, 4);
 
   return (
     <div className="space-y-8 pb-16">

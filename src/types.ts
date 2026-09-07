@@ -121,7 +121,7 @@ export interface UpcomingClass {
   description?: string;
   maxParticipants?: number;
   currentApplicationsCount?: number;
-  status: 'Scheduled' | 'Completed' | 'Canceled' | 'Pending' | 'Approved' | 'Rejected' | 'OPEN' | 'CLOSED' | 'COMPLETED' | 'CANCELLED';
+  status: 'Scheduled' | 'Completed' | 'Canceled';
   proposedByEmpId?: string;
   proposedByName?: string;
   adminRemarks?: string;

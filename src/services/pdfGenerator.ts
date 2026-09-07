@@ -297,8 +297,8 @@ export function generateCNESessionPdf(
   doc.text(resourcePersonDisplay, 152, 48);
   doc.text(modeDisplay, 152, 54);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(cne.status === 'COMPLETED' ? 16 : 30, cne.status === 'COMPLETED' ? 185 : 41, cne.status === 'COMPLETED' ? 129 : 59);
-  doc.text(cne.status || 'SCHEDULED', 152, 60);
+  doc.setTextColor(cne.status === 'Completed' ? 16 : 30, cne.status === 'Completed' ? 185 : 41, cne.status === 'Completed' ? 129 : 59);
+  doc.text(cne.status || 'Scheduled', 152, 60);
   
   doc.setTextColor(15, 23, 42);
   doc.text(`${participants.length} (${postTestParticipants.length} Test, ${manualParticipants.length} Manual)`, 152, 66);

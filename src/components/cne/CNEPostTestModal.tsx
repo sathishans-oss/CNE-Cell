@@ -117,6 +117,7 @@ export const CNEPostTestModal: React.FC<CNEPostTestModalProps> = ({
     try {
       const res = await ApiService.submitPostTest({
         cneId: resolvedCneId,
+        qrToken: qrToken,
         employeeId: targetEmpId,
         answers
       });

@@ -191,7 +191,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
         maxParticipants: newMaxParticipants,
         proposedByEmpId: user?.employeeId,
         proposedByName: user?.name,
-        status: 'Approved'
+        status: 'Scheduled'
       } as any);
 
       if (res.success) {
@@ -362,8 +362,8 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {availableClasses.map((cls) => {
               const isAuthorized = isCneAuthorized(user, cls.area, cls.cneType);
-              const isCompleted = cls.status?.toUpperCase() === 'COMPLETED';
-              const isCancelled = cls.status?.toUpperCase() === 'CANCELLED';
+              const isCompleted = cls.status === 'Completed';
+              const isCanceled = cls.status === 'Canceled';
 
               return (
                 <div
@@ -394,15 +394,15 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                       <div className="flex items-center gap-1.5">
                         {isCompleted ? (
                           <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                            ✓ COMPLETED
+                            ✓ Completed
                           </span>
-                        ) : isCancelled ? (
+                        ) : isCanceled ? (
                           <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
-                            CANCELLED
+                            Canceled
                           </span>
                         ) : (
-                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            {cls.duration || 'Scheduled'}
+                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                            Scheduled
                           </span>
                         )}
                       </div>
@@ -467,10 +467,10 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                     {/* Action Buttons Toolbar */}
                     <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5">
                       {/* 1. Take Post-Test (Always accessible unless cancelled) */}
-                      {!isCancelled && (
+                      {!isCanceled && (
                         <button
                           type="button"
-                          onClick={() => setActivePostTest({ cneId: cls.classId })}
+                          onClick={() => setActivePostTest({ cneId: cls.classId, qrToken: cls.qrToken })}
                           className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer transition-colors"
                         >
                           <Award className="w-3.5 h-3.5" />
@@ -527,7 +527,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                       )}
 
                       {/* 6. Finalize CNE - Authorized */}
-                      {isAuthorized && !isCompleted && !isCancelled && (
+                      {isAuthorized && !isCompleted && !isCanceled && (
                         <button
                           type="button"
                           onClick={() => setActiveFinalizeCne(cls)}

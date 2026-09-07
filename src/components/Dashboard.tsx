@@ -77,7 +77,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const totalActivities = cneRecords.length;
   const currentMonthStr = `${new Date().getFullYear()}-${('0' + (new Date().getMonth() + 1)).slice(-2)}`;
   const currentMonthActivities = cneRecords.filter((r) => r.fromDate.startsWith(currentMonthStr)).length;
-  const upcomingCount = upcomingClasses.filter((c) => c.status === 'OPEN').length;
+  const upcomingCount = upcomingClasses.filter((c) => c.status === 'Scheduled').length;
 
   let totalStaffCount = 0;
   cneRecords.forEach((r) => {

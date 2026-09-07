@@ -222,9 +222,9 @@ export function isCneAuthorized(
   if (!user) return false;
   if (user.role === 'ADMIN') return true;
   if (user.role === 'AREA_INCHARGE') {
-    const type = (cneType || '').toUpperCase();
-    if (type === 'CENTRAL') return false;
-    if (!user.assignedArea || !cneArea) return true;
+    const type = (cneType || '').trim().toUpperCase();
+    if (type !== 'DEPARTMENTAL') return false;
+    if (!user.assignedArea || !cneArea) return false;
     return user.assignedArea.trim().toLowerCase() === cneArea.trim().toLowerCase();
   }
   return false;

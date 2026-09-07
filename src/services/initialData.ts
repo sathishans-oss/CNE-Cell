@@ -305,7 +305,7 @@ export const INITIAL_UPCOMING_CLASSES: UpcomingClass[] = [
     description: "In-depth clinical workshop on ventilator modes, alarm troubleshooting, endotracheal suctioning techniques, and sedation vacation.",
     maxParticipants: 35,
     currentApplicationsCount: 18,
-    status: "OPEN"
+    status: "Scheduled"
   },
   {
     classId: "CLS-2026-002",
@@ -320,7 +320,7 @@ export const INITIAL_UPCOMING_CLASSES: UpcomingClass[] = [
     description: "Guidelines on preventing look-alike sound-alike (LASA) errors, infusion pump calculations, and adverse event reporting.",
     maxParticipants: 60,
     currentApplicationsCount: 42,
-    status: "OPEN"
+    status: "Scheduled"
   },
   {
     classId: "CLS-2026-003",
@@ -335,7 +335,7 @@ export const INITIAL_UPCOMING_CLASSES: UpcomingClass[] = [
     description: "Targeted refresher on T-piece resuscitator, chest compressions, and umbilical venous catheterization assistance.",
     maxParticipants: 25,
     currentApplicationsCount: 12,
-    status: "OPEN"
+    status: "Scheduled"
   },
   {
     classId: "CLS-2026-004",
@@ -350,7 +350,7 @@ export const INITIAL_UPCOMING_CLASSES: UpcomingClass[] = [
     description: "Hazardous drug preparation and disposal, spill kit usage, and prompt extravasation care steps.",
     maxParticipants: 40,
     currentApplicationsCount: 20,
-    status: "OPEN"
+    status: "Scheduled"
   }
 ];
 
