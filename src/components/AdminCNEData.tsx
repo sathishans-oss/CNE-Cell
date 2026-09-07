@@ -44,6 +44,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
   // Filters & Search
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedArea, setSelectedArea] = useState('');
+  const [selectedCneType, setSelectedCneType] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -51,6 +52,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
 
   // Add CNE Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(isOpenAddModalDefault);
+  const [formCneType, setFormCneType] = useState<'CENTRAL' | 'DEPARTMENTAL'>('CENTRAL');
   const [formArea, setFormArea] = useState('');
   const [formFromDate, setFormFromDate] = useState(new Date().toISOString().split('T')[0]);
   const [formToDate, setFormToDate] = useState(new Date().toISOString().split('T')[0]);
@@ -70,6 +72,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
 
   // Edit CNE Modal State (Replacing Inline Edit)
   const [editingRecord, setEditingRecord] = useState<CNERecord | null>(null);
+  const [editCneType, setEditCneType] = useState<'CENTRAL' | 'DEPARTMENTAL'>('CENTRAL');
   const [editArea, setEditArea] = useState('');
   const [editFromDate, setEditFromDate] = useState('');
   const [editToDate, setEditToDate] = useState('');
@@ -125,6 +128,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
   const filteredRecords = useMemo(() => {
     return sortedRecords.filter((rec) => {
       if (selectedArea && rec.area !== selectedArea) return false;
+      if (selectedCneType && (rec.cneType || 'CENTRAL').toUpperCase() !== selectedCneType.toUpperCase()) return false;
       if (startDate && rec.fromDate < startDate) return false;
       if (endDate && rec.fromDate > endDate) return false;
 
@@ -152,7 +156,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
 
       return true;
     });
-  }, [sortedRecords, selectedArea, startDate, endDate, searchTerm]);
+  }, [sortedRecords, selectedArea, selectedCneType, startDate, endDate, searchTerm]);
 
   // Pagination
   const totalPages = Math.ceil(filteredRecords.length / itemsPerPage) || 1;
@@ -242,6 +246,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
     setIsSubmitting(true);
     try {
       const res = await ApiService.addCNE({
+        cneType: formCneType,
         area: formArea,
         fromDate: formFromDate,
         toDate: formToDate || formFromDate,
@@ -286,6 +291,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
   // Open Edit Modal
   const openEditModal = (rec: CNERecord) => {
     setEditingRecord(rec);
+    setEditCneType((rec.cneType as any) || 'CENTRAL');
     setEditArea(rec.area || '');
     setEditFromDate(rec.fromDate || '');
     setEditToDate(rec.toDate || rec.fromDate || '');
@@ -340,6 +346,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
     const totalStaffCount = editStaffIds.length + editExternalStaffList.length;
 
     const updatedData: any = {
+      cneType: editCneType,
       area: editArea,
       fromDate: editFromDate,
       toDate: editToDate || editFromDate,
@@ -398,7 +405,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
   // Export CSV
   const handleExportCsv = () => {
     if (records.length === 0) return;
-    const headers = ['Sr. No.', 'Ward Name / Area', 'From Date', 'To Date', 'Duration', 'Topic', 'Resource Person Emp Id / External', 'Mode of Teaching', 'Staff Emp ID / External', 'Staff Count', 'Remarks'];
+    const headers = ['Sr. No.', 'Type of CNE', 'Ward Name / Area', 'From Date', 'To Date', 'Duration', 'Topic', 'Resource Person Emp Id / External', 'Mode of Teaching', 'Staff Emp ID / External', 'Staff Count', 'Remarks'];
     const rows = sortedRecords.map((r, i) => {
       const rpParts = [r.resourcePersonEmpId];
       if (r.externalResourcePersons && r.externalResourcePersons.length > 0) {
@@ -414,6 +421,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
 
       return [
         `"${i + 1}"`,
+        `"${r.cneType || 'CENTRAL'}"`,
         `"${r.area}"`,
         `"${r.fromDate}"`,
         `"${r.toDate || ''}"`,
@@ -566,7 +574,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
 
       {/* Filter Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
           {/* Search (Data ID hidden from placeholder) */}
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
@@ -580,6 +588,22 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
               }}
               className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:bg-white"
             />
+          </div>
+
+          {/* CNE Type Filter */}
+          <div>
+            <select
+              value={selectedCneType}
+              onChange={(e) => {
+                setSelectedCneType(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg text-slate-700 font-medium"
+            >
+              <option value="">All CNE Types</option>
+              <option value="CENTRAL">Central CNE</option>
+              <option value="DEPARTMENTAL">Departmental CNE</option>
+            </select>
           </div>
 
           {/* Area Filter */}
@@ -634,11 +658,12 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
           <span>
             Showing {filteredRecords.length} of {records.length} records (Sorted newest first)
           </span>
-          {(searchTerm || selectedArea || startDate || endDate) && (
+          {(searchTerm || selectedArea || selectedCneType || startDate || endDate) && (
             <button
               onClick={() => {
                 setSearchTerm('');
                 setSelectedArea('');
+                setSelectedCneType('');
                 setStartDate('');
                 setEndDate('');
                 setCurrentPage(1);
@@ -671,8 +696,9 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[11px]">
                     <th className="py-3 px-3 text-center w-12">#</th>
+                    <th className="py-3 px-3 w-28">Type</th>
                     <th className="py-3 px-3 w-24">Date</th>
-                    <th className="py-3 px-3 w-40">Ward / Area</th>
+                    <th className="py-3 px-3 w-36">Ward / Area</th>
                     <th className="py-3 px-3 min-w-[200px]">Topic / Subject</th>
                     <th className="py-3 px-3 min-w-[150px]">Resource Person(s)</th>
                     <th className="py-3 px-3">Mode</th>
@@ -684,11 +710,25 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                 <tbody className="divide-y divide-slate-100">
                   {paginatedRecords.map((rec, idx) => {
                     const rowNumber = (currentPage - 1) * itemsPerPage + idx + 1;
+                    const isCentral = (rec.cneType || 'CENTRAL').toUpperCase() === 'CENTRAL';
                     return (
                       <tr key={rec.dataId} className="hover:bg-slate-50">
                         {/* Sr. No. (Replacing Data ID) */}
                         <td className="py-3 px-3 text-center font-medium text-slate-400">
                           {rowNumber}
+                        </td>
+
+                        {/* CNE Type */}
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              isCentral
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : 'bg-teal-50 text-teal-700 border border-teal-200'
+                            }`}
+                          >
+                            {rec.cneType || 'CENTRAL'}
+                          </span>
                         </td>
 
                         {/* Date */}
@@ -846,8 +886,23 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                 />
               </div>
 
-              {/* Area & Mode */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Type of CNE & Area & Mode */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Type of CNE *
+                  </label>
+                  <select
+                    required
+                    value={formCneType}
+                    onChange={(e) => setFormCneType(e.target.value as any)}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800"
+                  >
+                    <option value="CENTRAL">Central CNE</option>
+                    <option value="DEPARTMENTAL">Departmental CNE</option>
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
                     Ward Name / Area *
@@ -1259,8 +1314,23 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                 />
               </div>
 
-              {/* Area & Mode */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Type of CNE & Area & Mode */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Type of CNE *
+                  </label>
+                  <select
+                    required
+                    value={editCneType}
+                    onChange={(e) => setEditCneType(e.target.value as any)}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800"
+                  >
+                    <option value="CENTRAL">Central CNE</option>
+                    <option value="DEPARTMENTAL">Departmental CNE</option>
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
                     Ward Name / Area *

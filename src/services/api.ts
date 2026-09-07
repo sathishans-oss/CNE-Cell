@@ -389,8 +389,14 @@ export class ApiService {
     return this.executeAction<RoleMapping[]>('getRoles');
   }
 
-  static async updateRole(employeeId: string, role: UserRole, name?: string, designation?: string): Promise<ApiResponse> {
-    return this.executeAction('updateRole', { employeeId, role, name, designation });
+  static async updateRole(
+    employeeId: string,
+    role: UserRole,
+    area?: string,
+    name?: string,
+    designation?: string
+  ): Promise<ApiResponse> {
+    return this.executeAction('updateRole', { employeeId, role, area, department: area, name, designation });
   }
 
   /**
@@ -421,6 +427,18 @@ export class ApiService {
 
   static async addUpcomingClass(classData: Partial<UpcomingClass>): Promise<ApiResponse<{ classId: string }>> {
     return this.executeAction<{ classId: string }>('addUpcomingClass', classData);
+  }
+
+  static async addDepartmentalSchedule(
+    schedules: any[]
+  ): Promise<ApiResponse<{ count: number; createdIds: string[] }>> {
+    return this.executeAction<{ count: number; createdIds: string[] }>('addDepartmentalSchedule', {
+      schedules
+    });
+  }
+
+  static async setupAndVerifyCNESheets(): Promise<ApiResponse<{ results: Record<string, string> }>> {
+    return this.executeAction<{ results: Record<string, string> }>('setupAndVerifyCNESheets');
   }
 
   static async updateUpcomingClass(classId: string, classData: Partial<UpcomingClass>): Promise<ApiResponse> {

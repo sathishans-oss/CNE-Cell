@@ -77,6 +77,7 @@ export interface RoleMapping {
   name: string;
   designation: string;
   role: UserRole;
+  area?: string;
   updatedAt?: string;
 }
 
@@ -101,6 +102,7 @@ export interface CNERecord {
   createdAt?: string;
   updatedAt?: string;
   updatedBy?: string;
+  cneType?: 'CENTRAL' | 'DEPARTMENTAL';
 }
 
 export interface UpcomingClass {
@@ -119,7 +121,7 @@ export interface UpcomingClass {
   description?: string;
   maxParticipants?: number;
   currentApplicationsCount?: number;
-  status: 'Pending' | 'Approved' | 'Rejected' | 'OPEN' | 'CLOSED' | 'COMPLETED' | 'CANCELLED';
+  status: 'Scheduled' | 'Completed' | 'Canceled' | 'Pending' | 'Approved' | 'Rejected' | 'OPEN' | 'CLOSED' | 'COMPLETED' | 'CANCELLED';
   proposedByEmpId?: string;
   proposedByName?: string;
   adminRemarks?: string;
@@ -128,6 +130,23 @@ export interface UpcomingClass {
   finalizedQuestionsCount?: number;
   isLocked?: boolean;
   qrToken?: string;
+}
+
+export interface DepartmentalScheduleRow {
+  id: string;
+  topic: string;
+  area: string;
+  date: string;
+  toDate?: string;
+  time: string;
+  duration: string;
+  resourcePersonEmpId: string;
+  resourcePersonName?: string;
+  externalResourcePersons?: string[];
+  modeOfTeaching: string;
+  description?: string;
+  maxParticipants: number;
+  adminRemarks?: string;
 }
 
 export interface CNEQuestion {

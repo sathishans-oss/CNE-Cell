@@ -12,6 +12,24 @@ function normalizeEmpId(id) {
   return String(id).trim().toUpperCase();
 }
 
+// Authoritative Normalization: CNE Type (Strictly CENTRAL or DEPARTMENTAL)
+function normalizeCNEType(typeStr) {
+  if (!typeStr) return 'CENTRAL';
+  var s = String(typeStr).trim().toUpperCase();
+  if (s === 'DEPARTMENTAL' || s === 'DEPT') return 'DEPARTMENTAL';
+  return 'CENTRAL';
+}
+
+// Authoritative Normalization: CNE Scheduling Status (Strictly Scheduled, Completed, or Canceled)
+function normalizeCNEStatus(statusStr) {
+  if (!statusStr) return 'Scheduled';
+  var s = String(statusStr).trim();
+  var upper = s.toUpperCase();
+  if (upper === 'COMPLETED') return 'Completed';
+  if (upper === 'CANCELED' || upper === 'CANCELLED') return 'Canceled';
+  return 'Scheduled';
+}
+
 // Formula Injection Prevention: Prepend apostrophe to user strings starting with =, +, -, @, \t, \r
 function sanitizeCellInput(val) {
   if (val === null || val === undefined) return '';
@@ -352,9 +370,25 @@ function handleRequest(e, method) {
           output = handleAddUpcomingClass(params, session);
         }
         break;
+
+      case 'addDepartmentalSchedule':
+        if (!session) {
+          output = { success: false, errorCode: 'UNAUTHORIZED', message: 'Authentication required. Please sign in.' };
+        } else {
+          output = handleAddDepartmentalSchedule(params, session);
+        }
+        break;
         
       case 'updateUpcomingClass':
-        output = handleAdminAction(params, session, handleUpdateUpcomingClass, 'UPDATE_UPCOMING_CLASS');
+        if (!session) {
+          output = { success: false, errorCode: 'UNAUTHORIZED', message: 'Authentication required. Please sign in.' };
+        } else {
+          output = handleUpdateUpcomingClass(params, session);
+        }
+        break;
+
+      case 'setupAndVerifyCNESheets':
+        output = handleAdminAction(params, session, handleSetupAndVerifyCNESheets, 'SETUP_AND_VERIFY_SHEETS');
         break;
 
       case 'reviewUpcomingClass':
@@ -1632,6 +1666,7 @@ function handleGetCNERecords(params, session) {
   if (data.length <= 1) return { success: true, data: [] };
   var displayValues = dataRange.getDisplayValues();
   var officerMap = getOfficerNameMap();
+  var colMap = getHeaderMap(sheet);
   
   var records = [];
   for (var r = 1; r < data.length; r++) {
@@ -1650,6 +1685,8 @@ function handleGetCNERecords(params, session) {
     var staffIdsRaw = String(row[8] || '').trim();
     var staffCount = parseInt(row[9], 10) || 0;
     var remarks = String(row[10] || '').trim();
+    var rawType = colMap['typeofcne'] !== undefined ? row[colMap['typeofcne']] : row[15];
+    var cneType = normalizeCNEType(rawType);
     
     // Strict exact participant parsing
     var staffArray = staffIdsRaw.split(',').map(function(s) {
@@ -1702,7 +1739,8 @@ function handleGetCNERecords(params, session) {
       staffEmpIds: sanitizedStaffEmpIds,
       staffNames: staffNameList,
       staffCount: staffCount,
-      remarks: remarks
+      remarks: remarks,
+      cneType: cneType
     });
   }
   
@@ -1860,7 +1898,8 @@ function handleAddCNE(params, session) {
       new Date().toISOString(),
       session.employeeId || '',
       extRpClean.join(', '),
-      extStaffClean.join(', ')
+      extStaffClean.join(', '),
+      normalizeCNEType(params.cneType || 'CENTRAL')
     ]);
     
     // Preserve Duration cell number format on newly appended row if not already formatted
@@ -2049,6 +2088,11 @@ function handleUpdateCNE(params, session) {
         }
         
         if (params.remarks !== undefined) sheet.getRange(r + 1, 11).setValue(sanitizeCellInput(params.remarks));
+        if (params.cneType !== undefined) {
+          var dataColMap = getHeaderMap(sheet);
+          var cneTypeCol = (dataColMap['typeofcne'] !== undefined) ? (dataColMap['typeofcne'] + 1) : 16;
+          sheet.getRange(r + 1, cneTypeCol).setValue(normalizeCNEType(params.cneType));
+        }
         
         logAuditAction('UPDATE_CNE', session.employeeId, 'Updated Data ID: ' + dataId, 'SUCCESS');
         return { success: true, message: 'CNE record updated successfully.' };
@@ -2097,43 +2141,56 @@ function handleDeleteCNE(params, session) {
 }
 
 /**
- * 4 & 17. Upcoming Classes Management
+ * 4 & 17. Upcoming Classes Management (Central & Departmental Scheduling)
  */
 function handleGetUpcomingClasses(params) {
   var sheet = getOrCreateSheet('Upcoming Classes', [
-    'Class ID', 'Topic', 'Area', 'Date', 'Time', 'Duration', 'Resource Person Emp Id', 'Mode', 'Description', 'Max Participants', 'Status', 'To Date', 'External Resource Persons', 'Proposed By', 'Admin Remarks'
+    'Class ID', 'Topic', 'Area', 'From Date', 'To Date', 'Time', 'Duration',
+    'Resource Person Emp Id', 'Mode of Teaching', 'Description', 'Max Participants', 'Status',
+    'Type of CNE', 'External Resource Persons', 'Proposed By', 'Admin Remarks'
   ]);
   
   var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return { success: true, data: [] };
+
+  var colMap = getHeaderMap(sheet);
   var officerMap = getOfficerNameMap();
   var list = [];
   
   for (var r = 1; r < data.length; r++) {
-    var id = String(data[r][0] || '').trim();
+    var id = String(data[r][colMap['classid'] !== undefined ? colMap['classid'] : 0] || '').trim();
     if (!id) continue;
     
-    var extRp = data[r][12] ? String(data[r][12]).split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
-    var rawRp = String(data[r][6] || '').trim();
+    var rawExtRp = colMap['externalresourcepersons'] !== undefined ? data[r][colMap['externalresourcepersons']] : (data[r][13] || '');
+    var extRp = rawExtRp ? String(rawExtRp).split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+
+    var rawRp = String(data[r][colMap['resourcepersonempid'] !== undefined ? colMap['resourcepersonempid'] : 7] || '').trim();
     var rpIds = rawRp.split(/[,;\n]+/).map(function(s) { return normalizeEmpId(s); }).filter(Boolean);
     var rpNames = rpIds.map(function(rpId) { return officerMap[rpId] || rpId; }).filter(Boolean);
+
+    var rawDate = colMap['fromdate'] !== undefined ? data[r][colMap['fromdate']] : (colMap['date'] !== undefined ? data[r][colMap['date']] : data[r][3]);
+    var rawToDate = colMap['todate'] !== undefined ? data[r][colMap['todate']] : (data[r][4] || rawDate);
+    var rawStatus = colMap['status'] !== undefined ? data[r][colMap['status']] : data[r][11];
+    var rawType = colMap['typeofcne'] !== undefined ? data[r][colMap['typeofcne']] : data[r][12];
     
     list.push({
       classId: id,
-      topic: String(data[r][1] || ''),
-      area: String(data[r][2] || ''),
-      date: formatDateValue(data[r][3]),
-      toDate: data[r][11] ? formatDateValue(data[r][11]) : formatDateValue(data[r][3]),
-      time: String(data[r][4] || ''),
-      duration: String(data[r][5] || '1:00:00'),
+      topic: String(data[r][colMap['topic'] !== undefined ? colMap['topic'] : 1] || ''),
+      area: String(data[r][colMap['area'] !== undefined ? colMap['area'] : 2] || ''),
+      date: formatDateValue(rawDate),
+      toDate: formatDateValue(rawToDate),
+      time: String(data[r][colMap['time'] !== undefined ? colMap['time'] : 5] || ''),
+      duration: String(data[r][colMap['duration'] !== undefined ? colMap['duration'] : 6] || '1:00:00'),
       resourcePersonEmpId: rawRp,
       resourcePersonName: rpNames.join(', '),
       externalResourcePersons: extRp,
-      modeOfTeaching: String(data[r][7] || 'Lecture Cum Discussion'),
-      description: String(data[r][8] || ''),
-      maxParticipants: parseInt(data[r][9], 10) || 50,
-      status: String(data[r][10] || 'OPEN').trim(),
-      proposedByEmpId: String(data[r][13] || ''),
-      adminRemarks: String(data[r][14] || '')
+      modeOfTeaching: String(data[r][colMap['modeofteaching'] !== undefined ? colMap['modeofteaching'] : (colMap['mode'] !== undefined ? colMap['mode'] : data[r][8])] || 'Lecture Cum Discussion'),
+      description: String(data[r][colMap['description'] !== undefined ? colMap['description'] : 9] || ''),
+      maxParticipants: parseInt(data[r][colMap['maxparticipants'] !== undefined ? data[r][colMap['maxparticipants'] : 10], 10) || 50,
+      status: normalizeCNEStatus(rawStatus),
+      cneType: normalizeCNEType(rawType),
+      proposedByEmpId: String(data[r][colMap['proposedby'] !== undefined ? colMap['proposedby'] : 14] || ''),
+      adminRemarks: String(data[r][colMap['adminremarks'] !== undefined ? colMap['adminremarks'] : 15] || '')
     });
   }
   
@@ -2149,6 +2206,7 @@ function handleAddUpcomingClass(params, session) {
   var area = sanitizeCellInput(params.area);
   var date = (params.date || '').trim();
   var toDate = (params.toDate || date).trim();
+  var cneType = normalizeCNEType(params.cneType || 'CENTRAL');
   
   if (!topic || !area || !date) {
     return { success: false, message: 'Topic, Area, and Date are required.' };
@@ -2161,6 +2219,23 @@ function handleAddUpcomingClass(params, session) {
   }
   if (toDate < date) {
     return { success: false, message: 'To Date cannot be earlier than From Date.' };
+  }
+
+  var isAdmin = session.role === 'ADMIN';
+  var isAreaIncharge = session.role === 'AREA_INCHARGE' || session.role === 'INCHARGE';
+
+  // Authorization check
+  if (cneType === 'CENTRAL') {
+    if (!isAdmin) {
+      return {
+        success: false,
+        errorCode: 'FORBIDDEN',
+        message: 'Permission denied. Only Administrators can schedule Central CNE programs.'
+      };
+    }
+  } else {
+    var authErr = checkCNEAuthorized(session, area, 'DEPARTMENTAL');
+    if (authErr) return authErr;
   }
 
   // Validate internal Resource Persons individually
@@ -2210,16 +2285,7 @@ function handleAddUpcomingClass(params, session) {
     return { success: false, message: 'At least one Resource Person (Internal or External) is required.' };
   }
 
-  var isAdmin = session.role === 'ADMIN';
-  var status = 'Pending';
-  if (isAdmin) {
-    var reqStatus = String(params.status || 'Approved').trim();
-    if (reqStatus === 'OPEN' || reqStatus === 'Approved') {
-      status = 'Approved';
-    } else {
-      status = reqStatus;
-    }
-  }
+  var status = normalizeCNEStatus(params.status || 'Scheduled');
   
   var lock = LockService.getScriptLock();
   try {
@@ -2230,37 +2296,223 @@ function handleAddUpcomingClass(params, session) {
   
   try {
     var sheet = getOrCreateSheet('Upcoming Classes', [
-      'Class ID', 'Topic', 'Area', 'Date', 'Time', 'Duration', 'Resource Person Emp Id', 'Mode', 'Description', 'Max Participants', 'Status', 'To Date', 'External Resource Persons', 'Proposed By', 'Admin Remarks'
+      'Class ID', 'Topic', 'Area', 'From Date', 'To Date', 'Time', 'Duration',
+      'Resource Person Emp Id', 'Mode of Teaching', 'Description', 'Max Participants', 'Status',
+      'Type of CNE', 'External Resource Persons', 'Proposed By', 'Admin Remarks'
     ]);
     
     var curYear = new Date().getFullYear();
     var timestampSuffix = Date.now().toString().slice(-4);
     var randSuffix = ('000' + Math.floor(Math.random() * 1000)).slice(-3);
-    var classId = 'CLS-' + curYear + '-' + timestampSuffix + randSuffix;
+    var classId = 'CLS-' + curYear + '-' + (cneType === 'DEPARTMENTAL' ? 'D-' : '') + timestampSuffix + randSuffix;
     
-    sheet.appendRow([
-      classId,
-      topic,
-      area,
-      date,
-      params.time || '14:00',
-      sanitizeCellInput(params.duration || '1:00:00'),
-      rpClean.join(', '),
-      sanitizeCellInput(params.modeOfTeaching || 'Lecture Cum Discussion'),
-      sanitizeCellInput(params.description || ''),
-      parseInt(params.maxParticipants, 10) || 50,
-      status,
-      toDate,
-      extRpClean.join(', '),
-      session.employeeId || '',
-      sanitizeCellInput(params.adminRemarks || '')
-    ]);
+    var colMap = getHeaderMap(sheet);
+    var maxCol = Math.max(sheet.getLastColumn(), 16);
+    var rowData = [];
+    for (var col = 0; col < maxCol; col++) rowData.push('');
+
+    var setCell = function(key, fallbackCol, val) {
+      var idx = colMap[key] !== undefined ? colMap[key] : fallbackCol;
+      while (rowData.length <= idx) rowData.push('');
+      rowData[idx] = val;
+    };
+
+    setCell('classid', 0, classId);
+    setCell('topic', 1, topic);
+    setCell('area', 2, area);
+    setCell('fromdate', 3, date);
+    if (colMap['date'] !== undefined) rowData[colMap['date']] = date;
+    setCell('todate', 4, toDate);
+    setCell('time', 5, params.time || '14:00');
+    setCell('duration', 6, sanitizeCellInput(params.duration || '1:00:00'));
+    setCell('resourcepersonempid', 7, rpClean.join(', '));
+    setCell('modeofteaching', 8, sanitizeCellInput(params.modeOfTeaching || 'Lecture Cum Discussion'));
+    if (colMap['mode'] !== undefined) rowData[colMap['mode']] = sanitizeCellInput(params.modeOfTeaching || 'Lecture Cum Discussion');
+    setCell('description', 9, sanitizeCellInput(params.description || ''));
+    setCell('maxparticipants', 10, parseInt(params.maxParticipants, 10) || 50);
+    setCell('status', 11, status);
+    setCell('typeofcne', 12, cneType);
+    setCell('externalresourcepersons', 13, extRpClean.join(', '));
+    setCell('proposedby', 14, session.employeeId || '');
+    setCell('adminremarks', 15, sanitizeCellInput(params.adminRemarks || ''));
+
+    sheet.appendRow(rowData);
     
-    logAuditAction('ADD_UPCOMING_CLASS', session.employeeId, 'Scheduled class: ' + classId + ' (' + topic + ') Status: ' + status, 'SUCCESS');
+    logAuditAction('ADD_UPCOMING_CLASS', session.employeeId, 'Scheduled ' + cneType + ' class: ' + classId + ' (' + topic + ') Status: ' + status, 'SUCCESS');
     return { 
       success: true, 
-      message: status === 'Pending' ? 'CNE class proposal submitted for Admin approval.' : 'Upcoming class scheduled successfully.', 
-      data: { classId: classId, status: status } 
+      message: (cneType === 'DEPARTMENTAL' ? 'Departmental' : 'Central') + ' CNE class scheduled successfully.', 
+      data: { classId: classId, status: status, cneType: cneType } 
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Batch Schedule Departmental CNEs (Admin and Area Incharge)
+ * Creates separate, independent records in Upcoming Classes for each schedule row.
+ */
+function handleAddDepartmentalSchedule(params, session) {
+  if (!session) {
+    return { success: false, errorCode: 'UNAUTHORIZED', message: 'Authentication required. Please sign in.' };
+  }
+
+  var rawClasses = params.classes;
+  if (!rawClasses || !Array.isArray(rawClasses) || rawClasses.length === 0) {
+    return { success: false, message: 'At least one departmental CNE schedule row is required.' };
+  }
+
+  var isAdmin = session.role === 'ADMIN';
+  var isAreaIncharge = session.role === 'AREA_INCHARGE' || session.role === 'INCHARGE';
+  if (!isAdmin && !isAreaIncharge) {
+    return { success: false, errorCode: 'FORBIDDEN', message: 'Only an Administrator or designated Area Incharge can schedule Departmental CNEs.' };
+  }
+
+  var todayStr = new Date().toISOString().split('T')[0];
+  var validatedList = [];
+
+  for (var i = 0; i < rawClasses.length; i++) {
+    var c = rawClasses[i];
+    var topic = sanitizeCellInput(c.topic);
+    var area = sanitizeCellInput(c.area);
+    var date = (c.date || '').trim();
+    var toDate = (c.toDate || date).trim();
+
+    if (!topic || !area || !date) {
+      return { success: false, message: 'Row ' + (i + 1) + ': Topic, Area, and Date are required.' };
+    }
+
+    if (date < todayStr) {
+      return { success: false, message: 'Row ' + (i + 1) + ': Scheduled date cannot be in the past.' };
+    }
+    if (toDate < date) {
+      return { success: false, message: 'Row ' + (i + 1) + ': To Date cannot be earlier than From Date.' };
+    }
+
+    // Check authorization for this department
+    var authErr = checkCNEAuthorized(session, area, 'DEPARTMENTAL');
+    if (authErr) {
+      return { success: false, errorCode: 'FORBIDDEN', message: 'Row ' + (i + 1) + ' (' + area + '): ' + authErr.message };
+    }
+
+    // Internal RP validation
+    var rawRp = c.resourcePersonEmpIds !== undefined ? c.resourcePersonEmpIds : c.resourcePersonEmpId;
+    var listRp = Array.isArray(rawRp) ? rawRp : (rawRp || '').split(',');
+    var cleanRpMap = {};
+    var rpClean = [];
+    var invalidRpIds = [];
+
+    for (var k = 0; k < listRp.length; k++) {
+      var splitParts = String(listRp[k] || '').split(/[,;\n]+/);
+      for (var sp = 0; sp < splitParts.length; sp++) {
+        var rpid = normalizeEmpId(splitParts[sp]);
+        if (!rpid || rpid.toLowerCase().indexOf('ext:') === 0) continue;
+        if (!cleanRpMap[rpid]) {
+          cleanRpMap[rpid] = true;
+          var officerCheck = findOfficerById(rpid);
+          if (!officerCheck) {
+            invalidRpIds.push(rpid);
+          } else {
+            rpClean.push(rpid);
+          }
+        }
+      }
+    }
+
+    if (invalidRpIds.length > 0) {
+      return { success: false, message: 'Row ' + (i + 1) + ': Invalid Resource Person Employee ID(s): ' + invalidRpIds.join(', ') };
+    }
+
+    // External RP
+    var extRp = Array.isArray(c.externalResourcePersons)
+      ? c.externalResourcePersons
+      : (c.externalResourcePersons || '').split(',');
+    var extRpClean = extRp.map(function(s) { return sanitizeCellInput(String(s).trim()); }).filter(Boolean);
+
+    if (rpClean.length === 0 && extRpClean.length === 0) {
+      return { success: false, message: 'Row ' + (i + 1) + ': At least one Resource Person (Internal or External) is required.' };
+    }
+
+    validatedList.push({
+      topic: topic,
+      area: area,
+      date: date,
+      toDate: toDate,
+      time: sanitizeCellInput(c.time || '14:00'),
+      duration: sanitizeCellInput(c.duration || '1:00:00'),
+      rpClean: rpClean,
+      extRpClean: extRpClean,
+      mode: sanitizeCellInput(c.modeOfTeaching || 'Lecture Cum Discussion'),
+      description: sanitizeCellInput(c.description || ''),
+      maxParticipants: parseInt(c.maxParticipants, 10) || 30,
+      adminRemarks: sanitizeCellInput(c.adminRemarks || '')
+    });
+  }
+
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(15000);
+  } catch (e) {
+    return { success: false, message: 'Server is busy. Please try again.' };
+  }
+
+  try {
+    var sheet = getOrCreateSheet('Upcoming Classes', [
+      'Class ID', 'Topic', 'Area', 'From Date', 'To Date', 'Time', 'Duration',
+      'Resource Person Emp Id', 'Mode of Teaching', 'Description', 'Max Participants', 'Status',
+      'Type of CNE', 'External Resource Persons', 'Proposed By', 'Admin Remarks'
+    ]);
+
+    var colMap = getHeaderMap(sheet);
+    var curYear = new Date().getFullYear();
+    var createdIds = [];
+
+    for (var j = 0; j < validatedList.length; j++) {
+      var item = validatedList[j];
+      var timestampSuffix = Date.now().toString().slice(-4);
+      var randSuffix = ('000' + Math.floor(Math.random() * 1000)).slice(-3) + j;
+      var classId = 'CLS-' + curYear + '-D-' + timestampSuffix + randSuffix;
+
+      var rowData = [];
+      var maxCol = Math.max(sheet.getLastColumn(), 16);
+      for (var col = 0; col < maxCol; col++) rowData.push('');
+
+      var setCell = function(key, fallbackCol, val) {
+        var idx = colMap[key] !== undefined ? colMap[key] : fallbackCol;
+        while (rowData.length <= idx) rowData.push('');
+        rowData[idx] = val;
+      };
+
+      setCell('classid', 0, classId);
+      setCell('topic', 1, item.topic);
+      setCell('area', 2, item.area);
+      setCell('fromdate', 3, item.date);
+      if (colMap['date'] !== undefined) rowData[colMap['date']] = item.date;
+      setCell('todate', 4, item.toDate);
+      setCell('time', 5, item.time);
+      setCell('duration', 6, item.duration);
+      setCell('resourcepersonempid', 7, item.rpClean.join(', '));
+      setCell('modeofteaching', 8, item.mode);
+      if (colMap['mode'] !== undefined) rowData[colMap['mode']] = item.mode;
+      setCell('description', 9, item.description);
+      setCell('maxparticipants', 10, item.maxParticipants);
+      setCell('status', 11, 'Scheduled');
+      setCell('typeofcne', 12, 'DEPARTMENTAL');
+      setCell('externalresourcepersons', 13, item.extRpClean.join(', '));
+      setCell('proposedby', 14, session.employeeId || '');
+      setCell('adminremarks', 15, item.adminRemarks);
+
+      sheet.appendRow(rowData);
+      createdIds.push(classId);
+    }
+
+    logAuditAction('ADD_DEPARTMENTAL_SCHEDULE', session.employeeId, 'Scheduled ' + createdIds.length + ' departmental CNE(s): ' + createdIds.join(', '), 'SUCCESS');
+
+    return {
+      success: true,
+      message: 'Scheduled ' + createdIds.length + ' Departmental CNE session(s) successfully.',
+      data: { createdClasses: createdIds, count: createdIds.length }
     };
   } finally {
     lock.releaseLock();
@@ -2268,11 +2520,18 @@ function handleAddUpcomingClass(params, session) {
 }
 
 function handleUpdateUpcomingClass(params, session) {
-  var adminError = requireAdmin(session);
-  if (adminError) return adminError;
+  if (!session) {
+    return { success: false, errorCode: 'UNAUTHORIZED', message: 'Unauthorized session.' };
+  }
 
   var classId = (params.classId || '').trim();
   if (!classId) return { success: false, message: 'Class ID is required.' };
+  
+  var record = getCNEClassRecord(classId);
+  if (!record) return { success: false, message: 'Class not found.' };
+
+  var authErr = checkCNEAuthorized(session, record.area, record.cneType);
+  if (authErr) return authErr;
   
   var lock = LockService.getScriptLock();
   try {
@@ -2287,16 +2546,31 @@ function handleUpdateUpcomingClass(params, session) {
     if (!sheet) return { success: false, message: 'Upcoming Classes sheet not found.' };
     
     var data = sheet.getDataRange().getValues();
+    var colMap = getHeaderMap(sheet);
+    var idCol = colMap['classid'] !== undefined ? colMap['classid'] : 0;
+
     for (var r = 1; r < data.length; r++) {
-      if (String(data[r][0]).trim().toLowerCase() === classId.toLowerCase()) {
-        if (params.topic !== undefined) sheet.getRange(r + 1, 2).setValue(sanitizeCellInput(params.topic));
-        if (params.area !== undefined) sheet.getRange(r + 1, 3).setValue(sanitizeCellInput(params.area));
-        if (params.date !== undefined) sheet.getRange(r + 1, 4).setValue(params.date);
-        if (params.time !== undefined) sheet.getRange(r + 1, 5).setValue(params.time);
-        if (params.duration !== undefined) sheet.getRange(r + 1, 6).setValue(sanitizeCellInput(params.duration));
+      if (String(data[r][idCol]).trim().toLowerCase() === classId.toLowerCase()) {
+        var rowNum = r + 1;
+        var setColVal = function(key, fallbackCol, val) {
+          var c = colMap[key] !== undefined ? colMap[key] : fallbackCol;
+          sheet.getRange(rowNum, c + 1).setValue(val);
+        };
+
+        if (params.topic !== undefined) setColVal('topic', 1, sanitizeCellInput(params.topic));
+        if (params.area !== undefined) setColVal('area', 2, sanitizeCellInput(params.area));
+        if (params.date !== undefined) {
+          setColVal('fromdate', 3, params.date);
+          if (colMap['date'] !== undefined) sheet.getRange(rowNum, colMap['date'] + 1).setValue(params.date);
+        }
+        if (params.toDate !== undefined) setColVal('todate', 4, params.toDate);
+        if (params.time !== undefined) setColVal('time', 5, params.time);
+        if (params.duration !== undefined) setColVal('duration', 6, sanitizeCellInput(params.duration));
         
-        var existingRp = data[r][6] ? String(data[r][6]).split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
-        var existingExtRp = data[r][12] ? String(data[r][12]).split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+        var existingRp = data[r][colMap['resourcepersonempid'] !== undefined ? colMap['resourcepersonempid'] : 7] 
+          ? String(data[r][colMap['resourcepersonempid'] !== undefined ? colMap['resourcepersonempid'] : 7]).split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+        var existingExtRp = data[r][colMap['externalresourcepersons'] !== undefined ? colMap['externalresourcepersons'] : 13]
+          ? String(data[r][colMap['externalresourcepersons'] !== undefined ? colMap['externalresourcepersons'] : 13]).split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
         var rpClean = existingRp;
         var extRpClean = existingExtRp;
 
@@ -2346,20 +2620,24 @@ function handleUpdateUpcomingClass(params, session) {
         }
 
         if (params.resourcePersonEmpId !== undefined || params.resourcePersonEmpIds !== undefined || params.externalResourcePersons !== undefined) {
-          sheet.getRange(r + 1, 7).setValue(rpClean.join(', '));
-          sheet.getRange(r + 1, 13).setValue(extRpClean.join(', '));
+          setColVal('resourcepersonempid', 7, rpClean.join(', '));
+          setColVal('externalresourcepersons', 13, extRpClean.join(', '));
         }
         
-        if (params.modeOfTeaching !== undefined) sheet.getRange(r + 1, 8).setValue(sanitizeCellInput(params.modeOfTeaching));
-        if (params.description !== undefined) sheet.getRange(r + 1, 9).setValue(sanitizeCellInput(params.description));
-        if (params.maxParticipants !== undefined) sheet.getRange(r + 1, 10).setValue(parseInt(params.maxParticipants, 10) || 50);
+        if (params.modeOfTeaching !== undefined) {
+          setColVal('modeofteaching', 8, sanitizeCellInput(params.modeOfTeaching));
+          if (colMap['mode'] !== undefined) sheet.getRange(rowNum, colMap['mode'] + 1).setValue(sanitizeCellInput(params.modeOfTeaching));
+        }
+        if (params.description !== undefined) setColVal('description', 9, sanitizeCellInput(params.description));
+        if (params.maxParticipants !== undefined) setColVal('maxparticipants', 10, parseInt(params.maxParticipants, 10) || 50);
         
         if (params.status !== undefined) {
-          var rawStatus = String(params.status).trim();
-          sheet.getRange(r + 1, 11).setValue(rawStatus);
+          setColVal('status', 11, normalizeCNEStatus(params.status));
         }
-        if (params.toDate !== undefined) sheet.getRange(r + 1, 12).setValue(params.toDate);
-        if (params.adminRemarks !== undefined) sheet.getRange(r + 1, 15).setValue(sanitizeCellInput(params.adminRemarks));
+        if (params.cneType !== undefined) {
+          setColVal('typeofcne', 12, normalizeCNEType(params.cneType));
+        }
+        if (params.adminRemarks !== undefined) setColVal('adminremarks', 15, sanitizeCellInput(params.adminRemarks));
         
         logAuditAction('UPDATE_UPCOMING_CLASS', session.employeeId, 'Updated class: ' + classId, 'SUCCESS');
         return { success: true, message: 'Upcoming class updated successfully.' };
@@ -2376,12 +2654,10 @@ function handleReviewUpcomingClass(params, session) {
   if (adminError) return adminError;
 
   var classId = (params.classId || '').trim();
-  var newStatus = (params.status || '').trim();
+  var rawStatus = (params.status || '').trim();
   var adminRemarks = sanitizeCellInput(params.adminRemarks || params.remarks || '');
 
-  if (newStatus !== 'Approved' && newStatus !== 'Rejected' && newStatus !== 'Pending') {
-    return { success: false, message: 'Status must be Pending, Approved, or Rejected.' };
-  }
+  var newStatus = normalizeCNEStatus(rawStatus);
 
   var lock = LockService.getScriptLock();
   try {
@@ -2396,12 +2672,17 @@ function handleReviewUpcomingClass(params, session) {
     if (!sheet) return { success: false, message: 'Upcoming Classes sheet not found.' };
 
     var data = sheet.getDataRange().getValues();
+    var colMap = getHeaderMap(sheet);
+    var idCol = colMap['classid'] !== undefined ? colMap['classid'] : 0;
+    var statusCol = colMap['status'] !== undefined ? (colMap['status'] + 1) : 12;
+    var remarksCol = colMap['adminremarks'] !== undefined ? (colMap['adminremarks'] + 1) : 16;
+
     for (var r = 1; r < data.length; r++) {
-      if (String(data[r][0]).trim().toLowerCase() === classId.toLowerCase()) {
-        sheet.getRange(r + 1, 11).setValue(newStatus);
-        sheet.getRange(r + 1, 15).setValue(adminRemarks);
+      if (String(data[r][idCol]).trim().toLowerCase() === classId.toLowerCase()) {
+        sheet.getRange(r + 1, statusCol).setValue(newStatus);
+        if (adminRemarks) sheet.getRange(r + 1, remarksCol).setValue(adminRemarks);
         logAuditAction('REVIEW_UPCOMING_CLASS', session.employeeId, 'Class ID ' + classId + ' set to ' + newStatus + ' with remarks: ' + adminRemarks, 'SUCCESS');
-        return { success: true, message: 'Upcoming CNE class has been ' + newStatus.toLowerCase() + '.' };
+        return { success: true, message: 'Upcoming CNE class status updated to ' + newStatus + '.' };
       }
     }
     return { success: false, message: 'Upcoming class with ID ' + classId + ' not found.' };
@@ -2433,16 +2714,21 @@ function handleApplyForClass(params, session) {
     var classSheet = ss.getSheetByName('Upcoming Classes');
     if (!classSheet) return { success: false, message: 'Upcoming Classes sheet not found.' };
     
-    // 1. Confirm Class Exists and is OPEN
+    // 1. Confirm Class Exists and is Scheduled
     var classData = classSheet.getDataRange().getValues();
+    var colMap = getHeaderMap(classSheet);
+    var idCol = colMap['classid'] !== undefined ? colMap['classid'] : 0;
+    var maxPCol = colMap['maxparticipants'] !== undefined ? colMap['maxparticipants'] : 10;
+    var statusCol = colMap['status'] !== undefined ? colMap['status'] : 11;
     var targetClass = null;
+
     for (var c = 1; c < classData.length; c++) {
-      if (String(classData[c][0]).trim().toLowerCase() === classId.toLowerCase()) {
+      if (String(classData[c][idCol]).trim().toLowerCase() === classId.toLowerCase()) {
         targetClass = {
-          classId: String(classData[c][0]),
-          topic: String(classData[c][1]),
-          maxParticipants: parseInt(classData[c][9], 10) || 50,
-          status: String(classData[c][10] || 'OPEN').toUpperCase().trim()
+          classId: String(classData[c][idCol]),
+          topic: String(classData[c][colMap['topic'] !== undefined ? colMap['topic'] : 1]),
+          maxParticipants: parseInt(classData[c][maxPCol], 10) || 50,
+          status: normalizeCNEStatus(classData[c][statusCol])
         };
         break;
       }
@@ -2452,7 +2738,7 @@ function handleApplyForClass(params, session) {
       return { success: false, message: 'Class with ID ' + classId + ' not found.' };
     }
     
-    if (targetClass.status !== 'OPEN') {
+    if (targetClass.status !== 'Scheduled') {
       return { success: false, message: 'This class is currently ' + targetClass.status + ' and not accepting applications.' };
     }
     
@@ -2837,18 +3123,29 @@ function handleGetRoles(params, session) {
   var adminError = requireAdmin(session);
   if (adminError) return adminError;
 
-  var sheet = getOrCreateSheet('Role', ['Employee ID No.', 'Name of the Officers', 'Designation', 'Role']);
+  var sheet = getOrCreateSheet('Role', ['Employee ID No.', 'Name of the Officers', 'Designation', 'Role', 'Department / Area']);
   var data = sheet.getDataRange().getValues();
+  var colMap = getHeaderMap(sheet);
   var roles = [];
   
   for (var r = 1; r < data.length; r++) {
-    var empId = String(data[r][0] || '').trim();
+    var empId = String(data[r][colMap['employeeidno'] !== undefined ? colMap['employeeidno'] : 0] || '').trim();
     if (empId) {
+      var rawRole = String(data[r][colMap['role'] !== undefined ? colMap['role'] : 3] || 'EMPLOYEE').toUpperCase().trim();
+      var normalizedRole = 'EMPLOYEE';
+      if (rawRole.indexOf('ADMIN') !== -1) {
+        normalizedRole = 'ADMIN';
+      } else if (rawRole.indexOf('INCHARGE') !== -1) {
+        normalizedRole = 'AREA_INCHARGE';
+      }
+      var area = colMap['departmentarea'] !== undefined ? String(data[r][colMap['departmentarea']] || '').trim() : '';
+
       roles.push({
         employeeId: empId,
-        name: String(data[r][1] || ''),
-        designation: String(data[r][2] || ''),
-        role: String(data[r][3] || 'EMPLOYEE').toUpperCase() === 'ADMIN' ? 'ADMIN' : 'EMPLOYEE'
+        name: String(data[r][colMap['nameoftheofficers'] !== undefined ? colMap['nameoftheofficers'] : 1] || ''),
+        designation: String(data[r][colMap['designation'] !== undefined ? colMap['designation'] : 2] || ''),
+        role: normalizedRole,
+        area: area
       });
     }
   }
@@ -2863,7 +3160,12 @@ function handleUpdateRole(params, session) {
   var employeeId = normalizeEmpId(params.employeeId);
   if (!employeeId) return { success: false, message: 'Employee ID is required.' };
   
-  var targetRole = (params.role || 'EMPLOYEE').toUpperCase() === 'ADMIN' ? 'ADMIN' : 'EMPLOYEE';
+  var rawRole = String(params.role || 'EMPLOYEE').toUpperCase().trim();
+  var targetRole = 'EMPLOYEE';
+  if (rawRole.indexOf('ADMIN') !== -1) targetRole = 'ADMIN';
+  else if (rawRole.indexOf('INCHARGE') !== -1) targetRole = 'AREA_INCHARGE';
+
+  var area = sanitizeCellInput(params.area || params.department || '');
   
   var lock = LockService.getScriptLock();
   try {
@@ -2873,16 +3175,17 @@ function handleUpdateRole(params, session) {
   }
   
   try {
-    var sheet = getOrCreateSheet('Role', ['Employee ID No.', 'Name of the Officers', 'Designation', 'Role']);
+    var sheet = getOrCreateSheet('Role', ['Employee ID No.', 'Name of the Officers', 'Designation', 'Role', 'Department / Area']);
     var data = sheet.getDataRange().getValues();
+    var colMap = getHeaderMap(sheet);
     var adminCount = 0;
     var targetRow = -1;
     var currentRole = 'EMPLOYEE';
     
     for (var r = 1; r < data.length; r++) {
-      var rowEmpId = normalizeEmpId(data[r][0]);
-      var rVal = String(data[r][3] || 'EMPLOYEE').toUpperCase().trim();
-      if (rVal === 'ADMIN') {
+      var rowEmpId = normalizeEmpId(data[r][colMap['employeeidno'] !== undefined ? colMap['employeeidno'] : 0]);
+      var rVal = String(data[r][colMap['role'] !== undefined ? colMap['role'] : 3] || 'EMPLOYEE').toUpperCase().trim();
+      if (rVal.indexOf('ADMIN') !== -1) {
         adminCount++;
       }
       if (rowEmpId === employeeId) {
@@ -2892,23 +3195,27 @@ function handleUpdateRole(params, session) {
     }
     
     // Prevent accidental removal of the last administrator
-    if (currentRole === 'ADMIN' && targetRole === 'EMPLOYEE' && adminCount <= 1) {
+    if (currentRole.indexOf('ADMIN') !== -1 && targetRole !== 'ADMIN' && adminCount <= 1) {
       return {
         success: false,
         message: 'Cannot remove the last administrator account. Please assign another administrator first.'
       };
     }
     
+    var roleCol = (colMap['role'] !== undefined ? colMap['role'] : 3) + 1;
+    var areaCol = (colMap['departmentarea'] !== undefined ? colMap['departmentarea'] : 4) + 1;
+
     if (targetRow > 0) {
-      sheet.getRange(targetRow, 4).setValue(targetRole);
+      sheet.getRange(targetRow, roleCol).setValue(targetRole);
+      sheet.getRange(targetRow, areaCol).setValue(area);
     } else {
       var officer = findOfficerById(employeeId);
       var name = officer ? officer.name : (params.name || '');
       var desig = officer ? officer.designation : (params.designation || '');
-      sheet.appendRow([employeeId, name, desig, targetRole]);
+      sheet.appendRow([employeeId, name, desig, targetRole, area]);
     }
     
-    logAuditAction('UPDATE_ROLE', session.employeeId, 'Set role for ' + employeeId + ' -> ' + targetRole, 'SUCCESS');
+    logAuditAction('UPDATE_ROLE', session.employeeId, 'Set role for ' + employeeId + ' -> ' + targetRole + (area ? ' (Area: ' + area + ')' : ''), 'SUCCESS');
     return { success: true, message: 'Role assigned successfully.' };
   } finally {
     lock.releaseLock();
@@ -3609,8 +3916,10 @@ function handleGetDashboardStats(params, session) {
   var upcomingCount = 0;
   if (upcomingSheet) {
     var uData = upcomingSheet.getDataRange().getValues();
+    var uColMap = getHeaderMap(upcomingSheet);
+    var uStatCol = uColMap['status'] !== undefined ? uColMap['status'] : 11;
     for (var u = 1; u < uData.length; u++) {
-      if (String(uData[u][10] || 'OPEN').toUpperCase() === 'OPEN') upcomingCount++;
+      if (normalizeCNEStatus(uData[u][uStatCol]) === 'Scheduled') upcomingCount++;
     }
   }
   
@@ -3692,84 +4001,152 @@ function getOrCreateSheet(sheetName, defaultHeaders) {
 }
 
 /**
- * Internal Non-Destructive Sheet Initializer (Shared by setup script and admin endpoint)
+ * Internal Non-Destructive Sheet Initializer & Header Verifier (Idempotent)
  */
-function internalInitializeSheets(executorEmpId) {
+function setupAndVerifyCNESheets(executorEmpId) {
   var cneTabs = [
     { name: 'Data', headers: [
       'Data ID', 'Ward Name / Area', 'From Date', 'To Date', 'Duration',
       'Topic', 'Resource Person Emp Id', 'Mode of Teaching', 'Staff Emp ID', 'Staff Count', 'Remarks', 'CreatedAt', 'CreatedBy',
-      'External Resource Persons', 'External Staff Participants'
+      'External Resource Persons', 'External Staff Participants', 'Type of CNE'
     ] },
     { name: 'Area', headers: ['Area', 'Status', 'CreatedAt'] },
-    { name: 'Role', headers: ['Employee ID No.', 'Name of the Officers', 'Designation', 'Role'] },
+    { name: 'Role', headers: ['Employee ID No.', 'Name of the Officers', 'Designation', 'Role', 'Area/Department'] },
     { name: 'Upcoming Classes', headers: [
-      'Class ID', 'Topic', 'Area', 'Date', 'Time', 'Duration',
-      'Resource Person Emp Id', 'Mode', 'Description', 'Max Participants', 'Status',
-      'To Date', 'External Resource Persons', 'Proposed By', 'Admin Remarks'
+      'Class ID', 'Topic', 'Area', 'From Date', 'To Date', 'Time', 'Duration',
+      'Resource Person Emp Id', 'Mode of Teaching', 'Description', 'Max Participants', 'Status',
+      'Type of CNE', 'External Resource Persons', 'Proposed By', 'Admin Remarks'
     ] },
     { name: 'CNE Applications', headers: ['Application ID', 'Class ID', 'Employee ID', 'Employee Name', 'Applied At', 'Status', 'Remarks'] },
     { name: 'Gallery', headers: ['Image ID', 'Title', 'Description', 'Date', 'Drive File ID', 'Image URL', 'Uploaded By', 'Uploaded At', 'Status'] },
     { name: 'News and Events', headers: ['Event ID', 'Title', 'Category', 'Date', 'Summary', 'Full Content', 'Status', 'CreatedAt', 'CreatedBy'] },
     { name: 'User Credentials', headers: ['Employee ID', 'Password Hash', 'Password Salt', 'Must Change Password', 'Created At', 'Updated At', 'Last Login At', 'Account Status'] },
     { name: 'Audit Log', headers: ['Timestamp', 'Action', 'Employee ID', 'Details', 'Status'] },
-    { name: 'CNE Post Test Questions', headers: ['CNE ID', 'Question ID', 'Question', 'Option A', 'Option B', 'Option C', 'Option D', 'Correct Answer', 'Explanation', 'Selected/Final', 'Is Locked', 'Created/Updated At', 'Created/Updated By'] },
-    { name: 'CNE Post Test Responses', headers: ['Response ID', 'CNE ID', 'Employee ID', 'Employee Name', 'Submitted At', 'Score', 'Total Questions', 'Percentage', 'Answers', 'Participant Source', 'Designation', 'Department', 'Status', 'Remarks'] },
-    { name: 'CNE_Reference', headers: ['CNE ID', 'Topic', 'Reference Text', 'Document Link', 'Syllabus', 'Updated By', 'Updated At'] },
+    { name: 'CNE Post Test Questions', headers: ['CNE ID', 'Question ID', 'Question Text', 'Option A', 'Option B', 'Option C', 'Option D', 'Correct Option', 'Explanation', 'Is Finalized', 'Is Locked', 'Created At', 'Created By'] },
+    { name: 'CNE Post Test Responses', headers: ['Response ID', 'CNE ID', 'Employee ID', 'Employee Name', 'Designation', 'Department', 'Score', 'Total Questions', 'Percentage', 'Source', 'Submitted At', 'Answers JSON', 'Status', 'Remarks'] },
+    { name: 'CNE_Reference', headers: ['CNE ID', 'Topic', 'Reference Text / Clinical Guides', 'Syllabus', 'Reference Links', 'Updated At', 'Updated By'] },
     { name: 'CNE_QR_Tokens', headers: ['QR Token', 'CNE ID', 'Created At', 'Created By', 'Status'] }
   ];
-  
+
   var auditReport = [];
   var ss = getSpreadsheet('CNE');
-  
+
   for (var i = 0; i < cneTabs.length; i++) {
     var item = cneTabs[i];
     var sheet = ss.getSheetByName(item.name);
-    if (sheet) {
-      var rows = sheet.getLastRow();
-      if (rows === 0 && item.headers.length > 0) {
+    if (!sheet) {
+      var newSheet = ss.insertSheet(item.name);
+      newSheet.appendRow(item.headers);
+      newSheet.getRange(1, 1, 1, item.headers.length).setFontWeight('bold');
+      auditReport.push({ tab: item.name, status: 'Created new sheet with headers', rowCount: 1 });
+    } else {
+      var lastRow = sheet.getLastRow();
+      if (lastRow === 0 && item.headers.length > 0) {
         sheet.appendRow(item.headers);
         sheet.getRange(1, 1, 1, item.headers.length).setFontWeight('bold');
         auditReport.push({ tab: item.name, status: 'Existing (Headers added to empty tab)', rowCount: 1 });
       } else {
-        auditReport.push({ tab: item.name, status: 'Existing, unchanged', rowCount: rows });
+        var lastCol = sheet.getLastColumn() || 1;
+        var existingHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+        var existingKeys = existingHeaders.map(function(h) {
+          return String(h || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+        });
+
+        // Header alias normalization
+        var aliases = {
+          'typeofcne': ['typeofcne', 'cnetype', 'type'],
+          'fromdate': ['fromdate', 'date'],
+          'todate': ['todate'],
+          'modeofteaching': ['modeofteaching', 'mode'],
+          'areadepartment': ['areadepartment', 'area', 'department'],
+          'questiontext': ['questiontext', 'question'],
+          'correctoption': ['correctoption', 'correctanswer'],
+          'isfinalized': ['isfinalized', 'selectedfinal'],
+          'islocked': ['islocked'],
+          'referencetextclinicalguides': ['referencetextclinicalguides', 'referencetext'],
+          'referencelinks': ['referencelinks', 'documentlink'],
+          'answersjson': ['answersjson', 'answers'],
+          'source': ['source', 'participantsource'],
+          'passwordsalt': ['passwordsalt', 'salt'],
+          'lastloginat': ['lastloginat', 'lastlogin']
+        };
+
+        var missingHeaders = [];
+        for (var h = 0; h < item.headers.length; h++) {
+          var reqH = item.headers[h];
+          var reqKey = String(reqH).trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+          var matched = false;
+
+          if (existingKeys.indexOf(reqKey) !== -1) {
+            matched = true;
+          } else if (aliases[reqKey]) {
+            for (var a = 0; a < aliases[reqKey].length; a++) {
+              if (existingKeys.indexOf(aliases[reqKey][a]) !== -1) {
+                matched = true;
+                break;
+              }
+            }
+          }
+
+          if (!matched) {
+            missingHeaders.push(reqH);
+          }
+        }
+
+        if (missingHeaders.length > 0) {
+          sheet.getRange(1, lastCol + 1, 1, missingHeaders.length).setValues([missingHeaders]);
+          sheet.getRange(1, lastCol + 1, 1, missingHeaders.length).setFontWeight('bold');
+          auditReport.push({
+            tab: item.name,
+            status: 'Appended ' + missingHeaders.length + ' missing header(s): ' + missingHeaders.join(', '),
+            rowCount: lastRow
+          });
+        } else {
+          auditReport.push({ tab: item.name, status: 'Verified (All required headers present)', rowCount: lastRow });
+        }
       }
-    } else {
-      var newSheet = ss.insertSheet(item.name);
-      newSheet.appendRow(item.headers);
-      newSheet.getRange(1, 1, 1, item.headers.length).setFontWeight('bold');
-      auditReport.push({ tab: item.name, status: 'Created', rowCount: 1 });
     }
   }
-  
+
   // Check Employee Master
   try {
     var offSS = getSpreadsheet('OFFICERS');
     var offSheet = offSS.getSheetByName('Rosters Master Data');
     if (offSheet) {
-      auditReport.push({ tab: offSheet.getName(), status: 'Existing, unchanged (Master Roster)', rowCount: offSheet.getLastRow() });
+      auditReport.push({ tab: offSheet.getName(), status: 'Existing, verified (Master Roster)', rowCount: offSheet.getLastRow() });
     }
   } catch (e) {
     auditReport.push({ tab: 'Rosters Master Data', status: 'Separate Sheet / Unconfigured', error: e.message });
   }
-  
-  logAuditAction('INITIALIZE_SHEETS', executorEmpId || 'SYSTEM', 'Sheet verification executed', 'SUCCESS');
-  
+
+  logAuditAction('SETUP_AND_VERIFY_SHEETS', executorEmpId || 'SYSTEM', 'Sheet verification executed', 'SUCCESS');
+
   return {
     success: true,
-    message: 'Sheet initialization completed safely. All existing data remained completely untouched.',
+    message: 'Sheet initialization and verification completed safely. All existing data remained completely untouched.',
     auditReport: auditReport
   };
 }
 
+function internalInitializeSheets(executorEmpId) {
+  return setupAndVerifyCNESheets(executorEmpId);
+}
+
 /**
- * 8 & 24. Auto-Initialize Sheets (Strictly NON-DESTRUCTIVE with Audit Report, Requires ADMIN)
+ * 8 & 24. Auto-Initialize / Verify Sheets (Strictly NON-DESTRUCTIVE with Audit Report, Requires ADMIN)
  */
 function handleInitializeSheets(params, session) {
   var adminError = requireAdmin(session);
   if (adminError) return adminError;
 
-  return internalInitializeSheets(session ? session.employeeId : 'ADMIN');
+  return setupAndVerifyCNESheets(session ? session.employeeId : 'ADMIN');
+}
+
+function handleSetupAndVerifyCNESheets(params, session) {
+  var adminError = requireAdmin(session);
+  if (adminError) return adminError;
+
+  return setupAndVerifyCNESheets(session ? session.employeeId : 'ADMIN');
 }
 
 /**
@@ -3787,28 +4164,37 @@ function getCNEClassRecord(cneId) {
   var data = sheet.getDataRange().getValues();
   if (data.length <= 1) return null;
   
+  var colMap = getHeaderMap(sheet);
   var cleanId = String(cneId).trim().toUpperCase();
+
   for (var r = 1; r < data.length; r++) {
-    var rowId = String(data[r][0] || '').trim().toUpperCase();
+    var row = data[r];
+    var idCol = colMap['classid'] !== undefined ? colMap['classid'] : 0;
+    var rowId = String(row[idCol] || '').trim().toUpperCase();
     if (rowId === cleanId) {
+      var rawType = colMap['typeofcne'] !== undefined ? row[colMap['typeofcne']] : row[12];
+      var rawStatus = colMap['status'] !== undefined ? row[colMap['status']] : row[11];
+      var durVal = colMap['duration'] !== undefined ? row[colMap['duration']] : row[6];
+      var maxP = colMap['maxparticipants'] !== undefined ? row[colMap['maxparticipants']] : row[10];
+
       return {
         rowIndex: r + 1,
-        cneId: String(data[r][0] || '').trim(),
-        topic: String(data[r][1] || '').trim(),
-        area: String(data[r][2] || '').trim(),
-        date: String(data[r][3] || '').trim(),
-        time: String(data[r][4] || '').trim(),
-        duration: data[r][5] ? Number(data[r][5]) : 60,
-        instructor: String(data[r][6] || '').trim(),
-        mode: String(data[r][7] || 'Offline').trim(),
-        description: String(data[r][8] || '').trim(),
-        maxParticipants: data[r][9] ? Number(data[r][9]) : 50,
-        status: String(data[r][10] || 'OPEN').trim().toUpperCase(),
-        toDate: String(data[r][11] || '').trim(),
-        externalResourcePersons: String(data[r][12] || '').trim(),
-        proposedBy: String(data[r][13] || '').trim(),
-        adminRemarks: String(data[r][14] || '').trim(),
-        cneType: (String(data[r][2] || '').toLowerCase().indexOf('hospital') !== -1 || String(data[r][2] || '').toLowerCase().indexOf('central') !== -1) ? 'CENTRAL' : 'DEPARTMENTAL'
+        cneId: String(row[idCol] || '').trim(),
+        topic: String((colMap['topic'] !== undefined ? row[colMap['topic']] : row[1]) || '').trim(),
+        area: String((colMap['area'] !== undefined ? row[colMap['area']] : row[2]) || '').trim(),
+        date: formatDateValue(colMap['fromdate'] !== undefined ? row[colMap['fromdate']] : (colMap['date'] !== undefined ? row[colMap['date']] : row[3])),
+        toDate: formatDateValue(colMap['todate'] !== undefined ? row[colMap['todate']] : (row[4] || row[3])),
+        time: String((colMap['time'] !== undefined ? row[colMap['time']] : row[5]) || '').trim(),
+        duration: durVal ? Number(durVal) : 60,
+        instructor: String((colMap['resourcepersonempid'] !== undefined ? row[colMap['resourcepersonempid']] : row[7]) || '').trim(),
+        mode: String((colMap['modeofteaching'] !== undefined ? row[colMap['modeofteaching']] : (colMap['mode'] !== undefined ? row[colMap['mode']] : row[8])) || 'Offline').trim(),
+        description: String((colMap['description'] !== undefined ? row[colMap['description']] : row[9]) || '').trim(),
+        maxParticipants: maxP ? Number(maxP) : 50,
+        status: normalizeCNEStatus(rawStatus),
+        externalResourcePersons: String((colMap['externalresourcepersons'] !== undefined ? row[colMap['externalresourcepersons']] : row[13]) || '').trim(),
+        proposedBy: String((colMap['proposedby'] !== undefined ? row[colMap['proposedby']] : row[14]) || '').trim(),
+        adminRemarks: String((colMap['adminremarks'] !== undefined ? row[colMap['adminremarks']] : row[15]) || '').trim(),
+        cneType: normalizeCNEType(rawType)
       };
     }
   }
@@ -3995,56 +4381,114 @@ function handleSaveCNEQuestions(params, session) {
   }
   
   var rawQuestions = params.questions;
-  if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
-    return { success: false, message: 'A valid array of questions is required.' };
+  if (!Array.isArray(rawQuestions) || rawQuestions.length < 5) {
+    return {
+      success: false,
+      errorCode: 'MINIMUM_QUESTIONS_REQUIRED',
+      message: 'Validation failed: A minimum of 5 questions is required to save the question set.'
+    };
   }
   
-  var sheet = getQuestionsSheet();
-  
-  // Remove existing non-locked rows for this CNE
-  var data = sheet.getDataRange().getValues();
-  for (var r = data.length - 1; r >= 1; r--) {
-    if (String(data[r][0] || '').trim().toUpperCase() === cneId.toUpperCase()) {
-      sheet.deleteRow(r + 1);
-    }
-  }
-  
+  // Strict Pre-Validation before deleting or modifying ANY existing questions:
+  // 1. minimum 5 questions (checked above)
+  // 2. question text present
+  // 3. four options present
+  // 4. valid correct answer
+  // 5. unique question IDs
+  var seenIds = {};
+  var validatedRows = [];
   var finalizedCount = 0;
-  var rowsToAppend = [];
   var now = new Date().toISOString();
-  
+
   for (var i = 0; i < rawQuestions.length; i++) {
     var q = rawQuestions[i];
-    var qId = sanitizeCellInput(q.id || ('q' + (i + 1)));
-    var qText = sanitizeCellInput(q.question || '');
-    var optA = sanitizeCellInput(q.options?.A || '');
-    var optB = sanitizeCellInput(q.options?.B || '');
-    var optC = sanitizeCellInput(q.options?.C || '');
-    var optD = sanitizeCellInput(q.options?.D || '');
-    var correctOpt = (['A', 'B', 'C', 'D'].indexOf(String(q.correctOption || '').toUpperCase()) !== -1) ? String(q.correctOption).toUpperCase() : 'A';
-    var expl = sanitizeCellInput(q.explanation || '');
+    var qNum = i + 1;
+    if (!q || typeof q !== 'object') {
+      return { success: false, message: 'Question ' + qNum + ': Invalid question data format.' };
+    }
+
+    var qId = sanitizeCellInput(q.id || ('q' + qNum)).trim();
+    if (!qId) {
+      return { success: false, message: 'Question ' + qNum + ': Question ID is required.' };
+    }
+    if (seenIds[qId.toLowerCase()]) {
+      return { success: false, message: 'Validation failed: Duplicate question ID detected: "' + qId + '". Question IDs must be unique.' };
+    }
+    seenIds[qId.toLowerCase()] = true;
+
+    var qText = sanitizeCellInput(q.question || '').trim();
+    if (!qText) {
+      return { success: false, message: 'Question ' + qNum + ': Question text is required.' };
+    }
+
+    var opts = q.options || {};
+    var optA = sanitizeCellInput(opts.A !== undefined ? opts.A : (opts.a || '')).trim();
+    var optB = sanitizeCellInput(opts.B !== undefined ? opts.B : (opts.b || '')).trim();
+    var optC = sanitizeCellInput(opts.C !== undefined ? opts.C : (opts.c || '')).trim();
+    var optD = sanitizeCellInput(opts.D !== undefined ? opts.D : (opts.d || '')).trim();
+
+    if (!optA || !optB || !optC || !optD) {
+      return { success: false, message: 'Question ' + qNum + ': All four options (Option A, Option B, Option C, Option D) must be present and non-empty.' };
+    }
+
+    var rawCorrect = String(q.correctOption || '').trim().toUpperCase();
+    if (['A', 'B', 'C', 'D'].indexOf(rawCorrect) === -1) {
+      return { success: false, message: 'Question ' + qNum + ': A valid correct option (must be A, B, C, or D) is required.' };
+    }
+
+    var expl = sanitizeCellInput(q.explanation || '').trim();
     var isFin = (q.isFinalized === true || String(q.isFinalized).toUpperCase() === 'YES') ? 'YES' : 'NO';
     if (isFin === 'YES') finalizedCount++;
-    
-    rowsToAppend.push([
-      cneId, qId, qText, optA, optB, optC, optD, correctOpt, expl, isFin, 'NO', now, session.employeeId
+
+    validatedRows.push([
+      cneId, qId, qText, optA, optB, optC, optD, rawCorrect, expl, isFin, 'NO', now, session.employeeId
     ]);
   }
-  
-  if (rowsToAppend.length > 0) {
-    var startRow = sheet.getLastRow() + 1;
-    sheet.getRange(startRow, 1, rowsToAppend.length, 13).setValues(rowsToAppend);
+
+  // Concurrency lock for writing questions
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { success: false, message: 'Server is busy. Please try again.' };
   }
-  
-  logAuditAction('SAVE_QUESTIONS', session.employeeId, 'Saved ' + rawQuestions.length + ' questions (' + finalizedCount + ' finalized) for CNE: ' + cneId, 'SUCCESS');
-  
-  return {
-    success: true,
-    message: 'Question set saved successfully.',
-    totalQuestions: rawQuestions.length,
-    finalizedCount: finalizedCount,
-    readyForPostTest: finalizedCount >= 5
-  };
+
+  try {
+    // Re-verify locked state under lock
+    if (isCNEQuestionsLocked(cneId)) {
+      return {
+        success: false,
+        errorCode: 'QUESTIONS_LOCKED',
+        message: 'Questions are permanently locked because post-test submissions have begun.'
+      };
+    }
+
+    var sheet = getQuestionsSheet();
+    // Only delete existing questions AFTER complete validation has succeeded
+    var data = sheet.getDataRange().getValues();
+    for (var r = data.length - 1; r >= 1; r--) {
+      if (String(data[r][0] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+        sheet.deleteRow(r + 1);
+      }
+    }
+
+    if (validatedRows.length > 0) {
+      var startRow = sheet.getLastRow() + 1;
+      sheet.getRange(startRow, 1, validatedRows.length, 13).setValues(validatedRows);
+    }
+
+    logAuditAction('SAVE_QUESTIONS', session.employeeId, 'Saved ' + validatedRows.length + ' questions (' + finalizedCount + ' finalized) for CNE: ' + cneId, 'SUCCESS');
+
+    return {
+      success: true,
+      message: 'Question set validated and saved successfully.',
+      totalQuestions: validatedRows.length,
+      finalizedCount: finalizedCount,
+      readyForPostTest: finalizedCount >= 5
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
@@ -4142,7 +4586,7 @@ function handleGetQRToken(params, session) {
   
   var qrToken = existingToken;
   if (!qrToken) {
-    qrToken = 'QRT-' + Utilities.getUuid().replace(/-/g, '');
+    qrToken = Utilities.getUuid().replace(/-/g, '');
     qrSheet.appendRow([qrToken, cneId, new Date().toISOString(), session.employeeId, 'ACTIVE']);
   }
   
@@ -4179,12 +4623,6 @@ function handleResolveQRToken(params) {
       matchedCneId = String(qrData[q][1] || '').trim();
       break;
     }
-  }
-  
-  // Fallback for legacy format if token started with QRT-<cneId>
-  if (!matchedCneId && token.indexOf('QRT-') === 0) {
-    var parts = token.split('-');
-    if (parts.length >= 2) matchedCneId = parts[1];
   }
   
   if (!matchedCneId) return { success: false, message: 'Invalid or expired CNE QR Token.' };
@@ -4257,29 +4695,47 @@ function handleResolveQRToken(params) {
 
 /**
  * Get Post-Test Questions for Participant
+ * Public post-test access MUST require a valid opaque QR token.
+ * Does NOT allow public access using CNE ID alone.
+ * Legacy QRT-<CNE-ID> parsing is completely removed.
+ * Token must be resolved through CNE_QR_Tokens.
  * Strips correctOption and explanation!
  * Checks if participant has already submitted.
  */
 function handleGetPostTestQuestions(params, session) {
-  var cneId = sanitizeCellInput(params.cneId);
-  var token = sanitizeCellInput(params.qrToken);
+  var token = sanitizeCellInput(params.qrToken || params.token);
+  var cneId = null;
   
-  if (!cneId && token) {
+  if (token) {
     var qrSheet = getQRTokensSheet();
-    var qrData = qrSheet.getDataRange().getValues();
-    for (var q = 1; q < qrData.length; q++) {
-      if (String(qrData[q][0] || '').trim() === token) {
-        cneId = String(qrData[q][1] || '').trim();
-        break;
+    if (qrSheet && qrSheet.getLastRow() > 1) {
+      var qrData = qrSheet.getDataRange().getValues();
+      for (var q = 1; q < qrData.length; q++) {
+        var rowTok = String(qrData[q][0] || '').trim();
+        var rowStatus = String(qrData[q][4] || 'ACTIVE').trim().toUpperCase();
+        if (rowTok === token && rowStatus === 'ACTIVE') {
+          cneId = String(qrData[q][1] || '').trim();
+          break;
+        }
       }
-    }
-    if (!cneId && token.indexOf('QRT-') === 0) {
-      var parts = token.split('-');
-      if (parts.length >= 2) cneId = parts[1];
     }
   }
   
-  if (!cneId) return { success: false, message: 'CNE ID or valid QR Token is required.' };
+  // Public post-test access MUST require a valid opaque QR token resolved through CNE_QR_Tokens.
+  // Direct CNE ID lookup is ONLY permitted if caller has authenticated session as ADMIN or AREA_INCHARGE.
+  if (!cneId) {
+    if (session && (session.role === 'ADMIN' || session.role === 'AREA_INCHARGE')) {
+      cneId = sanitizeCellInput(params.cneId);
+    }
+  }
+  
+  if (!cneId) {
+    return {
+      success: false,
+      errorCode: 'INVALID_OR_MISSING_QR_TOKEN',
+      message: 'A valid opaque QR token is required for post-test access. Public access using CNE ID alone is not permitted.'
+    };
+  }
   
   var empId = normalizeEmpId(params.employeeId || (session ? session.employeeId : ''));
   if (!empId) return { success: false, message: 'Employee ID is required.' };
@@ -4362,35 +4818,55 @@ function handleGetPostTestQuestions(params, session) {
 
 /**
  * Submit Participant Post-Test
+ * Protected by LockService for strict concurrency:
+ * duplicate check -> question retrieval -> scoring -> response write -> question locking.
  * Enforces:
- * 1. Authoritative employee validation against Rosters Master Data
- * 2. Server-side scoring (never trust browser score)
- * 3. Instant locking of questions on first submission
+ * 1. Opaque QR token resolution via CNE_QR_Tokens (no CNE ID only access)
+ * 2. Authoritative employee validation against Rosters Master Data
+ * 3. Server-side scoring (never trust browser score)
  * 4. Rejection of duplicate submissions per employee per CNE
- * 5. Returns correct answers and explanations ONLY after successful submission
+ * 5. A failed submission does NOT lock questions.
+ * 6. Only the first successful submission locks the question set.
+ * 7. Returns correct answers and explanations ONLY after successful submission
  */
 function handleSubmitPostTest(params, session) {
-  var cneId = sanitizeCellInput(params.cneId);
-  var token = sanitizeCellInput(params.qrToken);
+  var token = sanitizeCellInput(params.qrToken || params.token);
+  var cneId = null;
   
-  if (!cneId && token) {
+  if (token) {
     var qrSheet = getQRTokensSheet();
-    var qrData = qrSheet.getDataRange().getValues();
-    for (var q = 1; q < qrData.length; q++) {
-      if (String(qrData[q][0] || '').trim() === token) {
-        cneId = String(qrData[q][1] || '').trim();
-        break;
+    if (qrSheet && qrSheet.getLastRow() > 1) {
+      var qrData = qrSheet.getDataRange().getValues();
+      for (var q = 1; q < qrData.length; q++) {
+        var rowTok = String(qrData[q][0] || '').trim();
+        var rowStatus = String(qrData[q][4] || 'ACTIVE').trim().toUpperCase();
+        if (rowTok === token && rowStatus === 'ACTIVE') {
+          cneId = String(qrData[q][1] || '').trim();
+          break;
+        }
       }
-    }
-    if (!cneId && token.indexOf('QRT-') === 0) {
-      var parts = token.split('-');
-      if (parts.length >= 2) cneId = parts[1];
     }
   }
   
+  // Public post-test submission MUST require a valid opaque QR token resolved through CNE_QR_Tokens.
+  // Direct CNE ID lookup is ONLY permitted if caller has authenticated session as ADMIN or AREA_INCHARGE.
+  if (!cneId) {
+    if (session && (session.role === 'ADMIN' || session.role === 'AREA_INCHARGE')) {
+      cneId = sanitizeCellInput(params.cneId);
+    }
+  }
+  
+  if (!cneId) {
+    return {
+      success: false,
+      errorCode: 'INVALID_OR_MISSING_QR_TOKEN',
+      message: 'A valid opaque QR token is required for post-test submission. Submission using CNE ID alone is not permitted.'
+    };
+  }
+  
   var empId = normalizeEmpId(params.employeeId || (session ? session.employeeId : ''));
-  if (!cneId || !empId) {
-    return { success: false, message: 'CNE ID and Employee ID are required.' };
+  if (!empId) {
+    return { success: false, message: 'Employee ID is required.' };
   }
   
   var answers = params.answers;
@@ -4411,114 +4887,129 @@ function handleSubmitPostTest(params, session) {
     };
   }
   
-  var partSheet = getResponsesSheet();
-  
-  // Server-Side Duplicate Check: One submission per employee per CNE
-  var pData = partSheet.getDataRange().getValues();
-  for (var p = 1; p < pData.length; p++) {
-    var pCne = String(pData[p][1] || '').trim().toUpperCase();
-    var pEmp = normalizeEmpId(pData[p][2]);
-    var pSrc = String(pData[p][9] || pData[p][6] || '').trim().toUpperCase();
-    
-    if (pCne === cneId.toUpperCase() && pEmp === empId && pSrc === 'POST_TEST') {
-      return {
-        success: false,
-        errorCode: 'ALREADY_SUBMITTED',
-        message: 'You have already submitted the post-test for this CNE.'
-      };
-    }
+  // Concurrency Protection via Apps Script LockService
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(15000);
+  } catch (e) {
+    return { success: false, message: 'Server is busy processing submissions. Please try again.' };
   }
   
-  // Fetch True Answer Keys from CNE Post Test Questions
-  var qSheet = getQuestionsSheet();
-  var qData = qSheet.getDataRange().getValues();
-  var answerKeys = [];
-  var questionRowsToLock = [];
-  
-  for (var r = 1; r < qData.length; r++) {
-    if (String(qData[r][0] || '').trim().toUpperCase() === cneId.toUpperCase() &&
-        String(qData[r][9] || 'NO').toUpperCase() === 'YES') {
-      answerKeys.push({
-        id: String(qData[r][1] || ''),
-        question: String(qData[r][2] || ''),
-        correctOption: String(qData[r][7] || 'A').toUpperCase(),
-        explanation: String(qData[r][8] || '')
+  try {
+    var partSheet = getResponsesSheet();
+    
+    // Step 1: Server-Side Duplicate Check under Lock (One submission per employee per CNE)
+    if (partSheet && partSheet.getLastRow() > 1) {
+      var pData = partSheet.getDataRange().getValues();
+      for (var p = 1; p < pData.length; p++) {
+        var pCne = String(pData[p][1] || '').trim().toUpperCase();
+        var pEmp = normalizeEmpId(pData[p][2]);
+        var pSrc = String(pData[p][9] || pData[p][6] || '').trim().toUpperCase();
+        
+        if (pCne === cneId.toUpperCase() && pEmp === empId && pSrc === 'POST_TEST') {
+          return {
+            success: false,
+            errorCode: 'ALREADY_SUBMITTED',
+            message: 'You have already submitted the post-test for this CNE.'
+          };
+        }
+      }
+    }
+    
+    // Step 2: Question Retrieval (Fetch True Answer Keys)
+    var qSheet = getQuestionsSheet();
+    var qData = qSheet.getDataRange().getValues();
+    var answerKeys = [];
+    var questionRowsToLock = [];
+    
+    for (var r = 1; r < qData.length; r++) {
+      if (String(qData[r][0] || '').trim().toUpperCase() === cneId.toUpperCase() &&
+          String(qData[r][9] || 'NO').toUpperCase() === 'YES') {
+        answerKeys.push({
+          id: String(qData[r][1] || ''),
+          question: String(qData[r][2] || ''),
+          correctOption: String(qData[r][7] || 'A').toUpperCase(),
+          explanation: String(qData[r][8] || '')
+        });
+        questionRowsToLock.push(r + 1);
+      }
+    }
+    
+    if (answerKeys.length < 5) {
+      return { success: false, message: 'Cannot submit: CNE post-test does not have at least 5 finalized questions.' };
+    }
+    
+    // Step 3: Server-Side Scoring
+    var score = 0;
+    var total = answerKeys.length;
+    var detailedReview = [];
+    
+    for (var i = 0; i < answerKeys.length; i++) {
+      var item = answerKeys[i];
+      var submittedAns = String(answers[item.id] || '').trim().toUpperCase();
+      var isCorrect = (submittedAns === item.correctOption);
+      if (isCorrect) score++;
+      
+      detailedReview.push({
+        questionId: item.id,
+        question: item.question,
+        userAnswer: submittedAns,
+        correctAnswer: item.correctOption,
+        isCorrect: isCorrect,
+        explanation: item.explanation
       });
-      questionRowsToLock.push(r + 1);
     }
-  }
-  
-  if (answerKeys.length < 5) {
-    return { success: false, message: 'Cannot submit: CNE post-test does not have at least 5 finalized questions.' };
-  }
-  
-  // Instantly Lock Questions on First Submission
-  for (var k = 0; k < questionRowsToLock.length; k++) {
-    qSheet.getRange(questionRowsToLock[k], 11).setValue('YES');
-  }
-  
-  // Server-Side Score Calculation
-  var score = 0;
-  var total = answerKeys.length;
-  var detailedReview = [];
-  
-  for (var i = 0; i < answerKeys.length; i++) {
-    var item = answerKeys[i];
-    var submittedAns = String(answers[item.id] || '').trim().toUpperCase();
-    var isCorrect = (submittedAns === item.correctOption);
-    if (isCorrect) score++;
     
-    detailedReview.push({
-      questionId: item.id,
-      question: item.question,
-      userAnswer: submittedAns,
-      correctAnswer: item.correctOption,
-      isCorrect: isCorrect,
-      explanation: item.explanation
-    });
-  }
-  
-  var percentage = Math.round((score / total) * 100);
-  var passed = percentage >= 50;
-  var status = passed ? 'PASSED' : 'NEEDS_IMPROVEMENT';
-  var now = new Date().toISOString();
-  var participantId = 'RESP-' + Date.now();
-  
-  // Store participant response in CNE Post Test Responses
-  partSheet.appendRow([
-    participantId,
-    cneId,
-    empId,
-    officer.name,
-    now,
-    score,
-    total,
-    percentage,
-    JSON.stringify(answers),
-    'POST_TEST',
-    officer.designation || 'Nursing Officer',
-    officer.department || record.area,
-    status,
-    ''
-  ]);
-  
-  logAuditAction('SUBMIT_POST_TEST', empId, 'CNE: ' + cneId + ', Score: ' + score + '/' + total + ' (' + percentage + '%)', 'SUCCESS');
-  
-  return {
-    success: true,
-    message: 'Post-test submitted successfully!',
-    data: {
-      participantId: participantId,
-      cneId: cneId,
-      score: score,
-      totalQuestions: total,
-      percentage: percentage,
-      passed: passed,
-      status: status,
-      submittedAt: now,
-      review: detailedReview
+    var percentage = Math.round((score / total) * 100);
+    var passed = percentage >= 50;
+    var status = passed ? 'PASSED' : 'NEEDS_IMPROVEMENT';
+    var now = new Date().toISOString();
+    var participantId = 'RESP-' + Date.now();
+    
+    // Step 4: Response Write to CNE Post Test Responses
+    partSheet.appendRow([
+      participantId,
+      cneId,
+      empId,
+      officer.name,
+      now,
+      score,
+      total,
+      percentage,
+      JSON.stringify(answers),
+      'POST_TEST',
+      officer.designation || 'Nursing Officer',
+      officer.department || record.area,
+      status,
+      ''
+    ]);
+    
+    // Step 5: Question Locking - ONLY on successful response write!
+    // A failed submission never reaches this point and does NOT lock questions.
+    for (var k = 0; k < questionRowsToLock.length; k++) {
+      qSheet.getRange(questionRowsToLock[k], 11).setValue('YES');
     }
-  };
+    
+    logAuditAction('SUBMIT_POST_TEST', empId, 'CNE: ' + cneId + ', Score: ' + score + '/' + total + ' (' + percentage + '%)', 'SUCCESS');
+    
+    return {
+      success: true,
+      message: 'Post-test submitted successfully!',
+      data: {
+        participantId: participantId,
+        cneId: cneId,
+        score: score,
+        totalQuestions: total,
+        percentage: percentage,
+        passed: passed,
+        status: status,
+        submittedAt: now,
+        review: detailedReview
+      }
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
@@ -4683,16 +5174,19 @@ function handleFinalizeCNE(params, session) {
   var authErr = checkCNEAuthorized(session, record.area, record.cneType);
   if (authErr) return authErr;
   
-  if (record.status === 'COMPLETED') {
+  if (normalizeCNEStatus(record.status) === 'Completed') {
     return { success: false, message: 'This CNE has already been marked as Completed.' };
   }
   
   var ss = getSpreadsheet('CNE');
   var upcomingSheet = ss.getSheetByName('Upcoming Classes');
   if (upcomingSheet) {
-    upcomingSheet.getRange(record.rowIndex, 11).setValue('COMPLETED');
+    var upColMap = getHeaderMap(upcomingSheet);
+    var statusCol = upColMap['status'] !== undefined ? (upColMap['status'] + 1) : 11;
+    var remarksCol = upColMap['adminremarks'] !== undefined ? (upColMap['adminremarks'] + 1) : 15;
+    upcomingSheet.getRange(record.rowIndex, statusCol).setValue('Completed');
     if (params.remarks) {
-      upcomingSheet.getRange(record.rowIndex, 15).setValue(sanitizeCellInput(params.remarks));
+      upcomingSheet.getRange(record.rowIndex, remarksCol).setValue(sanitizeCellInput(params.remarks));
     }
   }
   
@@ -4729,27 +5223,39 @@ function handleFinalizeCNE(params, session) {
   var dataSheet = getOrCreateSheet('Data', [
     'Data ID', 'Ward Name / Area', 'From Date', 'To Date', 'Duration',
     'Topic', 'Resource Person Emp Id', 'Mode of Teaching', 'Staff Emp ID', 'Staff Count', 'Remarks', 'CreatedAt', 'CreatedBy',
-    'External Resource Persons', 'External Staff Participants'
+    'External Resource Persons', 'External Staff Participants', 'Type of CNE'
   ]);
   
   var officialDataId = 'CNE-' + new Date().getFullYear() + '-' + Utilities.getUuid().slice(0, 8);
-  dataSheet.appendRow([
-    officialDataId,
-    record.area,
-    record.date,
-    record.toDate || record.date,
-    record.duration,
-    record.topic,
-    record.instructor,
-    record.mode || 'Lecture / Discussion',
-    internalEmpIds.join(', '),
-    internalEmpIds.length + externalParticipants.length,
-    remarksSummary,
-    new Date().toISOString(),
-    session.employeeId,
-    record.externalResourcePersons || '',
-    externalParticipants.join(', ')
-  ]);
+  var dataColMap = getHeaderMap(dataSheet);
+  var maxDataCol = Math.max(dataSheet.getLastColumn(), 16);
+  var rowVals = [];
+  for (var cIdx = 0; cIdx < maxDataCol; cIdx++) rowVals.push('');
+
+  var setDataCell = function(key, fallbackCol, val) {
+    var c = dataColMap[key] !== undefined ? dataColMap[key] : fallbackCol;
+    while (rowVals.length <= c) rowVals.push('');
+    rowVals[c] = val;
+  };
+
+  setDataCell('dataid', 0, officialDataId);
+  setDataCell('wardnamearea', 1, record.area);
+  setDataCell('fromdate', 2, record.date);
+  setDataCell('todate', 3, record.toDate || record.date);
+  setDataCell('duration', 4, record.duration);
+  setDataCell('topic', 5, record.topic);
+  setDataCell('resourcepersonempid', 6, record.instructor);
+  setDataCell('modeofteaching', 7, record.mode || 'Lecture / Discussion');
+  setDataCell('staffempid', 8, internalEmpIds.join(', '));
+  setDataCell('staffcount', 9, internalEmpIds.length + externalParticipants.length);
+  setDataCell('remarks', 10, remarksSummary);
+  setDataCell('createdat', 11, new Date().toISOString());
+  setDataCell('createdby', 12, session.employeeId);
+  setDataCell('externalresourcepersons', 13, record.externalResourcePersons || '');
+  setDataCell('externalstaffparticipants', 14, externalParticipants.join(', '));
+  setDataCell('typeofcne', 15, normalizeCNEType(record.cneType || 'CENTRAL'));
+
+  dataSheet.appendRow(rowVals);
   
   logAuditAction('FINALIZE_CNE', session.employeeId, 'Finalized CNE: ' + cneId + ' -> Synced to Data Master as: ' + officialDataId, 'SUCCESS');
   
@@ -4777,8 +5283,11 @@ function handleCancelCNE(params, session) {
   var ss = getSpreadsheet('CNE');
   var upcomingSheet = ss.getSheetByName('Upcoming Classes');
   if (upcomingSheet) {
-    upcomingSheet.getRange(record.rowIndex, 11).setValue('CANCELLED');
-    upcomingSheet.getRange(record.rowIndex, 15).setValue(reason);
+    var upColMap = getHeaderMap(upcomingSheet);
+    var statusCol = upColMap['status'] !== undefined ? (upColMap['status'] + 1) : 11;
+    var remarksCol = upColMap['adminremarks'] !== undefined ? (upColMap['adminremarks'] + 1) : 15;
+    upcomingSheet.getRange(record.rowIndex, statusCol).setValue('Canceled');
+    upcomingSheet.getRange(record.rowIndex, remarksCol).setValue(reason);
   }
   
   logAuditAction('CANCEL_CNE', session.employeeId, 'Cancelled CNE: ' + cneId + '. Reason: ' + reason, 'SUCCESS');

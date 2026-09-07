@@ -28,6 +28,7 @@ import { CNEQRModal } from './cne/CNEQRModal';
 import { CNEParticipantsModal } from './cne/CNEParticipantsModal';
 import { CNEPostTestModal } from './cne/CNEPostTestModal';
 import { CNEFinalizeModal } from './cne/CNEFinalizeModal';
+import { DepartmentalScheduleModal } from './cne/DepartmentalScheduleModal';
 
 interface UpcomingClassesProps {
   user: SessionUser | null;
@@ -41,9 +42,11 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   const [classes, setClasses] = useState<UpcomingClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'ALL' | 'CENTRAL' | 'DEPARTMENTAL'>('ALL');
 
   // Schedule Class Modal State
   const [isAddClassOpen, setIsAddClassOpen] = useState(false);
+  const [isDeptScheduleOpen, setIsDeptScheduleOpen] = useState(false);
   const [newCneType, setNewCneType] = useState<'CENTRAL' | 'DEPARTMENTAL'>('CENTRAL');
   const [newTopic, setNewTopic] = useState('');
   const [newArea, setNewArea] = useState('');
@@ -229,6 +232,10 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   };
 
   const filteredClasses = classes.filter((c) => {
+    if (typeFilter !== 'ALL') {
+      const cType = (c.cneType || 'CENTRAL').toUpperCase();
+      if (cType !== typeFilter) return false;
+    }
     if (!searchTerm.trim()) return true;
     const q = searchTerm.toLowerCase();
     const rpDisplay = getResourcePersonsDisplay(c).toLowerCase();
@@ -241,6 +248,8 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   });
 
   const availableClasses = filteredClasses;
+  const centralCount = classes.filter((c) => (c.cneType || 'CENTRAL').toUpperCase() === 'CENTRAL').length;
+  const deptCount = classes.filter((c) => (c.cneType || '').toUpperCase() === 'DEPARTMENTAL').length;
 
   return (
     <div className="space-y-6 pb-12">
@@ -254,32 +263,42 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
         </div>
 
         {canScheduleCne && (
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Dedicated Departmental Schedule Button (opens batch modal with 2 blank rows) */}
             <button
-              id="btn-admin-add-upcoming-class"
-              onClick={() => {
-                if (isAreaIncharge && user?.assignedArea) {
-                  setNewCneType('DEPARTMENTAL');
-                  setNewArea(user.assignedArea);
-                } else {
-                  setNewCneType('CENTRAL');
-                }
-                setIsAddClassOpen(true);
-              }}
-              className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer shadow-xs"
+              id="btn-schedule-departmental-cne"
+              type="button"
+              onClick={() => setIsDeptScheduleOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
             >
-              <PlusCircle className="w-4 h-4 text-emerald-400" />
-              <span>Schedule New CNE</span>
+              <PlusCircle className="w-4 h-4 text-teal-200" />
+              <span>Schedule Departmental CNE</span>
             </button>
+
+            {/* Central CNE Schedule Button (Admin only) */}
+            {isAdmin && (
+              <button
+                id="btn-admin-add-upcoming-class"
+                type="button"
+                onClick={() => {
+                  setNewCneType('CENTRAL');
+                  setIsAddClassOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer shadow-xs"
+              >
+                <PlusCircle className="w-4 h-4 text-emerald-400" />
+                <span>Schedule Central CNE</span>
+              </button>
+            )}
           </div>
         )}
       </div>
 
       {/* Main Content Area */}
       <div className="space-y-4">
-        {/* Search bar */}
-        <div className="max-w-md">
-          <div className="relative">
+        {/* Search & Category Filter bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="relative max-w-md flex-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
             <input
               type="text"
@@ -288,6 +307,43 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-9 pr-3 py-2 text-xs bg-white border border-slate-300 rounded-xl shadow-xs"
             />
+          </div>
+
+          {/* Type Filter Pills */}
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200 self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={() => setTypeFilter('ALL')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                typeFilter === 'ALL'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              All ({classes.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTypeFilter('CENTRAL')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                typeFilter === 'CENTRAL'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Central ({centralCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTypeFilter('DEPARTMENTAL')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                typeFilter === 'DEPARTMENTAL'
+                  ? 'bg-teal-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Departmental ({deptCount})
+            </button>
           </div>
         </div>
 
@@ -884,6 +940,17 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
           isAuthorized={isCneAuthorized(user, activeFinalizeCne.area, activeFinalizeCne.cneType)}
           onClose={() => setActiveFinalizeCne(null)}
           onCompleted={loadData}
+        />
+      )}
+
+      {isDeptScheduleOpen && (
+        <DepartmentalScheduleModal
+          isOpen={isDeptScheduleOpen}
+          onClose={() => setIsDeptScheduleOpen(false)}
+          user={user}
+          areasList={areasList}
+          officersList={officersList}
+          onSuccess={loadData}
         />
       )}
     </div>

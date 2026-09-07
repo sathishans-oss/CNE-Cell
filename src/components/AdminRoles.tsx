@@ -20,7 +20,8 @@ interface AdminRolesProps {
 
 export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
   const [officers, setOfficers] = useState<Employee[]>([]);
-  const [rolesMap, setRolesMap] = useState<{ [empId: string]: UserRole }>({});
+  const [rolesMap, setRolesMap] = useState<{ [empId: string]: { role: UserRole; area?: string } }>({});
+  const [areasList, setAreasList] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [resettingId, setResettingId] = useState<string | null>(null);
@@ -36,20 +37,28 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
   const loadRolesData = async () => {
     setLoading(true);
     try {
-      const [officersRes, rolesRes] = await Promise.all([
+      const [officersRes, rolesRes, areasRes] = await Promise.all([
         ApiService.getOfficersDropdown(),
-        ApiService.getRoles()
+        ApiService.getRoles(),
+        ApiService.getAreas()
       ]);
 
       if (officersRes.success && officersRes.data) {
         setOfficers(officersRes.data);
       }
 
+      if (areasRes.success && areasRes.data) {
+        setAreasList(areasRes.data.filter((a) => a.status === 'ACTIVE').map((a) => a.name));
+      }
+
       if (rolesRes.success && rolesRes.data) {
-        const map: { [empId: string]: UserRole } = {};
+        const map: { [empId: string]: { role: UserRole; area?: string } } = {};
         rolesRes.data.forEach((r) => {
           if (r.employeeId) {
-            map[r.employeeId.toLowerCase()] = r.role;
+            map[r.employeeId.toLowerCase()] = {
+              role: r.role,
+              area: r.area || ''
+            };
           }
         });
         setRolesMap(map);
@@ -61,33 +70,37 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
     }
   };
 
-  const handleRoleChange = async (empId: string, newRole: UserRole) => {
+  const handleRoleChange = async (empId: string, newRole: UserRole, targetArea?: string) => {
     const normId = empId.toLowerCase();
-    const previousRole = rolesMap[normId] || 'EMPLOYEE';
-    if (previousRole === newRole || updatingEmpId) return;
+    const prev = rolesMap[normId] || { role: 'EMPLOYEE', area: '' };
+    const areaToSet = targetArea !== undefined ? targetArea : (prev.area || (areasList[0] || ''));
+    if (prev.role === newRole && prev.area === areaToSet && targetArea === undefined) return;
+    if (updatingEmpId) return;
 
     setUpdatingEmpId(empId);
     try {
-      const res = await ApiService.updateRole(empId, newRole);
+      const res = await ApiService.updateRole(empId, newRole, newRole === 'AREA_INCHARGE' ? areaToSet : '');
       if (res.success) {
-        success(`Role for ${empId} updated to ${newRole}.`, 'Role Updated');
-        setRolesMap((prev) => ({
-          ...prev,
-          [normId]: newRole
+        success(`Role for ${empId} updated to ${newRole}${newRole === 'AREA_INCHARGE' && areaToSet ? ` (${areaToSet})` : ''}.`, 'Role Updated');
+        setRolesMap((prevMap) => ({
+          ...prevMap,
+          [normId]: {
+            role: newRole,
+            area: newRole === 'AREA_INCHARGE' ? areaToSet : ''
+          }
         }));
       } else {
         error(res.message || 'Failed to update role.');
-        // Ensure state retains previousRole
-        setRolesMap((prev) => ({
-          ...prev,
-          [normId]: previousRole
+        setRolesMap((prevMap) => ({
+          ...prevMap,
+          [normId]: prev
         }));
       }
     } catch (e: any) {
       error(e?.message || 'Error updating role.');
-      setRolesMap((prev) => ({
-        ...prev,
-        [normId]: previousRole
+      setRolesMap((prevMap) => ({
+        ...prevMap,
+        [normId]: prev
       }));
     } finally {
       setUpdatingEmpId(null);
@@ -184,7 +197,9 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
               <tbody className="divide-y divide-slate-100">
                 {filteredOfficers.map((officer) => {
                   const empId = (officer.employeeId || '').toLowerCase();
-                  const role: UserRole = rolesMap[empId] || 'EMPLOYEE';
+                  const roleObj = rolesMap[empId] || { role: 'EMPLOYEE', area: '' };
+                  const role: UserRole = roleObj.role;
+                  const assignedArea: string = roleObj.area || '';
                   const isCurrentLoggedUser = empId === (user.employeeId || '').toLowerCase();
                   const isResetting = resettingId === officer.employeeId;
 
@@ -208,7 +223,7 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
                       </td>
 
                       <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                           <select
                             value={role}
                             disabled={updatingEmpId === officer.employeeId}
@@ -216,12 +231,31 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
                             className={`px-3 py-1 text-xs font-bold rounded-lg border focus:outline-hidden disabled:opacity-60 cursor-pointer ${
                               role === 'ADMIN'
                                 ? 'bg-purple-50 text-purple-900 border-purple-300'
+                                : role === 'AREA_INCHARGE'
+                                ? 'bg-teal-50 text-teal-900 border-teal-300'
                                 : 'bg-slate-100 text-slate-800 border-slate-300'
                             }`}
                           >
-                            <option value="EMPLOYEE">EMPLOYEE (Default User)</option>
+                            <option value="EMPLOYEE">EMPLOYEE (Staff Participant)</option>
+                            <option value="AREA_INCHARGE">AREA_INCHARGE (Department Incharge)</option>
                             <option value="ADMIN">ADMIN (Full Control)</option>
                           </select>
+
+                          {role === 'AREA_INCHARGE' && (
+                            <select
+                              value={assignedArea}
+                              disabled={updatingEmpId === officer.employeeId}
+                              onChange={(e) => handleRoleChange(officer.employeeId, 'AREA_INCHARGE', e.target.value)}
+                              className="px-2 py-1 text-xs bg-white border border-teal-300 text-teal-800 rounded-lg focus:outline-hidden cursor-pointer"
+                              title="Assign Area / Ward"
+                            >
+                              <option value="">Select Ward / Area</option>
+                              {areasList.map((a) => (
+                                <option key={a} value={a}>{a}</option>
+                              ))}
+                            </select>
+                          )}
+
                           {updatingEmpId === officer.employeeId && (
                             <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-700 shrink-0" />
                           )}
