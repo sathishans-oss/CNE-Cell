@@ -59,8 +59,6 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
   const [selectedPhoto, setSelectedPhoto] = useState<GalleryItem | null>(null);
   const [selectedClass, setSelectedClass] = useState<UpcomingClass | null>(null);
   const [isChangePhotoModalOpen, setIsChangePhotoModalOpen] = useState(false);
-  const [applyRemarks, setApplyRemarks] = useState('');
-  const [applying, setApplying] = useState(false);
 
   const { success, error, info } = useToast();
   const isAdmin = user?.role === 'ADMIN';
@@ -111,31 +109,6 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
     } finally {
       setLoading(false);
       setImpactLoading(false);
-    }
-  };
-
-  const handleApplyClass = async (c: UpcomingClass) => {
-    if (!user || !user.employeeId) {
-      info('Please log in with your Employee ID to apply for CNE classes.', 'Authentication Required');
-      onOpenLogin();
-      return;
-    }
-
-    setApplying(true);
-    try {
-      const res = await ApiService.applyForClass(c.classId, applyRemarks.trim());
-      if (res.success) {
-        success(`Application for "${c.topic}" submitted successfully.`, 'Enrolled');
-        setSelectedClass(null);
-        setApplyRemarks('');
-        loadHomeData();
-      } else {
-        error(res.message || 'Failed to submit application.');
-      }
-    } catch (e: any) {
-      error('Error submitting application.');
-    } finally {
-      setApplying(false);
     }
   };
 
@@ -396,35 +369,13 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
               <p className="text-xs text-slate-600 leading-relaxed">{selectedClass.description}</p>
             )}
 
-            {/* Application Remarks Input */}
-            <div className="space-y-1.5 pt-1">
-              <label className="block text-xs font-bold text-slate-700">
-                Application Remarks / Departmental Notes (Optional)
-              </label>
-              <textarea
-                rows={2}
-                value={applyRemarks}
-                onChange={(e) => setApplyRemarks(e.target.value)}
-                placeholder="e.g. ICU Shift assigned; registered with Area Incharge..."
-                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg"
-              />
-            </div>
-
-            <div className="pt-2 flex items-center justify-end gap-2">
+            <div className="pt-3 flex items-center justify-end">
               <button
                 type="button"
                 onClick={() => setSelectedClass(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg"
+                className="px-5 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-sm transition-all cursor-pointer"
               >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={applying}
-                onClick={() => handleApplyClass(selectedClass)}
-                className="px-5 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-sm transition-all disabled:opacity-50"
-              >
-                {applying ? 'Submitting...' : user ? 'Confirm Application' : 'Log In & Apply'}
+                Close
               </button>
             </div>
           </div>

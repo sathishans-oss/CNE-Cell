@@ -639,7 +639,10 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
       {/* Table (Data ID is completely hidden from UI) */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         {loading ? (
-          <div className="py-20 text-center text-xs text-slate-400">Loading CNE records...</div>
+          <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-500">
+            <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+            <span className="text-xs font-medium">Loading CNE records from Google Sheets...</span>
+          </div>
         ) : filteredRecords.length === 0 ? (
           <div className="py-16 text-center space-y-2">
             <Database className="w-8 h-8 text-slate-400 mx-auto" />

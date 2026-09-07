@@ -559,9 +559,9 @@ export const INITIAL_QUICK_LINKS: QuickLinkItem[] = [
     modalContent: {
       title: "About the Nursing Education Cell",
       body: [
-        "The Nursing Education Cell at AIIMS Rishikesh is constituted under the Department of Nursing Services to foster academic vitality, clinical competence, and professional innovation.",
+        "The Nursing Education Cell at AIIMS Rishikesh is constituted under the Department of Nursing to foster academic vitality, clinical competence, and professional innovation.",
         "Leadership: Chaired by the Chief Nursing Officer (C.N.O) in coordination with Deputy Nursing Superintendents (D.N.S) and Assistant Nursing Superintendents (A.N.S).",
-        "Coordinators: Ms. Suman Choudhary and Ms. Ramya T.",
+        "Coordinators: Ms. Ramya T and Ms. Suman Choudhary.",
         "Key Mandates: Curriculum design for clinical specialties, simulation-based resuscitation workshops, orientation programmes for newly recruited officers, and institutional continuous learning audits.",
         "Contact: Nursing Education Cell, Room No. 214, Medical College Building, AIIMS Rishikesh."
       ]
@@ -597,8 +597,8 @@ export const INITIAL_QUICK_LINKS: QuickLinkItem[] = [
     modalContent: {
       title: "CNE Coordinator Desk Contact Information",
       body: [
-        "Office: Department of Nursing Services, All India Institute of Medical Sciences, Rishikesh - 249203, Uttarakhand, India.",
-        "CNE Coordinators: Ms. Suman Choudhary | Ms. Ramya T",
+        "Office: Department of Nursing, All India Institute of Medical Sciences, Rishikesh - 249203, Uttarakhand, India.",
+        "CNE Coordinators: Ms. Ramya T | Ms. Suman Choudhary",
         "Email: training.nur@aiimsrishikesh.edu.in",
         "Working Hours: Monday to Friday: 09:00 AM – 05:00 PM | Saturday: 09:00 AM – 01:00 PM"
       ]

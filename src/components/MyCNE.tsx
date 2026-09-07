@@ -10,7 +10,8 @@ import {
   Info,
   X,
   RefreshCw,
-  CheckCircle2
+  CheckCircle2,
+  Loader2
 } from 'lucide-react';
 import { CNERecord, SessionUser } from '../types';
 import { ApiService } from '../services/api';
@@ -257,7 +258,10 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
       {/* CNE Records Data Table (Desktop) & Cards (Mobile) */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         {loading ? (
-          <div className="py-20 text-center text-xs text-slate-400">Loading your verified CNE records...</div>
+          <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-500">
+            <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+            <span className="text-xs font-medium">Loading your verified CNE records from Google Sheets...</span>
+          </div>
         ) : filteredRecords.length === 0 ? (
           <div className="py-16 text-center space-y-3 px-4">
             <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 mx-auto flex items-center justify-center">

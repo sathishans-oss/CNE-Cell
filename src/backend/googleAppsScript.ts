@@ -3201,7 +3201,7 @@ function handleGetCoordinatorDesk(params) {
   var props = PropertiesService.getScriptProperties();
   var note = props.getProperty('COORDINATOR_NOTE') || 'Have questions regarding class credits, attendance verification, or training schedules?';
   var namesRaw = props.getProperty('COORDINATOR_NAMES');
-  var coordinators = ['Ms. Suman Choudhary', 'Ms. Ramya T'];
+  var coordinators = ['Ms. Ramya T', 'Ms. Suman Choudhary'];
   if (namesRaw) {
     try {
       var parsed = JSON.parse(namesRaw);

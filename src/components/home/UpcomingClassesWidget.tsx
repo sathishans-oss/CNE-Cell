@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Calendar, Clock, ChevronRight } from 'lucide-react';
+import { Sparkles, Calendar, Clock, ChevronRight, Loader2 } from 'lucide-react';
 import { UpcomingClass, ViewMode } from '../../types';
 
 interface UpcomingClassesWidgetProps {
@@ -59,7 +59,7 @@ export const UpcomingClassesWidget: React.FC<UpcomingClassesWidgetProps> = ({
       <div className="bg-slate-900 text-white px-4 py-3.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Sparkles className={`w-4 h-4 ${iconColor}`} />
-          <h2 className="text-sm font-bold tracking-tight">Upcoming Classes</h2>
+          <h2 className="text-sm font-bold tracking-tight">CNE Schedule</h2>
         </div>
         <button
           type="button"
@@ -73,7 +73,10 @@ export const UpcomingClassesWidget: React.FC<UpcomingClassesWidgetProps> = ({
 
       <div className="p-3.5 divide-y divide-slate-100">
         {loading ? (
-          <div className="py-8 text-center text-xs text-slate-400">Loading upcoming sessions...</div>
+          <div className="py-8 flex flex-col items-center justify-center gap-2 text-slate-500">
+            <Loader2 className={`w-5 h-5 animate-spin ${iconColor}`} />
+            <span className="text-xs font-medium">Loading CNE schedule...</span>
+          </div>
         ) : openClasses.length === 0 ? (
           <div className="py-8 text-center px-4 space-y-2">
             <Calendar className="w-8 h-8 text-slate-300 mx-auto" />
@@ -127,7 +130,7 @@ export const UpcomingClassesWidget: React.FC<UpcomingClassesWidgetProps> = ({
                     onClick={() => onSelectClass(item)}
                     className={`px-2 py-1 text-[10px] font-bold rounded-md transition-colors cursor-pointer ${actionBtnBg}`}
                   >
-                    Details / Apply
+                    View Details
                   </button>
                 </div>
               </div>

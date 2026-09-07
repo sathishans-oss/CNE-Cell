@@ -4,12 +4,9 @@ import {
   Award,
   Calendar,
   Sparkles,
-  FileCheck,
-  Images,
   Database,
   MapPin,
   ShieldCheck,
-  ClipboardList,
   BarChart3,
   Shield,
   FileText
@@ -37,19 +34,12 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
     { id: 'dashboard' as ViewMode, label: 'Home', icon: LayoutDashboard },
     {
       id: 'upcoming' as ViewMode,
-      label: 'Upcoming Classes',
+      label: 'CNE Schedule',
       icon: Sparkles,
       badge: upcomingCount > 0 ? upcomingCount : undefined
     },
     { id: 'calendar' as ViewMode, label: 'Calendar', icon: Calendar },
-    { id: 'gallery' as ViewMode, label: 'Previous Class Photos', icon: Images },
-    { id: 'my-cne' as ViewMode, label: 'My CNE Records', icon: Award },
-    {
-      id: 'my-applications' as ViewMode,
-      label: 'My Applications',
-      icon: FileCheck,
-      badge: myAppsCount > 0 ? myAppsCount : undefined
-    }
+    { id: 'my-cne' as ViewMode, label: 'My CNE Records', icon: Award }
   ];
 
   const adminTabs = [
@@ -57,7 +47,6 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
     { id: 'admin-areas' as ViewMode, label: 'Area Master', icon: MapPin },
     { id: 'admin-roles' as ViewMode, label: 'Role Master', icon: ShieldCheck },
     { id: 'admin-content' as ViewMode, label: 'Content Master', icon: FileText },
-    { id: 'admin-applications' as ViewMode, label: 'Applications', icon: ClipboardList },
     { id: 'admin-reports' as ViewMode, label: 'Reports & Stats', icon: BarChart3 }
   ];
 

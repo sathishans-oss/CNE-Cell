@@ -1,5 +1,5 @@
 import React from 'react';
-import { Images, ChevronRight } from 'lucide-react';
+import { Images, ChevronRight, Loader2 } from 'lucide-react';
 import { GalleryItem, ViewMode } from '../../types';
 
 interface ClassMomentsGalleryWidgetProps {
@@ -63,7 +63,10 @@ export const ClassMomentsGalleryWidget: React.FC<ClassMomentsGalleryWidgetProps>
       </div>
 
       {loading ? (
-        <div className="py-12 text-center text-xs text-slate-400">Loading photo gallery...</div>
+        <div className="py-12 flex flex-col items-center justify-center gap-2.5 text-slate-500">
+          <Loader2 className="w-7 h-7 animate-spin text-teal-600" />
+          <span className="text-xs font-medium">Loading photo moments...</span>
+        </div>
       ) : recentPhotos.length === 0 ? (
         <div className="py-8 text-center text-xs text-slate-400">No photos uploaded yet.</div>
       ) : (

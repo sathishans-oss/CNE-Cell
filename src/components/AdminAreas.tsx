@@ -200,7 +200,10 @@ export const AdminAreas: React.FC<AdminAreasProps> = () => {
       {/* Areas Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
         {loading ? (
-          <div className="py-20 text-center text-xs text-slate-400">Loading areas...</div>
+          <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-500">
+            <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+            <span className="text-xs font-medium">Loading ward and area list from Google Sheets...</span>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">

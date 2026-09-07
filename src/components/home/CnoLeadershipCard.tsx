@@ -157,7 +157,7 @@ export const CnoLeadershipCard: React.FC<CnoLeadershipCardProps> = ({
           {/* Title & Credentials */}
           <div className="space-y-1 text-center sm:text-left flex-1">
             <div className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border mb-1 ${subBadgeBg}`}>
-              Department of Nursing Services
+              Department of Nursing
             </div>
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
               <h3 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">

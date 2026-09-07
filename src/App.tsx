@@ -16,7 +16,6 @@ import { Gallery } from './components/Gallery';
 import { AdminCNEData } from './components/AdminCNEData';
 import { AdminAreas } from './components/AdminAreas';
 import { AdminRoles } from './components/AdminRoles';
-import { AdminApplications } from './components/AdminApplications';
 import { AdminReports } from './components/AdminReports';
 import { AdminContent } from './components/AdminContent';
 
@@ -49,7 +48,7 @@ const AppContent: React.FC = () => {
   const handleNavigate = (view: ViewMode) => {
     // If not logged in and attempting to access staff/admin protected views, prompt login
     if (!user || !user.employeeId) {
-      if (['my-cne', 'my-applications', 'admin-cne', 'admin-areas', 'admin-roles', 'admin-applications', 'admin-reports'].includes(view)) {
+      if (['my-cne', 'admin-cne', 'admin-areas', 'admin-roles', 'admin-reports'].includes(view)) {
         info('Please log in with your Employee ID to access this section.', 'Authentication Required');
         setIsLoginOpen(true);
         return;
@@ -101,11 +100,7 @@ const AppContent: React.FC = () => {
           {user && user.employeeId && activeView === 'calendar' && <CNECalendar />}
 
           {user && user.employeeId && activeView === 'upcoming' && (
-            <UpcomingClasses user={user} defaultTab="classes" />
-          )}
-
-          {user && user.employeeId && activeView === 'my-applications' && (
-            <UpcomingClasses user={user} defaultTab="my-applications" />
+            <UpcomingClasses user={user} />
           )}
 
           {user && user.employeeId && activeView === 'gallery' && <Gallery user={user} />}
@@ -128,10 +123,6 @@ const AppContent: React.FC = () => {
 
           {activeView === 'admin-content' && user?.role === 'ADMIN' && (
             <AdminContent user={user} />
-          )}
-
-          {activeView === 'admin-applications' && user?.role === 'ADMIN' && (
-            <AdminApplications user={user} />
           )}
 
           {activeView === 'admin-reports' && user?.role === 'ADMIN' && (

@@ -42,7 +42,7 @@ export function generateAnnualCNEPdf(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9.5);
   doc.setTextColor(71, 85, 105); // slate-600
-  doc.text('DEPARTMENT OF NURSING SERVICES — CLINICAL NURSING EDUCATION (CNE)', 105, 22, { align: 'center' });
+  doc.text('DEPARTMENT OF NURSING — CLINICAL NURSING EDUCATION (CNE)', 105, 22, { align: 'center' });
 
   // 2. Professional PDF Document Heading
   doc.setFont('helvetica', 'bold');

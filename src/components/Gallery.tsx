@@ -149,7 +149,10 @@ export const Gallery: React.FC<GalleryProps> = ({ user }) => {
 
       {/* Grid */}
       {loading ? (
-        <div className="py-20 text-center text-xs text-slate-400">Loading activity photographs...</div>
+        <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-500">
+          <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
+          <span className="text-xs font-medium">Loading activity photographs from Google Drive / Sheets...</span>
+        </div>
       ) : items.length === 0 ? (
         <div className="py-16 text-center bg-white rounded-2xl border border-slate-200 p-8 space-y-2">
           <Images className="w-8 h-8 text-slate-400 mx-auto" />

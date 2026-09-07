@@ -6,13 +6,11 @@ export type ViewMode =
   | 'my-cne'
   | 'calendar'
   | 'upcoming'
-  | 'my-applications'
   | 'gallery'
   | 'admin-cne'
   | 'admin-areas'
   | 'admin-roles'
   | 'admin-content'
-  | 'admin-applications'
   | 'admin-reports';
 
 export interface NewsEventItem {
