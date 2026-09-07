@@ -89,7 +89,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             AIIMS, Rishikesh
           </p>
           <p className="text-center text-xs text-slate-500 mt-0.5">
-            Department of Nursing • CNE Portal
+            Nursing Services • CNE Portal
           </p>
         </div>
 

@@ -180,10 +180,12 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
             onQuickLinkClick={handleQuickLinkClick}
             accentColor="teal"
           />
-          <SpecialtyModulesWidget accentColor="teal" />
           <CertificationWorkflowWidget accentColor="teal" />
         </aside>
       </div>
+
+      {/* Core Clinical Specialty Modules (Full-width section at the bottom of the main page) */}
+      <SpecialtyModulesWidget accentColor="teal" />
 
       {/* ========================================================= */}
       {/* MODALS: News Detail, QuickLink Content, Photo Lightbox,   */}

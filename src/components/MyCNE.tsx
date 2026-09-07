@@ -468,7 +468,7 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
                 <div>
                   <span className="font-semibold">Participation Verified</span>
                   <p className="text-[11px] text-emerald-800 mt-0.5">
-                    Your attendance is verified in the Department of Nursing CNE database and certified for your professional training record.
+                    Your attendance is verified in the Nursing Services CNE database and certified for your professional training record.
                   </p>
                 </div>
               </div>

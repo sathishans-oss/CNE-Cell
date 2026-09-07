@@ -115,7 +115,7 @@ export const AdminReports: React.FC<AdminReportsProps> = () => {
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Department of Nursing • Clinical education statistics, teaching mode breakdowns, and participation trends.
+            Nursing Services • Clinical education statistics, teaching mode breakdowns, and participation trends.
           </p>
         </div>
 

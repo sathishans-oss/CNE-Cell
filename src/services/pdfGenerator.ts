@@ -186,7 +186,7 @@ export function generateAnnualCNEPdf(
   // Footer / Verification Stamp
   doc.setFontSize(7.5);
   doc.setTextColor(148, 163, 184);
-  doc.text('This is a verified institutional record from the Clinical Nursing Education (CNE) Portal • AIIMS Rishikesh.', 105, pageHeight - 8, { align: 'center' });
+  doc.text('This is a verified institutional record from the Continuing Nursing Education (CNE) Portal • AIIMS Rishikesh.', 105, pageHeight - 8, { align: 'center' });
 
   // Trigger download
   const cleanAy = ayStr.replace(/[^a-zA-Z0-9-]/g, '_');

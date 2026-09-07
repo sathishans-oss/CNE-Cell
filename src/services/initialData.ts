@@ -437,12 +437,12 @@ export const INITIAL_GALLERY: GalleryItem[] = [
 
 export const INITIAL_CHAIRPERSON_MESSAGE: ChairpersonMessageData = {
   name: "Dr. Anita Rani Kansal",
-  designation: "Chief Nursing Officer (C.N.O) & Chairperson, CNE Committee",
+  designation: "Chief Nursing Officer (C.N.O) & Chairperson-CNE Cell",
   institution: "All India Institute of Medical Sciences (AIIMS), Rishikesh",
   photoUrl: "https://lh3.googleusercontent.com/d/1JubdIDqy_apCuS9mlU8BB68k1hiC-gXE",
   title: "Fostering Clinical Rigour, Compassion & Lifelong Learning in Nursing",
   message: [
-    "Welcome to the Clinical Nursing Education (CNE) Portal of AIIMS Rishikesh. Continuing education is not merely a professional obligation; it is the cornerstone of patient safety, clinical excellence, and progressive nursing practice.",
+    "Welcome to the Continuing Nursing Education (CNE) Portal of AIIMS Rishikesh. Continuing education is not merely a professional obligation; it is the cornerstone of patient safety, clinical excellence, and progressive nursing practice.",
     "In a tertiary healthcare and apex academic institution like AIIMS Rishikesh, our nursing fraternity stands on the frontlines of complex medical care, specialized surgical interventions, and intensive critical monitoring. Continuous upskilling ensures that every intervention delivered to our patients meets national and international benchmarks of evidence-based nursing care.",
     "This centralized CNE portal serves as an institutional hub to democratize learning, maintain transparent training portfolios, and recognize the scholarly contributions of both our resource persons and enthusiastic learners. I encourage every nursing officer to take full ownership of their professional development and participate actively in our continuous education calendar."
   ],
@@ -559,7 +559,7 @@ export const INITIAL_QUICK_LINKS: QuickLinkItem[] = [
     modalContent: {
       title: "About the Nursing Education Cell",
       body: [
-        "The Nursing Education Cell at AIIMS Rishikesh is constituted under the Department of Nursing to foster academic vitality, clinical competence, and professional innovation.",
+        "The Nursing Education Cell at AIIMS Rishikesh is constituted under the Nursing Services to foster academic vitality, clinical competence, and professional innovation.",
         "Leadership: Chaired by the Chief Nursing Officer (C.N.O) in coordination with Deputy Nursing Superintendents (D.N.S) and Assistant Nursing Superintendents (A.N.S).",
         "Coordinators: Ms. Ramya T and Ms. Suman Choudhary.",
         "Key Mandates: Curriculum design for clinical specialties, simulation-based resuscitation workshops, orientation programmes for newly recruited officers, and institutional continuous learning audits.",
@@ -597,7 +597,7 @@ export const INITIAL_QUICK_LINKS: QuickLinkItem[] = [
     modalContent: {
       title: "CNE Coordinator Desk Contact Information",
       body: [
-        "Office: Department of Nursing, All India Institute of Medical Sciences, Rishikesh - 249203, Uttarakhand, India.",
+        "Office: Nursing Services, All India Institute of Medical Sciences, Rishikesh - 249203, Uttarakhand, India.",
         "CNE Coordinators: Ms. Ramya T | Ms. Suman Choudhary",
         "Email: training.nur@aiimsrishikesh.edu.in",
         "Working Hours: Monday to Friday: 09:00 AM – 05:00 PM | Saturday: 09:00 AM – 01:00 PM"

@@ -40,7 +40,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 hidden sm:block mt-0.5">
-                  Department of Nursing • Continuing Education Portal
+                  Nursing Services • Continuing Education Portal
                 </p>
               </div>
             </div>

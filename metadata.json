@@ -1,6 +1,6 @@
 {
   "name": "CNE Management System",
-  "description": "Clinical Nursing Education Management System for tracking CNE activities, CNE schedule, annual PDF portfolio generation, calendar, and Google Sheets integration.",
+  "description": "Continuing Nursing Education (CNE) Portal & Management System for tracking CNE activities, CNE schedule, annual PDF portfolio generation, calendar, and Google Sheets integration.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

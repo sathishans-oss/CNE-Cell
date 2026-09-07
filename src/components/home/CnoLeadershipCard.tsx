@@ -102,9 +102,6 @@ export const CnoLeadershipCard: React.FC<CnoLeadershipCardProps> = ({
                 referrerPolicy="no-referrer"
                 className="w-full h-full object-cover object-top"
               />
-              <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-slate-950/80 to-transparent py-1 text-center pointer-events-none">
-                <span className="text-[9px] font-bold text-white">C.N.O</span>
-              </div>
             </div>
 
             {/* Verified Badge */}
@@ -116,7 +113,7 @@ export const CnoLeadershipCard: React.FC<CnoLeadershipCardProps> = ({
           {/* Title & Credentials */}
           <div className="space-y-1 text-center sm:text-left flex-1">
             <div className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border mb-1 ${subBadgeBg}`}>
-              Department of Nursing
+              Nursing Services
             </div>
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
               <h3 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
@@ -139,7 +136,7 @@ export const CnoLeadershipCard: React.FC<CnoLeadershipCardProps> = ({
           ) : (
             <>
               <p>
-                Welcome to the <strong>Clinical Nursing Education (CNE) Portal</strong> of AIIMS Rishikesh. Continuing nursing education is not merely a professional obligation; it is the cornerstone of clinical excellence, patient safety, and compassionate nursing leadership.
+                Welcome to the <strong>Continuing Nursing Education (CNE) Portal</strong> of AIIMS Rishikesh. Continuing nursing education is not merely a professional obligation; it is the cornerstone of clinical excellence, patient safety, and compassionate nursing leadership.
               </p>
               <p>
                 In our tertiary apex healthcare institution, nursing officers stand on the frontlines of complex critical care, advanced surgical procedures, and intensive hemodynamic management. Ongoing skill development guarantees that our clinical practices adhere strictly to evidence-based national and international benchmarks.

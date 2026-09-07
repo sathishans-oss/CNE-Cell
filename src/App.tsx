@@ -134,8 +134,8 @@ const AppContent: React.FC = () => {
       {/* Footer */}
       <footer className="bg-white border-t border-slate-200 py-6 text-center text-xs text-slate-500 mt-auto">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>© 2026 Nursing Informatics | Department of Nursing | AIIMS Rishikesh</span>
-          <span>Clinical Nursing Education (CNE) Portal</span>
+          <span>© 2026 Nursing Informatics | Nursing Services | AIIMS Rishikesh</span>
+          <span>Continuing Nursing Education (CNE) Portal</span>
         </div>
       </footer>
 

@@ -22,7 +22,7 @@ export const SpecialtyModulesWidget: React.FC<SpecialtyModulesWidgetProps> = ({
         <h3 className="text-sm font-bold text-slate-900">Core Clinical Specialty Modules</h3>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-1 hover:border-slate-300 transition-colors">
           <h4 className="text-xs font-bold text-slate-900">1. Critical Care & Hemodynamics</h4>
           <p className="text-[11px] text-slate-600 leading-relaxed">
