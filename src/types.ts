@@ -1,4 +1,4 @@
-export type UserRole = 'ADMIN' | 'EMPLOYEE';
+export type UserRole = 'ADMIN' | 'AREA_INCHARGE' | 'EMPLOYEE';
 
 export type ViewMode =
   | 'home'
@@ -124,6 +124,82 @@ export interface UpcomingClass {
   proposedByName?: string;
   adminRemarks?: string;
   createdAt?: string;
+  cneType?: 'CENTRAL' | 'DEPARTMENTAL';
+  finalizedQuestionsCount?: number;
+  isLocked?: boolean;
+  qrToken?: string;
+}
+
+export interface CNEQuestion {
+  id: string;
+  question: string;
+  options: {
+    A: string;
+    B: string;
+    C: string;
+    D: string;
+  };
+  correctOption: 'A' | 'B' | 'C' | 'D';
+  explanation: string;
+  isFinalized?: boolean;
+  isLocked?: boolean;
+}
+
+export interface CNEReferenceMaterial {
+  cneId: string;
+  topic: string;
+  referenceText: string;
+  linkUrl: string;
+  syllabus: string;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
+export interface CNEParticipant {
+  id: string;
+  cneId: string;
+  employeeId: string;
+  name: string;
+  designation: string;
+  department: string;
+  participantType: 'POST_TEST' | 'MANUAL';
+  score: number | null;
+  totalQuestions: number | null;
+  percentage: number | null;
+  status: string;
+  submittedAt: string;
+  remarks?: string;
+}
+
+export interface CNEParticipantsSummary {
+  cneId: string;
+  topic: string;
+  area: string;
+  status: string;
+  totalParticipants: number;
+  postTestCount: number;
+  manualCount: number;
+  averageScore: number;
+  participants: CNEParticipant[];
+}
+
+export interface PostTestSubmissionResult {
+  participantId: string;
+  cneId: string;
+  score: number;
+  totalQuestions: number;
+  percentage: number;
+  passed: boolean;
+  status: string;
+  submittedAt: string;
+  review: {
+    questionId: string;
+    question: string;
+    userAnswer: string;
+    correctAnswer: string;
+    isCorrect: boolean;
+    explanation: string;
+  }[];
 }
 
 export type ApplicationStatus = 'Pending' | 'Applied' | 'Approved' | 'Rejected' | 'Attended' | 'Cancelled';
@@ -160,6 +236,7 @@ export interface SessionUser {
   designation: string;
   email?: string;
   role: UserRole;
+  assignedArea?: string;
   token: string;
   isFirstLogin?: boolean;
   mustChangePassword?: boolean;

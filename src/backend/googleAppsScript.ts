@@ -162,8 +162,8 @@ function verifySession(token, employeeId) {
     return null;
   }
 
-  var role = getUserRole(verifiedEmpId);
-  return { employeeId: verifiedEmpId, role: role };
+  var roleInfo = getUserRoleInfo(verifiedEmpId);
+  return { employeeId: verifiedEmpId, role: roleInfo.role, assignedArea: roleInfo.assignedArea };
 }
 
 /**
@@ -426,6 +426,55 @@ function handleRequest(e, method) {
         output = handleAdminAction(params, session, handleAdminResetPassword, 'ADMIN_RESET_PASSWORD');
         break;
         
+      // Part 2: Reference Material, AI Questions, QR, Post-Test, Participants & Completion
+      case 'saveReferenceMaterial':
+        output = handleSaveReferenceMaterial(params, session);
+        break;
+
+      case 'getReferenceMaterial':
+        output = handleGetReferenceMaterial(params, session);
+        break;
+
+      case 'saveCNEQuestions':
+        output = handleSaveCNEQuestions(params, session);
+        break;
+
+      case 'getCNEQuestions':
+        output = handleGetCNEQuestions(params, session);
+        break;
+
+      case 'getQRToken':
+        output = handleGetQRToken(params, session);
+        break;
+
+      case 'resolveQRToken':
+        output = handleResolveQRToken(params);
+        break;
+
+      case 'getPostTestQuestions':
+        output = handleGetPostTestQuestions(params, session);
+        break;
+
+      case 'submitPostTest':
+        output = handleSubmitPostTest(params, session);
+        break;
+
+      case 'addManualParticipant':
+        output = handleAddManualParticipant(params, session);
+        break;
+
+      case 'getCNEParticipants':
+        output = handleGetCNEParticipants(params, session);
+        break;
+
+      case 'finalizeCNE':
+        output = handleFinalizeCNE(params, session);
+        break;
+
+      case 'cancelCNE':
+        output = handleCancelCNE(params, session);
+        break;
+        
       default:
         output = { success: false, message: 'Unknown action requested: ' + action };
     }
@@ -541,41 +590,117 @@ function handleDiagnosticPing(params) {
 }
 
 /**
- * Check User Role directly from 'Role' sheet tab
+ * Comprehensive User Role & Assigned Area Resolution
+ * Supports ADMIN, AREA_INCHARGE, and EMPLOYEE roles
  */
-function getUserRole(employeeId) {
+function getUserRoleInfo(employeeId) {
   var normId = normalizeEmpId(employeeId);
-  if (!normId) return 'EMPLOYEE';
+  var result = { role: 'EMPLOYEE', assignedArea: '' };
+  if (!normId) return result;
   
   try {
     var ss = getSpreadsheet('CNE');
     var roleSheet = ss.getSheetByName('Role');
-    if (!roleSheet) return 'EMPLOYEE';
-    
-    var data = roleSheet.getDataRange().getValues();
-    if (data.length <= 1) return 'EMPLOYEE';
-    
-    var empIdCol = 0;
-    var roleCol = 3;
-    var headers = data[0];
-    for (var i = 0; i < headers.length; i++) {
-      var h = String(headers[i]).toLowerCase().trim();
-      if (h.indexOf('emp') !== -1 && h.indexOf('id') !== -1) empIdCol = i;
-      if (h === 'role') roleCol = i;
+    if (roleSheet) {
+      var data = roleSheet.getDataRange().getValues();
+      if (data.length > 1) {
+        var empIdCol = 0;
+        var roleCol = 3;
+        var areaCol = -1;
+        var headers = data[0];
+        for (var i = 0; i < headers.length; i++) {
+          var h = String(headers[i]).toLowerCase().trim();
+          if (h.indexOf('emp') !== -1 && h.indexOf('id') !== -1) empIdCol = i;
+          if (h === 'role') roleCol = i;
+          if (h.indexOf('area') !== -1 || h.indexOf('department') !== -1) areaCol = i;
+        }
+        
+        for (var r = 1; r < data.length; r++) {
+          var rowEmpId = normalizeEmpId(data[r][empIdCol]);
+          if (rowEmpId === normId) {
+            var rVal = String(data[r][roleCol] || '').toUpperCase().trim();
+            if (rVal === 'ADMIN') {
+              result.role = 'ADMIN';
+            } else if (rVal === 'AREA_INCHARGE' || rVal === 'INCHARGE') {
+              result.role = 'AREA_INCHARGE';
+            }
+            if (areaCol !== -1 && data[r][areaCol]) {
+              result.assignedArea = String(data[r][areaCol]).trim();
+            }
+            return result;
+          }
+        }
+      }
     }
     
-    for (var r = 1; r < data.length; r++) {
-      var rowEmpId = normalizeEmpId(data[r][empIdCol]);
-      if (rowEmpId === normId) {
-        var rVal = String(data[r][roleCol]).toUpperCase().trim();
-        return (rVal === 'ADMIN') ? 'ADMIN' : 'EMPLOYEE';
+    // Also check Area sheet if assigned as Incharge
+    var areaSheet = ss.getSheetByName('Area');
+    if (areaSheet) {
+      var aData = areaSheet.getDataRange().getValues();
+      if (aData.length > 1) {
+        var inchargeCol = -1;
+        for (var c = 0; c < aData[0].length; c++) {
+          var ah = String(aData[0][c]).toLowerCase().trim();
+          if (ah.indexOf('incharge') !== -1 && ah.indexOf('id') !== -1) inchargeCol = c;
+        }
+        if (inchargeCol !== -1) {
+          for (var ar = 1; ar < aData.length; ar++) {
+            if (normalizeEmpId(aData[ar][inchargeCol]) === normId) {
+              result.role = 'AREA_INCHARGE';
+              result.assignedArea = String(aData[ar][0]).trim();
+              return result;
+            }
+          }
+        }
       }
     }
   } catch (e) {
-    console.warn('Error reading role sheet: ' + e.message);
+    console.warn('Error reading role info: ' + e.message);
   }
   
-  return 'EMPLOYEE';
+  return result;
+}
+
+function getUserRole(employeeId) {
+  return getUserRoleInfo(employeeId).role;
+}
+
+/**
+ * Authorization Helper for CNE Management
+ * Admin = full control over both Central and Departmental CNE
+ * Area Incharge = Departmental CNE only within assigned Area/Department
+ * Normal users = no administrative controls
+ */
+function checkCNEAuthorized(session, cneArea, cneType) {
+  if (!session) {
+    return {
+      success: false,
+      errorCode: 'UNAUTHORIZED',
+      message: 'Authentication required. Please sign in.'
+    };
+  }
+  
+  var role = String(session.role || '').toUpperCase();
+  if (role === 'ADMIN') {
+    return null; // Admin has full control
+  }
+  
+  if (role === 'AREA_INCHARGE' || role === 'INCHARGE') {
+    var type = String(cneType || '').toUpperCase();
+    if (type !== 'CENTRAL') {
+      var userAssigned = String(session.assignedArea || getUserRoleInfo(session.employeeId).assignedArea || '').trim().toLowerCase();
+      var targetArea = String(cneArea || '').trim().toLowerCase();
+      if (userAssigned && targetArea && (userAssigned === targetArea || targetArea.indexOf(userAssigned) !== -1 || userAssigned.indexOf(targetArea) !== -1)) {
+        return null; // Authorized for this Departmental CNE
+      }
+    }
+  }
+  
+  return {
+    success: false,
+    errorCode: 'FORBIDDEN',
+    message: 'Permission denied. Only an Administrator or the designated Area Incharge for this department may manage this CNE.'
+  };
 }
 
 /**
@@ -1063,10 +1188,11 @@ function handleLogin(params) {
     authSheet.getRange(userRowIndex, 7).setValue(new Date().toISOString());
   }
   
-  var role = getUserRole(employeeId);
+  var roleInfo = getUserRoleInfo(employeeId);
+  var role = roleInfo.role;
   var token = generateSessionToken(employeeId);
   
-  logAuditAction('LOGIN_SUCCESS', employeeId, 'Role: ' + role, 'SUCCESS');
+  logAuditAction('LOGIN_SUCCESS', employeeId, 'Role: ' + role + (roleInfo.assignedArea ? ' (' + roleInfo.assignedArea + ')' : ''), 'SUCCESS');
   
   return {
     success: true,
@@ -1076,6 +1202,7 @@ function handleLogin(params) {
       name: officer.name,
       designation: officer.designation,
       role: role,
+      assignedArea: roleInfo.assignedArea,
       token: token,
       isFirstLogin: isFirstLogin,
       mustChangePassword: mustChangePass
@@ -3590,7 +3717,11 @@ function internalInitializeSheets(executorEmpId) {
     { name: 'Gallery', headers: ['Image ID', 'Title', 'Description', 'Date', 'Drive File ID', 'Image URL', 'Uploaded By', 'Uploaded At', 'Status'] },
     { name: 'News and Events', headers: ['Event ID', 'Title', 'Category', 'Date', 'Summary', 'Full Content', 'Status', 'CreatedAt', 'CreatedBy'] },
     { name: 'User Credentials', headers: ['Employee ID', 'Password Hash', 'Password Salt', 'Must Change Password', 'Created At', 'Updated At', 'Last Login At', 'Account Status'] },
-    { name: 'Audit Log', headers: ['Timestamp', 'Action', 'Employee ID', 'Details', 'Status'] }
+    { name: 'Audit Log', headers: ['Timestamp', 'Action', 'Employee ID', 'Details', 'Status'] },
+    { name: 'CNE Post Test Questions', headers: ['CNE ID', 'Question ID', 'Question', 'Option A', 'Option B', 'Option C', 'Option D', 'Correct Answer', 'Explanation', 'Selected/Final', 'Is Locked', 'Created/Updated At', 'Created/Updated By'] },
+    { name: 'CNE Post Test Responses', headers: ['Response ID', 'CNE ID', 'Employee ID', 'Employee Name', 'Submitted At', 'Score', 'Total Questions', 'Percentage', 'Answers', 'Participant Source', 'Designation', 'Department', 'Status', 'Remarks'] },
+    { name: 'CNE_Reference', headers: ['CNE ID', 'Topic', 'Reference Text', 'Document Link', 'Syllabus', 'Updated By', 'Updated At'] },
+    { name: 'CNE_QR_Tokens', headers: ['QR Token', 'CNE ID', 'Created At', 'Created By', 'Status'] }
   ];
   
   var auditReport = [];
@@ -3644,6 +3775,1019 @@ function handleInitializeSheets(params, session) {
   if (adminError) return adminError;
 
   return internalInitializeSheets(session ? session.employeeId : 'ADMIN');
+}
+
+/**
+ * ============================================================================
+ * PART 2: TOPIC REFERENCE, AI QUESTIONS, LOCKING, QR, POST-TEST & COMPLETION
+ * ============================================================================
+ */
+
+function getCNEClassRecord(cneId) {
+  if (!cneId) return null;
+  var ss = getSpreadsheet('CNE');
+  var sheet = ss.getSheetByName('Upcoming Classes');
+  if (!sheet) return null;
+  
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return null;
+  
+  var cleanId = String(cneId).trim().toUpperCase();
+  for (var r = 1; r < data.length; r++) {
+    var rowId = String(data[r][0] || '').trim().toUpperCase();
+    if (rowId === cleanId) {
+      return {
+        rowIndex: r + 1,
+        cneId: String(data[r][0] || '').trim(),
+        topic: String(data[r][1] || '').trim(),
+        area: String(data[r][2] || '').trim(),
+        date: String(data[r][3] || '').trim(),
+        time: String(data[r][4] || '').trim(),
+        duration: data[r][5] ? Number(data[r][5]) : 60,
+        instructor: String(data[r][6] || '').trim(),
+        mode: String(data[r][7] || 'Offline').trim(),
+        description: String(data[r][8] || '').trim(),
+        maxParticipants: data[r][9] ? Number(data[r][9]) : 50,
+        status: String(data[r][10] || 'OPEN').trim().toUpperCase(),
+        toDate: String(data[r][11] || '').trim(),
+        externalResourcePersons: String(data[r][12] || '').trim(),
+        proposedBy: String(data[r][13] || '').trim(),
+        adminRemarks: String(data[r][14] || '').trim(),
+        cneType: (String(data[r][2] || '').toLowerCase().indexOf('hospital') !== -1 || String(data[r][2] || '').toLowerCase().indexOf('central') !== -1) ? 'CENTRAL' : 'DEPARTMENTAL'
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Save CNE Topic and Reference Material
+ */
+function handleSaveReferenceMaterial(params, session) {
+  var cneId = sanitizeCellInput(params.cneId);
+  if (!cneId) {
+    return { success: false, message: 'CNE ID is required.' };
+  }
+  
+  var record = getCNEClassRecord(cneId);
+  if (!record) {
+    return { success: false, message: 'CNE record not found for ID: ' + cneId };
+  }
+  
+  var authErr = checkCNEAuthorized(session, record.area, record.cneType);
+  if (authErr) return authErr;
+  
+  var refText = sanitizeCellInput(params.referenceText || '');
+  var linkUrl = sanitizeCellInput(params.linkUrl || '');
+  var syllabus = sanitizeCellInput(params.syllabus || '');
+  var updatedBy = session.employeeId;
+  var updatedAt = new Date().toISOString();
+  
+  var sheet = getOrCreateSheet('CNE_Reference', ['CNE ID', 'Topic', 'Reference Text', 'Document Link', 'Syllabus', 'Updated By', 'Updated At']);
+  var data = sheet.getDataRange().getValues();
+  var existingRow = -1;
+  
+  for (var r = 1; r < data.length; r++) {
+    if (String(data[r][0] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+      existingRow = r + 1;
+      break;
+    }
+  }
+  
+  if (existingRow > 0) {
+    sheet.getRange(existingRow, 1, 1, 7).setValues([[cneId, record.topic, refText, linkUrl, syllabus, updatedBy, updatedAt]]);
+  } else {
+    sheet.appendRow([cneId, record.topic, refText, linkUrl, syllabus, updatedBy, updatedAt]);
+  }
+  
+  logAuditAction('SAVE_REFERENCE_MATERIAL', session.employeeId, 'Saved reference material for CNE: ' + cneId, 'SUCCESS');
+  return { success: true, message: 'Topic and reference material saved successfully.' };
+}
+
+/**
+ * Get CNE Topic and Reference Material
+ */
+function handleGetReferenceMaterial(params, session) {
+  var cneId = sanitizeCellInput(params.cneId);
+  if (!cneId) return { success: false, message: 'CNE ID is required.' };
+  
+  var sheet = getOrCreateSheet('CNE_Reference', ['CNE ID', 'Topic', 'Reference Text', 'Document Link', 'Syllabus', 'Updated By', 'Updated At']);
+  var data = sheet.getDataRange().getValues();
+  
+  for (var r = 1; r < data.length; r++) {
+    if (String(data[r][0] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+      return {
+        success: true,
+        data: {
+          cneId: cneId,
+          topic: String(data[r][1] || ''),
+          referenceText: String(data[r][2] || ''),
+          linkUrl: String(data[r][3] || ''),
+          syllabus: String(data[r][4] || ''),
+          updatedBy: String(data[r][5] || ''),
+          updatedAt: String(data[r][6] || '')
+        }
+      };
+    }
+  }
+  
+  var record = getCNEClassRecord(cneId);
+  return {
+    success: true,
+    data: {
+      cneId: cneId,
+      topic: record ? record.topic : '',
+      referenceText: '',
+      linkUrl: '',
+      syllabus: '',
+      updatedBy: '',
+      updatedAt: ''
+    }
+  };
+}
+
+/**
+ * Helper: Resolve Questions Sheet
+ * Prefers 'CNE Post Test Questions' tab; falls back to 'CNE_Questions' if already present.
+ */
+function getQuestionsSheet() {
+  var ss = getSpreadsheet('CNE');
+  var sheet = ss.getSheetByName('CNE Post Test Questions') || ss.getSheetByName('CNE_Questions');
+  if (!sheet) {
+    sheet = getOrCreateSheet('CNE Post Test Questions', [
+      'CNE ID', 'Question ID', 'Question', 'Option A', 'Option B', 'Option C', 'Option D',
+      'Correct Answer', 'Explanation', 'Selected/Final', 'Is Locked', 'Created/Updated At', 'Created/Updated By'
+    ]);
+  }
+  return sheet;
+}
+
+/**
+ * Helper: Resolve Responses Sheet
+ * Prefers 'CNE Post Test Responses' tab; falls back to 'CNE_Participants' if already present.
+ */
+function getResponsesSheet() {
+  var ss = getSpreadsheet('CNE');
+  var sheet = ss.getSheetByName('CNE Post Test Responses') || ss.getSheetByName('CNE_Participants');
+  if (!sheet) {
+    sheet = getOrCreateSheet('CNE Post Test Responses', [
+      'Response ID', 'CNE ID', 'Employee ID', 'Employee Name', 'Submitted At',
+      'Score', 'Total Questions', 'Percentage', 'Answers', 'Participant Source',
+      'Designation', 'Department', 'Status', 'Remarks'
+    ]);
+  }
+  return sheet;
+}
+
+/**
+ * Helper: Resolve QR Tokens Sheet
+ */
+function getQRTokensSheet() {
+  return getOrCreateSheet('CNE_QR_Tokens', ['QR Token', 'CNE ID', 'Created At', 'Created By', 'Status']);
+}
+
+/**
+ * Check if Question Set is Locked
+ * A question set is permanently locked once the FIRST participant post-test submission occurs.
+ */
+function isCNEQuestionsLocked(cneId) {
+  if (!cneId) return false;
+  var partSheet = getResponsesSheet();
+  if (partSheet && partSheet.getLastRow() > 1) {
+    var pData = partSheet.getDataRange().getValues();
+    for (var p = 1; p < pData.length; p++) {
+      var rowCneId = String(pData[p][1] || '').trim().toUpperCase();
+      var source = String(pData[p][9] || pData[p][6] || '').trim().toUpperCase();
+      if (rowCneId === String(cneId).trim().toUpperCase() && source === 'POST_TEST') {
+        return true; // At least one participant post-test submission exists
+      }
+    }
+  }
+  
+  var qSheet = getQuestionsSheet();
+  if (qSheet && qSheet.getLastRow() > 1) {
+    var qData = qSheet.getDataRange().getValues();
+    for (var q = 1; q < qData.length; q++) {
+      var qCneId = String(qData[q][0] || '').trim().toUpperCase();
+      var isLockCol = String(qData[q][10] || '').trim().toUpperCase();
+      if (qCneId === String(cneId).trim().toUpperCase() && isLockCol === 'YES') {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Save & Finalize Questions for CNE
+ */
+function handleSaveCNEQuestions(params, session) {
+  var cneId = sanitizeCellInput(params.cneId);
+  if (!cneId) return { success: false, message: 'CNE ID is required.' };
+  
+  var record = getCNEClassRecord(cneId);
+  if (!record) return { success: false, message: 'CNE record not found.' };
+  
+  var authErr = checkCNEAuthorized(session, record.area, record.cneType);
+  if (authErr) return authErr;
+  
+  if (isCNEQuestionsLocked(cneId)) {
+    return {
+      success: false,
+      errorCode: 'QUESTIONS_LOCKED',
+      message: 'Questions are permanently locked because post-test submissions have already begun and cannot be modified.'
+    };
+  }
+  
+  var rawQuestions = params.questions;
+  if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
+    return { success: false, message: 'A valid array of questions is required.' };
+  }
+  
+  var sheet = getQuestionsSheet();
+  
+  // Remove existing non-locked rows for this CNE
+  var data = sheet.getDataRange().getValues();
+  for (var r = data.length - 1; r >= 1; r--) {
+    if (String(data[r][0] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+      sheet.deleteRow(r + 1);
+    }
+  }
+  
+  var finalizedCount = 0;
+  var rowsToAppend = [];
+  var now = new Date().toISOString();
+  
+  for (var i = 0; i < rawQuestions.length; i++) {
+    var q = rawQuestions[i];
+    var qId = sanitizeCellInput(q.id || ('q' + (i + 1)));
+    var qText = sanitizeCellInput(q.question || '');
+    var optA = sanitizeCellInput(q.options?.A || '');
+    var optB = sanitizeCellInput(q.options?.B || '');
+    var optC = sanitizeCellInput(q.options?.C || '');
+    var optD = sanitizeCellInput(q.options?.D || '');
+    var correctOpt = (['A', 'B', 'C', 'D'].indexOf(String(q.correctOption || '').toUpperCase()) !== -1) ? String(q.correctOption).toUpperCase() : 'A';
+    var expl = sanitizeCellInput(q.explanation || '');
+    var isFin = (q.isFinalized === true || String(q.isFinalized).toUpperCase() === 'YES') ? 'YES' : 'NO';
+    if (isFin === 'YES') finalizedCount++;
+    
+    rowsToAppend.push([
+      cneId, qId, qText, optA, optB, optC, optD, correctOpt, expl, isFin, 'NO', now, session.employeeId
+    ]);
+  }
+  
+  if (rowsToAppend.length > 0) {
+    var startRow = sheet.getLastRow() + 1;
+    sheet.getRange(startRow, 1, rowsToAppend.length, 13).setValues(rowsToAppend);
+  }
+  
+  logAuditAction('SAVE_QUESTIONS', session.employeeId, 'Saved ' + rawQuestions.length + ' questions (' + finalizedCount + ' finalized) for CNE: ' + cneId, 'SUCCESS');
+  
+  return {
+    success: true,
+    message: 'Question set saved successfully.',
+    totalQuestions: rawQuestions.length,
+    finalizedCount: finalizedCount,
+    readyForPostTest: finalizedCount >= 5
+  };
+}
+
+/**
+ * Get Questions for Admin/Incharge (Includes answer keys and explanations)
+ */
+function handleGetCNEQuestions(params, session) {
+  var cneId = sanitizeCellInput(params.cneId);
+  if (!cneId) return { success: false, message: 'CNE ID is required.' };
+  
+  var record = getCNEClassRecord(cneId);
+  if (!record) return { success: false, message: 'CNE record not found.' };
+  
+  var authErr = checkCNEAuthorized(session, record.area, record.cneType);
+  if (authErr) return authErr;
+  
+  var isLocked = isCNEQuestionsLocked(cneId);
+  var sheet = getQuestionsSheet();
+  var data = sheet.getDataRange().getValues();
+  var questions = [];
+  var finalizedCount = 0;
+  
+  for (var r = 1; r < data.length; r++) {
+    if (String(data[r][0] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+      var isFin = String(data[r][9] || 'NO').toUpperCase() === 'YES';
+      if (isFin) finalizedCount++;
+      questions.push({
+        id: String(data[r][1] || ''),
+        question: String(data[r][2] || ''),
+        options: {
+          A: String(data[r][3] || ''),
+          B: String(data[r][4] || ''),
+          C: String(data[r][5] || ''),
+          D: String(data[r][6] || '')
+        },
+        correctOption: String(data[r][7] || 'A'),
+        explanation: String(data[r][8] || ''),
+        isFinalized: isFin,
+        isLocked: isLocked || String(data[r][10] || 'NO').toUpperCase() === 'YES'
+      });
+    }
+  }
+  
+  return {
+    success: true,
+    data: questions,
+    isLocked: isLocked,
+    finalizedCount: finalizedCount,
+    readyForPostTest: finalizedCount >= 5
+  };
+}
+
+/**
+ * Get Secure QR Token for CNE Post-Test
+ * Rejects if fewer than 5 questions are finalized
+ */
+function handleGetQRToken(params, session) {
+  var cneId = sanitizeCellInput(params.cneId);
+  if (!cneId) return { success: false, message: 'CNE ID is required.' };
+  
+  var record = getCNEClassRecord(cneId);
+  if (!record) return { success: false, message: 'CNE record not found.' };
+  
+  var authErr = checkCNEAuthorized(session, record.area, record.cneType);
+  if (authErr) return authErr;
+  
+  var sheet = getQuestionsSheet();
+  var data = sheet.getDataRange().getValues();
+  var finalizedCount = 0;
+  for (var r = 1; r < data.length; r++) {
+    if (String(data[r][0] || '').trim().toUpperCase() === cneId.toUpperCase() &&
+        String(data[r][9] || 'NO').toUpperCase() === 'YES') {
+      finalizedCount++;
+    }
+  }
+  
+  if (finalizedCount < 5) {
+    return {
+      success: false,
+      errorCode: 'INSUFFICIENT_QUESTIONS',
+      message: 'At least 5 questions must be finalized before QR Code and Post-Test can be generated. Currently finalized: ' + finalizedCount
+    };
+  }
+  
+  var qrSheet = getQRTokensSheet();
+  var qrData = qrSheet.getDataRange().getValues();
+  var existingToken = null;
+  
+  for (var q = 1; q < qrData.length; q++) {
+    if (String(qrData[q][1] || '').trim().toUpperCase() === cneId.toUpperCase() &&
+        String(qrData[q][4] || 'ACTIVE').toUpperCase() === 'ACTIVE') {
+      existingToken = String(qrData[q][0] || '');
+      break;
+    }
+  }
+  
+  var qrToken = existingToken;
+  if (!qrToken) {
+    qrToken = 'QRT-' + Utilities.getUuid().replace(/-/g, '');
+    qrSheet.appendRow([qrToken, cneId, new Date().toISOString(), session.employeeId, 'ACTIVE']);
+  }
+  
+  logAuditAction('GENERATE_QR', session.employeeId, 'Generated secure QR token for CNE: ' + cneId, 'SUCCESS');
+  
+  return {
+    success: true,
+    data: {
+      qrToken: qrToken,
+      cneId: cneId,
+      topic: record.topic,
+      area: record.area,
+      finalizedCount: finalizedCount
+    }
+  };
+}
+
+/**
+ * Resolve QR Token to CNE Session Details (Public for participants)
+ * Resolves CNE ID authoritatively on the server from the opaque token.
+ * Prevents CNE enumeration and strips all answers/explanations.
+ */
+function handleResolveQRToken(params) {
+  var token = sanitizeCellInput(params.qrToken || params.token);
+  if (!token) return { success: false, message: 'QR Token is required.' };
+  
+  var qrSheet = getQRTokensSheet();
+  var qrData = qrSheet.getDataRange().getValues();
+  var matchedCneId = null;
+  
+  for (var q = 1; q < qrData.length; q++) {
+    if (String(qrData[q][0] || '').trim() === token &&
+        String(qrData[q][4] || 'ACTIVE').toUpperCase() === 'ACTIVE') {
+      matchedCneId = String(qrData[q][1] || '').trim();
+      break;
+    }
+  }
+  
+  // Fallback for legacy format if token started with QRT-<cneId>
+  if (!matchedCneId && token.indexOf('QRT-') === 0) {
+    var parts = token.split('-');
+    if (parts.length >= 2) matchedCneId = parts[1];
+  }
+  
+  if (!matchedCneId) return { success: false, message: 'Invalid or expired CNE QR Token.' };
+  
+  var record = getCNEClassRecord(matchedCneId);
+  if (!record) return { success: false, message: 'CNE session not found for this QR token.' };
+  
+  var isLocked = isCNEQuestionsLocked(matchedCneId);
+  
+  // Read finalized questions for public participant view (NO answers, NO explanations)
+  var qSheet = getQuestionsSheet();
+  var qData = qSheet.getDataRange().getValues();
+  var sanitizedQuestions = [];
+  
+  for (var r = 1; r < qData.length; r++) {
+    if (String(qData[r][0] || '').trim().toUpperCase() === matchedCneId.toUpperCase() &&
+        String(qData[r][9] || 'NO').toUpperCase() === 'YES') {
+      sanitizedQuestions.push({
+        id: String(qData[r][1] || ''),
+        question: String(qData[r][2] || ''),
+        options: {
+          A: String(qData[r][3] || ''),
+          B: String(qData[r][4] || ''),
+          C: String(qData[r][5] || ''),
+          D: String(qData[r][6] || '')
+        }
+      });
+    }
+  }
+  
+  // Check already submitted if employeeId provided
+  var alreadySubmitted = false;
+  var empId = normalizeEmpId(params.employeeId);
+  if (empId) {
+    var partSheet = getResponsesSheet();
+    if (partSheet && partSheet.getLastRow() > 1) {
+      var pData = partSheet.getDataRange().getValues();
+      for (var p = 1; p < pData.length; p++) {
+        var pCne = String(pData[p][1] || '').trim().toUpperCase();
+        var pEmp = normalizeEmpId(pData[p][2]);
+        var pSrc = String(pData[p][9] || pData[p][6] || '').trim().toUpperCase();
+        if (pCne === matchedCneId.toUpperCase() && pEmp === empId && pSrc === 'POST_TEST') {
+          alreadySubmitted = true;
+          break;
+        }
+      }
+    }
+  }
+  
+  return {
+    success: true,
+    data: {
+      qrToken: token,
+      cneId: record.cneId,
+      topic: record.topic,
+      area: record.area,
+      date: record.date,
+      time: record.time,
+      duration: record.duration,
+      instructor: record.instructor,
+      mode: record.mode,
+      status: record.status,
+      cneType: record.cneType,
+      isLocked: isLocked,
+      questions: sanitizedQuestions,
+      alreadySubmitted: alreadySubmitted
+    }
+  };
+}
+
+/**
+ * Get Post-Test Questions for Participant
+ * Strips correctOption and explanation!
+ * Checks if participant has already submitted.
+ */
+function handleGetPostTestQuestions(params, session) {
+  var cneId = sanitizeCellInput(params.cneId);
+  var token = sanitizeCellInput(params.qrToken);
+  
+  if (!cneId && token) {
+    var qrSheet = getQRTokensSheet();
+    var qrData = qrSheet.getDataRange().getValues();
+    for (var q = 1; q < qrData.length; q++) {
+      if (String(qrData[q][0] || '').trim() === token) {
+        cneId = String(qrData[q][1] || '').trim();
+        break;
+      }
+    }
+    if (!cneId && token.indexOf('QRT-') === 0) {
+      var parts = token.split('-');
+      if (parts.length >= 2) cneId = parts[1];
+    }
+  }
+  
+  if (!cneId) return { success: false, message: 'CNE ID or valid QR Token is required.' };
+  
+  var empId = normalizeEmpId(params.employeeId || (session ? session.employeeId : ''));
+  if (!empId) return { success: false, message: 'Employee ID is required.' };
+  
+  var record = getCNEClassRecord(cneId);
+  if (!record) return { success: false, message: 'CNE record not found.' };
+  
+  // Check if participant has already submitted in CNE Post Test Responses
+  var partSheet = getResponsesSheet();
+  if (partSheet && partSheet.getLastRow() > 1) {
+    var pData = partSheet.getDataRange().getValues();
+    for (var p = 1; p < pData.length; p++) {
+      var pCne = String(pData[p][1] || '').trim().toUpperCase();
+      var pEmp = normalizeEmpId(pData[p][2]);
+      var pSrc = String(pData[p][9] || pData[p][6] || '').trim().toUpperCase();
+      
+      if (pCne === cneId.toUpperCase() && pEmp === empId && pSrc === 'POST_TEST') {
+        return {
+          success: true,
+          data: {
+            alreadySubmitted: true,
+            submission: {
+              participantId: String(pData[p][0] || ''),
+              cneId: cneId,
+              employeeId: empId,
+              name: String(pData[p][3] || ''),
+              score: Number(pData[p][5] || pData[p][7] || 0),
+              totalQuestions: Number(pData[p][6] || pData[p][8] || 0),
+              percentage: Number(pData[p][7] || pData[p][9] || 0),
+              status: String(pData[p][12] || pData[p][10] || ''),
+              submittedAt: String(pData[p][4] || pData[p][11] || '')
+            }
+          }
+        };
+      }
+    }
+  }
+  
+  // Read finalized questions from CNE Post Test Questions
+  var qSheet = getQuestionsSheet();
+  var qData = qSheet.getDataRange().getValues();
+  var sanitizedQuestions = [];
+  
+  for (var r = 1; r < qData.length; r++) {
+    if (String(qData[r][0] || '').trim().toUpperCase() === cneId.toUpperCase() &&
+        String(qData[r][9] || 'NO').toUpperCase() === 'YES') {
+      sanitizedQuestions.push({
+        id: String(qData[r][1] || ''),
+        question: String(qData[r][2] || ''),
+        options: {
+          A: String(qData[r][3] || ''),
+          B: String(qData[r][4] || ''),
+          C: String(qData[r][5] || ''),
+          D: String(qData[r][6] || '')
+        }
+        // NOTE: Correct Answer and Explanation are STRICTLY NOT sent before submission!
+      });
+    }
+  }
+  
+  if (sanitizedQuestions.length < 5) {
+    return {
+      success: false,
+      errorCode: 'POST_TEST_NOT_READY',
+      message: 'Post-test is not ready yet. Questions have not been finalized by the coordinator.'
+    };
+  }
+  
+  return {
+    success: true,
+    data: {
+      alreadySubmitted: false,
+      cneId: cneId,
+      topic: record.topic,
+      area: record.area,
+      questions: sanitizedQuestions
+    }
+  };
+}
+
+/**
+ * Submit Participant Post-Test
+ * Enforces:
+ * 1. Authoritative employee validation against Rosters Master Data
+ * 2. Server-side scoring (never trust browser score)
+ * 3. Instant locking of questions on first submission
+ * 4. Rejection of duplicate submissions per employee per CNE
+ * 5. Returns correct answers and explanations ONLY after successful submission
+ */
+function handleSubmitPostTest(params, session) {
+  var cneId = sanitizeCellInput(params.cneId);
+  var token = sanitizeCellInput(params.qrToken);
+  
+  if (!cneId && token) {
+    var qrSheet = getQRTokensSheet();
+    var qrData = qrSheet.getDataRange().getValues();
+    for (var q = 1; q < qrData.length; q++) {
+      if (String(qrData[q][0] || '').trim() === token) {
+        cneId = String(qrData[q][1] || '').trim();
+        break;
+      }
+    }
+    if (!cneId && token.indexOf('QRT-') === 0) {
+      var parts = token.split('-');
+      if (parts.length >= 2) cneId = parts[1];
+    }
+  }
+  
+  var empId = normalizeEmpId(params.employeeId || (session ? session.employeeId : ''));
+  if (!cneId || !empId) {
+    return { success: false, message: 'CNE ID and Employee ID are required.' };
+  }
+  
+  var answers = params.answers;
+  if (!answers || typeof answers !== 'object') {
+    return { success: false, message: 'Answers object is required.' };
+  }
+  
+  var record = getCNEClassRecord(cneId);
+  if (!record) return { success: false, message: 'CNE record not found.' };
+  
+  // Authoritative Employee Validation from Rosters Master Data
+  var officer = findOfficerById(empId);
+  if (!officer || !officer.name) {
+    return {
+      success: false,
+      errorCode: 'INVALID_EMPLOYEE_ID',
+      message: 'Employee ID ' + empId + ' not found in institutional employee roster.'
+    };
+  }
+  
+  var partSheet = getResponsesSheet();
+  
+  // Server-Side Duplicate Check: One submission per employee per CNE
+  var pData = partSheet.getDataRange().getValues();
+  for (var p = 1; p < pData.length; p++) {
+    var pCne = String(pData[p][1] || '').trim().toUpperCase();
+    var pEmp = normalizeEmpId(pData[p][2]);
+    var pSrc = String(pData[p][9] || pData[p][6] || '').trim().toUpperCase();
+    
+    if (pCne === cneId.toUpperCase() && pEmp === empId && pSrc === 'POST_TEST') {
+      return {
+        success: false,
+        errorCode: 'ALREADY_SUBMITTED',
+        message: 'You have already submitted the post-test for this CNE.'
+      };
+    }
+  }
+  
+  // Fetch True Answer Keys from CNE Post Test Questions
+  var qSheet = getQuestionsSheet();
+  var qData = qSheet.getDataRange().getValues();
+  var answerKeys = [];
+  var questionRowsToLock = [];
+  
+  for (var r = 1; r < qData.length; r++) {
+    if (String(qData[r][0] || '').trim().toUpperCase() === cneId.toUpperCase() &&
+        String(qData[r][9] || 'NO').toUpperCase() === 'YES') {
+      answerKeys.push({
+        id: String(qData[r][1] || ''),
+        question: String(qData[r][2] || ''),
+        correctOption: String(qData[r][7] || 'A').toUpperCase(),
+        explanation: String(qData[r][8] || '')
+      });
+      questionRowsToLock.push(r + 1);
+    }
+  }
+  
+  if (answerKeys.length < 5) {
+    return { success: false, message: 'Cannot submit: CNE post-test does not have at least 5 finalized questions.' };
+  }
+  
+  // Instantly Lock Questions on First Submission
+  for (var k = 0; k < questionRowsToLock.length; k++) {
+    qSheet.getRange(questionRowsToLock[k], 11).setValue('YES');
+  }
+  
+  // Server-Side Score Calculation
+  var score = 0;
+  var total = answerKeys.length;
+  var detailedReview = [];
+  
+  for (var i = 0; i < answerKeys.length; i++) {
+    var item = answerKeys[i];
+    var submittedAns = String(answers[item.id] || '').trim().toUpperCase();
+    var isCorrect = (submittedAns === item.correctOption);
+    if (isCorrect) score++;
+    
+    detailedReview.push({
+      questionId: item.id,
+      question: item.question,
+      userAnswer: submittedAns,
+      correctAnswer: item.correctOption,
+      isCorrect: isCorrect,
+      explanation: item.explanation
+    });
+  }
+  
+  var percentage = Math.round((score / total) * 100);
+  var passed = percentage >= 50;
+  var status = passed ? 'PASSED' : 'NEEDS_IMPROVEMENT';
+  var now = new Date().toISOString();
+  var participantId = 'RESP-' + Date.now();
+  
+  // Store participant response in CNE Post Test Responses
+  partSheet.appendRow([
+    participantId,
+    cneId,
+    empId,
+    officer.name,
+    now,
+    score,
+    total,
+    percentage,
+    JSON.stringify(answers),
+    'POST_TEST',
+    officer.designation || 'Nursing Officer',
+    officer.department || record.area,
+    status,
+    ''
+  ]);
+  
+  logAuditAction('SUBMIT_POST_TEST', empId, 'CNE: ' + cneId + ', Score: ' + score + '/' + total + ' (' + percentage + '%)', 'SUCCESS');
+  
+  return {
+    success: true,
+    message: 'Post-test submitted successfully!',
+    data: {
+      participantId: participantId,
+      cneId: cneId,
+      score: score,
+      totalQuestions: total,
+      percentage: percentage,
+      passed: passed,
+      status: status,
+      submittedAt: now,
+      review: detailedReview
+    }
+  };
+}
+
+/**
+ * Add Manual Participant (Admin or Area Incharge)
+ * Manual attendees receive Participant Source = MANUAL.
+ * They have no score and are NOT treated as failed or assigned 0%.
+ */
+function handleAddManualParticipant(params, session) {
+  var cneId = sanitizeCellInput(params.cneId);
+  if (!cneId) return { success: false, message: 'CNE ID is required.' };
+  
+  var record = getCNEClassRecord(cneId);
+  if (!record) return { success: false, message: 'CNE record not found.' };
+  
+  var authErr = checkCNEAuthorized(session, record.area, record.cneType);
+  if (authErr) return authErr;
+  
+  var empId = normalizeEmpId(params.employeeId);
+  var manualName = sanitizeCellInput(params.name || '');
+  var designation = sanitizeCellInput(params.designation || 'Staff Nurse');
+  var department = sanitizeCellInput(params.department || record.area);
+  var remarks = sanitizeCellInput(params.remarks || 'Manual Attendance Recorded');
+  
+  if (!empId && !manualName) {
+    return { success: false, message: 'Employee ID or Participant Name is required.' };
+  }
+  
+  if (empId) {
+    var officer = findOfficerById(empId);
+    if (officer) {
+      manualName = officer.name;
+      designation = officer.designation || designation;
+      department = officer.department || department;
+    }
+  }
+  
+  var partSheet = getResponsesSheet();
+  
+  var pData = partSheet.getDataRange().getValues();
+  for (var p = 1; p < pData.length; p++) {
+    if (String(pData[p][1] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+      if (empId && normalizeEmpId(pData[p][2]) === empId) {
+        return { success: false, errorCode: 'DUPLICATE_PARTICIPANT', message: 'Employee ID ' + empId + ' is already recorded as a participant for this CNE.' };
+      }
+      if (!empId && String(pData[p][3] || '').trim().toLowerCase() === manualName.toLowerCase()) {
+        return { success: false, errorCode: 'DUPLICATE_PARTICIPANT', message: 'Participant ' + manualName + ' is already recorded for this CNE.' };
+      }
+    }
+  }
+  
+  var participantId = 'MAN-' + Date.now();
+  var now = new Date().toISOString();
+  
+  partSheet.appendRow([
+    participantId,
+    cneId,
+    empId,
+    manualName,
+    now,
+    '', // No score for manual attendees (must NOT receive 0%)
+    '',
+    '',
+    '',
+    'MANUAL',
+    designation,
+    department,
+    'ATTENDED',
+    remarks
+  ]);
+  
+  logAuditAction('ADD_MANUAL_PARTICIPANT', session.employeeId, 'Added participant ' + (empId || manualName) + ' to CNE: ' + cneId, 'SUCCESS');
+  return { success: true, message: 'Participant added successfully.' };
+}
+
+/**
+ * Get All Participants for CNE & Calculate Pure Average Score
+ * Note: Average Score is computed EXCLUSIVELY from POST_TEST participants!
+ * If no post-test submissions exist, averageScore is null (displays 'Not Available').
+ */
+function handleGetCNEParticipants(params, session) {
+  var cneId = sanitizeCellInput(params.cneId);
+  if (!cneId) return { success: false, message: 'CNE ID is required.' };
+  
+  var record = getCNEClassRecord(cneId);
+  if (!record) return { success: false, message: 'CNE record not found.' };
+  
+  var partSheet = getResponsesSheet();
+  var data = partSheet.getDataRange().getValues();
+  var participants = [];
+  var postTestCount = 0;
+  var manualCount = 0;
+  var totalScorePercent = 0;
+  
+  for (var r = 1; r < data.length; r++) {
+    if (String(data[r][1] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+      // Determine participant type from column 9 (or column 6 in legacy)
+      var pType = String(data[r][9] || data[r][6] || 'POST_TEST').toUpperCase();
+      // Percentage is in column 7 in Responses sheet, or column 9 in legacy Participants
+      var pctRaw = data[r][7] !== '' && !isNaN(Number(data[r][7])) ? data[r][7] : data[r][9];
+      var pct = (pctRaw !== '' && pctRaw !== null && pctRaw !== undefined && !isNaN(Number(pctRaw))) ? Number(pctRaw) : null;
+      
+      var scoreRaw = data[r][5] !== '' && !isNaN(Number(data[r][5])) ? data[r][5] : data[r][7];
+      var scoreVal = (scoreRaw !== '' && scoreRaw !== null && scoreRaw !== undefined && !isNaN(Number(scoreRaw))) ? Number(scoreRaw) : null;
+      
+      var totalRaw = data[r][6] !== '' && !isNaN(Number(data[r][6])) ? data[r][6] : data[r][8];
+      var totalVal = (totalRaw !== '' && totalRaw !== null && totalRaw !== undefined && !isNaN(Number(totalRaw))) ? Number(totalRaw) : null;
+      
+      if (pType === 'POST_TEST') {
+        postTestCount++;
+        if (pct !== null) totalScorePercent += pct;
+      } else {
+        manualCount++;
+      }
+      
+      participants.push({
+        id: String(data[r][0] || ''),
+        cneId: cneId,
+        employeeId: String(data[r][2] || ''),
+        name: String(data[r][3] || ''),
+        designation: String(data[r][10] || data[r][4] || 'Nursing Officer'),
+        department: String(data[r][11] || data[r][5] || record.area),
+        participantType: pType,
+        score: scoreVal,
+        totalQuestions: totalVal,
+        percentage: pct,
+        status: String(data[r][12] || data[r][10] || 'ATTENDED'),
+        submittedAt: String(data[r][4] || data[r][11] || ''),
+        remarks: String(data[r][13] || data[r][12] || '')
+      });
+    }
+  }
+  
+  // If no post-test submissions: return null (displays 'Not Available', NOT 0%!)
+  var avgScore = postTestCount > 0 ? Math.round((totalScorePercent / postTestCount) * 10) / 10 : null;
+  
+  return {
+    success: true,
+    data: {
+      cneId: cneId,
+      topic: record.topic,
+      area: record.area,
+      status: record.status,
+      totalParticipants: participants.length,
+      postTestCount: postTestCount,
+      manualCount: manualCount,
+      averageScore: avgScore,
+      participants: participants
+    }
+  };
+}
+
+/**
+ * Finalize CNE Session and Synchronize to Institutional Records
+ */
+function handleFinalizeCNE(params, session) {
+  var cneId = sanitizeCellInput(params.cneId);
+  if (!cneId) return { success: false, message: 'CNE ID is required.' };
+  
+  var record = getCNEClassRecord(cneId);
+  if (!record) return { success: false, message: 'CNE record not found.' };
+  
+  var authErr = checkCNEAuthorized(session, record.area, record.cneType);
+  if (authErr) return authErr;
+  
+  if (record.status === 'COMPLETED') {
+    return { success: false, message: 'This CNE has already been marked as Completed.' };
+  }
+  
+  var ss = getSpreadsheet('CNE');
+  var upcomingSheet = ss.getSheetByName('Upcoming Classes');
+  if (upcomingSheet) {
+    upcomingSheet.getRange(record.rowIndex, 11).setValue('COMPLETED');
+    if (params.remarks) {
+      upcomingSheet.getRange(record.rowIndex, 15).setValue(sanitizeCellInput(params.remarks));
+    }
+  }
+  
+  // Synchronize participants into permanent Data Master
+  var partSheet = getResponsesSheet();
+  var internalEmpIds = [];
+  var externalParticipants = [];
+  var postTestScores = [];
+  
+  if (partSheet && partSheet.getLastRow() > 1) {
+    var pData = partSheet.getDataRange().getValues();
+    for (var p = 1; p < pData.length; p++) {
+      if (String(pData[p][1] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+        var emp = normalizeEmpId(pData[p][2]);
+        var pName = String(pData[p][3] || '');
+        var pSrc = String(pData[p][9] || pData[p][6] || '').trim().toUpperCase();
+        var pctRaw = pData[p][7] !== '' && !isNaN(Number(pData[p][7])) ? pData[p][7] : pData[p][9];
+        
+        if (emp) {
+          internalEmpIds.push(emp);
+        } else if (pName) {
+          externalParticipants.push(pName);
+        }
+        if (pSrc === 'POST_TEST' && pctRaw !== '' && !isNaN(Number(pctRaw))) {
+          postTestScores.push(Number(pctRaw));
+        }
+      }
+    }
+  }
+  
+  var avg = postTestScores.length > 0 ? Math.round(postTestScores.reduce(function(a, b) { return a + b; }, 0) / postTestScores.length) : null;
+  var remarksSummary = 'Finalized CNE Session. Total Attendees: ' + (internalEmpIds.length + externalParticipants.length) + (avg !== null ? ' (Avg Post-Test Score: ' + avg + '%)' : '') + (params.remarks ? '. ' + sanitizeCellInput(params.remarks) : '');
+  
+  var dataSheet = getOrCreateSheet('Data', [
+    'Data ID', 'Ward Name / Area', 'From Date', 'To Date', 'Duration',
+    'Topic', 'Resource Person Emp Id', 'Mode of Teaching', 'Staff Emp ID', 'Staff Count', 'Remarks', 'CreatedAt', 'CreatedBy',
+    'External Resource Persons', 'External Staff Participants'
+  ]);
+  
+  var officialDataId = 'CNE-' + new Date().getFullYear() + '-' + Utilities.getUuid().slice(0, 8);
+  dataSheet.appendRow([
+    officialDataId,
+    record.area,
+    record.date,
+    record.toDate || record.date,
+    record.duration,
+    record.topic,
+    record.instructor,
+    record.mode || 'Lecture / Discussion',
+    internalEmpIds.join(', '),
+    internalEmpIds.length + externalParticipants.length,
+    remarksSummary,
+    new Date().toISOString(),
+    session.employeeId,
+    record.externalResourcePersons || '',
+    externalParticipants.join(', ')
+  ]);
+  
+  logAuditAction('FINALIZE_CNE', session.employeeId, 'Finalized CNE: ' + cneId + ' -> Synced to Data Master as: ' + officialDataId, 'SUCCESS');
+  
+  return {
+    success: true,
+    message: 'CNE finalized successfully and synchronized with institutional records.',
+    dataId: officialDataId
+  };
+}
+
+/**
+ * Cancel CNE Session
+ */
+function handleCancelCNE(params, session) {
+  var cneId = sanitizeCellInput(params.cneId);
+  if (!cneId) return { success: false, message: 'CNE ID is required.' };
+  
+  var record = getCNEClassRecord(cneId);
+  if (!record) return { success: false, message: 'CNE record not found.' };
+  
+  var authErr = checkCNEAuthorized(session, record.area, record.cneType);
+  if (authErr) return authErr;
+  
+  var reason = sanitizeCellInput(params.remarks || 'Cancelled by coordinator');
+  var ss = getSpreadsheet('CNE');
+  var upcomingSheet = ss.getSheetByName('Upcoming Classes');
+  if (upcomingSheet) {
+    upcomingSheet.getRange(record.rowIndex, 11).setValue('CANCELLED');
+    upcomingSheet.getRange(record.rowIndex, 15).setValue(reason);
+  }
+  
+  logAuditAction('CANCEL_CNE', session.employeeId, 'Cancelled CNE: ' + cneId + '. Reason: ' + reason, 'SUCCESS');
+  return { success: true, message: 'CNE cancelled successfully.' };
 }
 
 /**

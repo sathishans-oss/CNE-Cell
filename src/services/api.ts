@@ -14,7 +14,12 @@ import {
   SessionUser,
   UpcomingClass,
   UserRole,
-  CoordinatorDeskInfo
+  CoordinatorDeskInfo,
+  CNEQuestion,
+  CNEReferenceMaterial,
+  CNEParticipant,
+  CNEParticipantsSummary,
+  PostTestSubmissionResult
 } from '../types';
 const STORAGE_KEYS = {
   SESSION: 'cne_session_user'
@@ -548,6 +553,127 @@ export class ApiService {
    */
   static async getDashboardStats(): Promise<ApiResponse<CNEReportStats>> {
     return this.executeAction<CNEReportStats>('getDashboardStats');
+  }
+
+  /**
+   * Part 2: AI Question Generator (Calls Express backend with Gemini API)
+   */
+  static async generateAiQuestions(params: {
+    topic: string;
+    referenceMaterial?: string;
+    syllabus?: string;
+    count?: number;
+  }): Promise<ApiResponse<CNEQuestion[]>> {
+    try {
+      const response = await fetch('/api/ai/generate-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+      });
+      const result = await response.json();
+      return result;
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'Failed to generate AI questions.'
+      };
+    }
+  }
+
+  /**
+   * Topic Reference Material APIs
+   */
+  static async saveReferenceMaterial(params: {
+    cneId: string;
+    referenceText?: string;
+    linkUrl?: string;
+    syllabus?: string;
+  }): Promise<ApiResponse> {
+    return this.executeAction('saveReferenceMaterial', params);
+  }
+
+  static async getReferenceMaterial(cneId: string): Promise<ApiResponse<CNEReferenceMaterial>> {
+    return this.executeAction<CNEReferenceMaterial>('getReferenceMaterial', { cneId });
+  }
+
+  /**
+   * Question Set Management & Locking APIs
+   */
+  static async saveCNEQuestions(params: {
+    cneId: string;
+    questions: CNEQuestion[];
+  }): Promise<ApiResponse<{ totalQuestions: number; finalizedCount: number; readyForPostTest: boolean }>> {
+    return this.executeAction('saveCNEQuestions', params);
+  }
+
+  static async getCNEQuestions(cneId: string): Promise<ApiResponse<CNEQuestion[]>> {
+    return this.executeAction<CNEQuestion[]>('getCNEQuestions', { cneId });
+  }
+
+  /**
+   * QR Code Generation & Resolution APIs
+   */
+  static async getQRToken(cneId: string): Promise<ApiResponse<{ qrToken: string; cneId: string; topic: string; finalizedCount: number }>> {
+    return this.executeAction<{ qrToken: string; cneId: string; topic: string; finalizedCount: number }>('getQRToken', { cneId });
+  }
+
+  static async resolveQRToken(token: string): Promise<ApiResponse<any>> {
+    return this.executeAction('resolveQRToken', { qrToken: token });
+  }
+
+  /**
+   * Participant Post-Test APIs
+   */
+  static async getPostTestQuestions(params: {
+    cneId?: string;
+    qrToken?: string;
+    employeeId?: string;
+  }): Promise<ApiResponse<{
+    alreadySubmitted: boolean;
+    submission?: any;
+    cneId: string;
+    topic: string;
+    area: string;
+    questions?: CNEQuestion[];
+  }>> {
+    return this.executeAction('getPostTestQuestions', params);
+  }
+
+  static async submitPostTest(params: {
+    cneId: string;
+    employeeId: string;
+    answers: Record<string, string>;
+  }): Promise<ApiResponse<PostTestSubmissionResult>> {
+    return this.executeAction<PostTestSubmissionResult>('submitPostTest', params);
+  }
+
+  /**
+   * Participant Management APIs
+   */
+  static async addManualParticipant(params: {
+    cneId: string;
+    employeeId?: string;
+    name?: string;
+    designation?: string;
+    department?: string;
+    remarks?: string;
+  }): Promise<ApiResponse> {
+    return this.executeAction('addManualParticipant', params);
+  }
+
+  static async getCNEParticipants(cneId: string): Promise<ApiResponse<CNEParticipantsSummary>> {
+    return this.executeAction<CNEParticipantsSummary>('getCNEParticipants', { cneId });
+  }
+
+  /**
+   * CNE Lifecycle Completion & Cancellation APIs
+   */
+  static async finalizeCNE(cneId: string, remarks?: string): Promise<ApiResponse<{ dataId: string }>> {
+    return this.executeAction<{ dataId: string }>('finalizeCNE', { cneId, remarks });
+  }
+
+  static async cancelCNE(cneId: string, remarks?: string): Promise<ApiResponse> {
+    return this.executeAction('cancelCNE', { cneId, remarks });
   }
 
 }

@@ -1,4 +1,4 @@
-import { Employee } from './types';
+import { Employee, SessionUser } from './types';
 
 const MONTH_NAMES = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -206,4 +206,26 @@ export function formatStaffParticipantsDisplay(params: {
     allNames,
     summaryText: allNames.length > 0 ? allNames.join(', ') : 'None'
   };
+}
+
+/**
+ * Checks if a user is authorized to manage a CNE session (Reference material, Questions, QR, Attendance, Finalization).
+ * Admin = full control over Central and Departmental CNEs.
+ * Area Incharge = Departmental CNE only within their assigned area.
+ * Normal users = no administrative control.
+ */
+export function isCneAuthorized(
+  user?: SessionUser | null,
+  cneArea?: string,
+  cneType?: string
+): boolean {
+  if (!user) return false;
+  if (user.role === 'ADMIN') return true;
+  if (user.role === 'AREA_INCHARGE') {
+    const type = (cneType || '').toUpperCase();
+    if (type === 'CENTRAL') return false;
+    if (!user.assignedArea || !cneArea) return true;
+    return user.assignedArea.trim().toLowerCase() === cneArea.trim().toLowerCase();
+  }
+  return false;
 }

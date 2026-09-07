@@ -10,12 +10,24 @@ import {
   X,
   Search,
   Loader2,
-  BookOpen
+  BookOpen,
+  QrCode,
+  Award,
+  Lock,
+  CheckCircle,
+  AlertTriangle,
+  FileText
 } from 'lucide-react';
 import { SessionUser, UpcomingClass } from '../types';
 import { ApiService } from '../services/api';
 import { useToast } from './Toast';
-import { formatCneDateRangeDisplay, formatResourcePersonsDisplay } from '../utils';
+import { formatCneDateRangeDisplay, formatResourcePersonsDisplay, isCneAuthorized } from '../utils';
+import { CNEReferenceModal } from './cne/CNEReferenceModal';
+import { CNEQuestionsModal } from './cne/CNEQuestionsModal';
+import { CNEQRModal } from './cne/CNEQRModal';
+import { CNEParticipantsModal } from './cne/CNEParticipantsModal';
+import { CNEPostTestModal } from './cne/CNEPostTestModal';
+import { CNEFinalizeModal } from './cne/CNEFinalizeModal';
 
 interface UpcomingClassesProps {
   user: SessionUser | null;
@@ -23,14 +35,16 @@ interface UpcomingClassesProps {
 }
 
 export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
-  user
+  user,
+  onRequireLogin
 }) => {
   const [classes, setClasses] = useState<UpcomingClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Schedule Class Modal State (Admin only)
+  // Schedule Class Modal State
   const [isAddClassOpen, setIsAddClassOpen] = useState(false);
+  const [newCneType, setNewCneType] = useState<'CENTRAL' | 'DEPARTMENTAL'>('CENTRAL');
   const [newTopic, setNewTopic] = useState('');
   const [newArea, setNewArea] = useState('');
   const [newDate, setNewDate] = useState('');
@@ -48,9 +62,28 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   const [officersList, setOfficersList] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Part 2 Active Modals
+  const [activeReferenceCne, setActiveReferenceCne] = useState<UpcomingClass | null>(null);
+  const [activeQuestionsCne, setActiveQuestionsCne] = useState<UpcomingClass | null>(null);
+  const [activeQRCne, setActiveQRCne] = useState<UpcomingClass | null>(null);
+  const [activeParticipantsCne, setActiveParticipantsCne] = useState<UpcomingClass | null>(null);
+  const [activeFinalizeCne, setActiveFinalizeCne] = useState<UpcomingClass | null>(null);
+  const [activePostTest, setActivePostTest] = useState<{ cneId?: string; qrToken?: string } | null>(null);
+
   const { success, error } = useToast();
   const isAdmin = user?.role === 'ADMIN';
+  const isAreaIncharge = user?.role === 'AREA_INCHARGE';
+  const canScheduleCne = isAdmin || isAreaIncharge;
   const todayStr = new Date().toISOString().split('T')[0];
+
+  useEffect(() => {
+    // Check for QR postTest URL query parameter
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('postTest');
+    if (token) {
+      setActivePostTest({ qrToken: token });
+    }
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -141,6 +174,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
       const res = await ApiService.addUpcomingClass({
         topic: newTopic.trim(),
         area: newArea,
+        cneType: newCneType,
         date: newDate,
         toDate: newToDate || newDate,
         time: newTime,
@@ -206,9 +240,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
     );
   });
 
-  const availableClasses = filteredClasses.filter(
-    (c) => isAdmin || c.status === 'Approved' || c.status === 'OPEN'
-  );
+  const availableClasses = filteredClasses;
 
   return (
     <div className="space-y-6 pb-12">
@@ -221,12 +253,20 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
           </p>
         </div>
 
-        {isAdmin && (
+        {canScheduleCne && (
           <div className="flex items-center gap-3">
             <button
               id="btn-admin-add-upcoming-class"
-              onClick={() => setIsAddClassOpen(true)}
-              className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer"
+              onClick={() => {
+                if (isAreaIncharge && user?.assignedArea) {
+                  setNewCneType('DEPARTMENTAL');
+                  setNewArea(user.assignedArea);
+                } else {
+                  setNewCneType('CENTRAL');
+                }
+                setIsAddClassOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer shadow-xs"
             >
               <PlusCircle className="w-4 h-4 text-emerald-400" />
               <span>Schedule New CNE</span>
@@ -265,25 +305,50 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {availableClasses.map((cls) => {
+              const isAuthorized = isCneAuthorized(user, cls.area, cls.cneType);
+              const isCompleted = cls.status?.toUpperCase() === 'COMPLETED';
+              const isCancelled = cls.status?.toUpperCase() === 'CANCELLED';
+
               return (
                 <div
                   key={cls.classId}
                   className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 flex flex-col justify-between hover:shadow-md transition-all"
                 >
                   <div>
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                        {cls.area}
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        {cls.status && cls.status.toUpperCase() !== 'APPROVED' && cls.status.toUpperCase() !== 'OPEN' && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
-                            {cls.status}
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                          {cls.area}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          cls.cneType === 'CENTRAL'
+                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                            : 'bg-teal-50 text-teal-700 border border-teal-200'
+                        }`}>
+                          {cls.cneType || 'CENTRAL'} CNE
+                        </span>
+                        {cls.isLocked && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+                            <Lock className="w-2.5 h-2.5" />
+                            Questions Locked
                           </span>
                         )}
-                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                          {cls.duration || 'Scheduled'}
-                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        {isCompleted ? (
+                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            ✓ COMPLETED
+                          </span>
+                        ) : isCancelled ? (
+                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
+                            CANCELLED
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            {cls.duration || 'Scheduled'}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -328,17 +393,96 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                     </div>
                   </div>
 
-                  <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                    <div className="flex items-center gap-1">
-                      <Users className="w-3.5 h-3.5 text-slate-400" />
-                      <span>Mode: {cls.modeOfTeaching || 'Lecture Cum Discussion'}</span>
-                    </div>
-                    {cls.area && (
-                      <div className="flex items-center gap-1 text-slate-400 text-[11px]">
-                        <MapPin className="w-3 h-3" />
-                        <span>{cls.area}</span>
+                  {/* Actions Area */}
+                  <div className="mt-4 pt-3 border-t border-slate-100 space-y-2.5">
+                    <div className="flex items-center justify-between text-xs text-slate-500">
+                      <div className="flex items-center gap-1">
+                        <Users className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Mode: {cls.modeOfTeaching || 'Lecture Cum Discussion'}</span>
                       </div>
-                    )}
+                      {cls.area && (
+                        <div className="flex items-center gap-1 text-slate-400 text-[11px]">
+                          <MapPin className="w-3 h-3" />
+                          <span>{cls.area}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action Buttons Toolbar */}
+                    <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5">
+                      {/* 1. Take Post-Test (Always accessible unless cancelled) */}
+                      {!isCancelled && (
+                        <button
+                          type="button"
+                          onClick={() => setActivePostTest({ cneId: cls.classId })}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer transition-colors"
+                        >
+                          <Award className="w-3.5 h-3.5" />
+                          <span>{isCompleted ? 'View Evaluation / Test' : 'Take Post-Test'}</span>
+                        </button>
+                      )}
+
+                      {/* 2. QR Code (Generate & View) */}
+                      <button
+                        type="button"
+                        onClick={() => setActiveQRCne(cls)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
+                        title="Display or print Post-Test QR code"
+                      >
+                        <QrCode className="w-3.5 h-3.5" />
+                        <span>QR Code</span>
+                      </button>
+
+                      {/* 3. Reference Material */}
+                      <button
+                        type="button"
+                        onClick={() => setActiveReferenceCne(cls)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
+                        title="View or edit reference notes and syllabus"
+                      >
+                        <BookOpen className="w-3.5 h-3.5 text-teal-600" />
+                        <span>Materials</span>
+                      </button>
+
+                      {/* 4. Question Bank (AI & Manual) - Authorized */}
+                      {isAuthorized && (
+                        <button
+                          type="button"
+                          onClick={() => setActiveQuestionsCne(cls)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
+                          title="Generate AI questions or edit question bank"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                          <span>Questions</span>
+                        </button>
+                      )}
+
+                      {/* 5. Participants Roster - Authorized */}
+                      {isAuthorized && (
+                        <button
+                          type="button"
+                          onClick={() => setActiveParticipantsCne(cls)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
+                          title="View attendee list, post-test scores, and record manual attendance"
+                        >
+                          <Users className="w-3.5 h-3.5 text-teal-600" />
+                          <span>Roster</span>
+                        </button>
+                      )}
+
+                      {/* 6. Finalize CNE - Authorized */}
+                      {isAuthorized && !isCompleted && !isCancelled && (
+                        <button
+                          type="button"
+                          onClick={() => setActiveFinalizeCne(cls)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold cursor-pointer transition-colors ml-auto"
+                          title="Complete and archive CNE into institutional master"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Finalize</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -374,6 +518,41 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
             </div>
 
             <form onSubmit={handleCreateUpcomingClass} className="space-y-3.5 text-xs">
+              {/* CNE Type: Central vs Departmental */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  CNE Category / Type *
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={!isAdmin}
+                    onClick={() => setNewCneType('CENTRAL')}
+                    className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                      newCneType === 'CENTRAL'
+                        ? 'bg-blue-50 border-blue-400 text-blue-900 font-bold'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-50'
+                    }`}
+                  >
+                    <div className="text-xs">Central CNE</div>
+                    <div className="text-[10px] text-slate-500 font-normal">Hospital-wide clinical seminar</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setNewCneType('DEPARTMENTAL')}
+                    className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                      newCneType === 'DEPARTMENTAL'
+                        ? 'bg-teal-50 border-teal-400 text-teal-900 font-bold'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="text-xs">Departmental CNE</div>
+                    <div className="text-[10px] text-slate-500 font-normal">Ward / Specialty-specific training</div>
+                  </button>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
                   Topic / Skills Training Subject *
@@ -646,6 +825,66 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* Part 2 Modals */}
+      {activeReferenceCne && (
+        <CNEReferenceModal
+          cne={activeReferenceCne}
+          isAuthorized={isCneAuthorized(user, activeReferenceCne.area, activeReferenceCne.cneType)}
+          onClose={() => setActiveReferenceCne(null)}
+          onUpdated={loadData}
+        />
+      )}
+
+      {activeQuestionsCne && (
+        <CNEQuestionsModal
+          cne={activeQuestionsCne}
+          isAuthorized={isCneAuthorized(user, activeQuestionsCne.area, activeQuestionsCne.cneType)}
+          onClose={() => setActiveQuestionsCne(null)}
+          onUpdated={loadData}
+        />
+      )}
+
+      {activeQRCne && (
+        <CNEQRModal
+          cne={activeQRCne}
+          onClose={() => setActiveQRCne(null)}
+          onOpenPostTest={(tok) => {
+            setActiveQRCne(null);
+            setActivePostTest({ qrToken: tok });
+          }}
+        />
+      )}
+
+      {activeParticipantsCne && (
+        <CNEParticipantsModal
+          cne={activeParticipantsCne}
+          isAuthorized={isCneAuthorized(user, activeParticipantsCne.area, activeParticipantsCne.cneType)}
+          officersList={officersList}
+          onClose={() => setActiveParticipantsCne(null)}
+          onUpdated={loadData}
+        />
+      )}
+
+      {activePostTest && (
+        <CNEPostTestModal
+          cneId={activePostTest.cneId}
+          qrToken={activePostTest.qrToken}
+          user={user}
+          onClose={() => setActivePostTest(null)}
+          onSubmitted={loadData}
+          onRequireLogin={() => onRequireLogin && onRequireLogin()}
+        />
+      )}
+
+      {activeFinalizeCne && (
+        <CNEFinalizeModal
+          cne={activeFinalizeCne}
+          isAuthorized={isCneAuthorized(user, activeFinalizeCne.area, activeFinalizeCne.cneType)}
+          onClose={() => setActiveFinalizeCne(null)}
+          onCompleted={loadData}
+        />
       )}
     </div>
   );

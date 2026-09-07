@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { CNERecord, SessionUser } from '../types';
-import { formatCneDateRangeDisplay } from '../utils';
+import { CNERecord, SessionUser, UpcomingClass, CNEParticipant } from '../types';
+import { formatCneDateRangeDisplay, formatCneDateDisplay } from '../utils';
 
 export function generateAnnualCNEPdf(
   user: SessionUser,
@@ -191,4 +191,219 @@ export function generateAnnualCNEPdf(
   const cleanAy = ayStr.replace(/[^a-zA-Z0-9-]/g, '_');
   const cleanName = (user.name || 'Officer').replace(/[^a-zA-Z0-9]/g, '_');
   doc.save(`CNE_Annual_Record_${user.employeeId}_AY_${cleanAy}_${cleanName}.pdf`);
+}
+
+export function generateCNESessionPdf(
+  cne: UpcomingClass,
+  participants: CNEParticipant[],
+  averageScore?: number | null
+): void {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  const postTestParticipants = participants.filter((p) => p.participantType === 'POST_TEST');
+  const manualParticipants = participants.filter((p) => p.participantType === 'MANUAL');
+
+  // Format Average Score strictly according to instructions:
+  // "If there are no post-test submissions: Display: Not Available. Do NOT display: 0% unless an actual score of 0."
+  let avgScoreDisplay = 'Not Available';
+  if (postTestParticipants.length > 0) {
+    if (averageScore !== undefined && averageScore !== null) {
+      avgScoreDisplay = `${averageScore}%`;
+    } else {
+      const validScores = postTestParticipants.filter((p) => p.percentage !== null && !isNaN(p.percentage as number));
+      if (validScores.length > 0) {
+        const sum = validScores.reduce((acc, curr) => acc + (curr.percentage as number), 0);
+        avgScoreDisplay = `${Math.round(sum / validScores.length)}%`;
+      }
+    }
+  }
+
+  // Format dates strictly in DD-MMM-YYYY
+  const dateDisplay = cne.toDate
+    ? formatCneDateRangeDisplay(cne.date, cne.toDate)
+    : formatCneDateDisplay(cne.date);
+
+  // 1. Header
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.setTextColor(15, 23, 42); // slate-900
+  doc.text('ALL INDIA INSTITUTE OF MEDICAL SCIENCES, RISHIKESH', 105, 16, { align: 'center' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105); // slate-600
+  doc.text('DEPARTMENT OF NURSING — CONTINUING NURSING EDUCATION (CNE)', 105, 22, { align: 'center' });
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(30, 41, 59);
+  doc.text('CNE SESSION & PARTICIPANT EVALUATION REPORT', 105, 29, { align: 'center' });
+
+  // Top Divider
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.5);
+  doc.line(14, 33, 196, 33);
+
+  // 2. Session Metadata Card
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(14, 36, 182, 42, 2, 2, 'F');
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(14, 36, 182, 42, 2, 2, 'D');
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(100, 116, 139);
+  doc.text('CNE SESSION SPECIFICATIONS', 18, 42);
+
+  // Left Column
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(51, 65, 85);
+  doc.text('CNE ID:', 18, 48);
+  doc.text('Type of CNE:', 18, 54);
+  doc.text('Topic:', 18, 60);
+  doc.text('Area / Ward:', 18, 66);
+  doc.text('Date & Time:', 18, 72);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(15, 23, 42);
+  doc.text(cne.classId || '—', 48, 48);
+  doc.text((cne.cneType || 'DEPARTMENTAL') === 'CENTRAL' ? 'Central CNE (Hospital-Wide)' : 'Departmental CNE', 48, 54);
+  
+  // Topic with truncation safeguard
+  const cleanTopic = (cne.topic || 'Clinical Nursing Topic').slice(0, 48);
+  doc.text(cleanTopic, 48, 60);
+  doc.text(cne.area || 'General Clinical Area', 48, 66);
+  doc.text(`${dateDisplay} • ${cne.time || '14:00'} (${cne.duration || 60} mins)`, 48, 72);
+
+  // Right Column
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(51, 65, 85);
+  doc.text('Resource Person:', 116, 48);
+  doc.text('Mode of Teaching:', 116, 54);
+  doc.text('Session Status:', 116, 60);
+  doc.text('Total Attendees:', 116, 66);
+  doc.text('Avg Post-Test Score:', 116, 72);
+
+  const resourcePersonDisplay = cne.resourcePersonName || cne.resourcePersonEmpId || 'Clinical Instructor';
+  const modeDisplay = cne.modeOfTeaching || 'Lecture / Discussion';
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(15, 23, 42);
+  doc.text(resourcePersonDisplay, 152, 48);
+  doc.text(modeDisplay, 152, 54);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(cne.status === 'COMPLETED' ? 16 : 30, cne.status === 'COMPLETED' ? 185 : 41, cne.status === 'COMPLETED' ? 129 : 59);
+  doc.text(cne.status || 'SCHEDULED', 152, 60);
+  
+  doc.setTextColor(15, 23, 42);
+  doc.text(`${participants.length} (${postTestParticipants.length} Test, ${manualParticipants.length} Manual)`, 152, 66);
+  
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(postTestParticipants.length > 0 ? 15 : 100, postTestParticipants.length > 0 ? 23 : 116, postTestParticipants.length > 0 ? 42 : 139);
+  doc.text(avgScoreDisplay, 152, 72);
+
+  // 3. Participants Table
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(30, 41, 59);
+  doc.text('ATTENDANCE & POST-TEST EVALUATION ROSTER', 14, 84);
+
+  const tableRows = participants.map((p, idx) => {
+    const isManual = p.participantType === 'MANUAL';
+    // Manual participants MUST NOT receive a fake post-test score!
+    const scoreStr = isManual
+      ? '— (Manual Attendance)'
+      : (p.score !== null && p.totalQuestions !== null ? `${p.score}/${p.totalQuestions} (${p.percentage}%)` : '—');
+    
+    const statusStr = isManual
+      ? 'ATTENDED'
+      : (p.percentage !== null && p.percentage >= 50 ? 'PASSED' : 'COMPLETED');
+
+    const formattedSubmittedAt = p.submittedAt ? formatCneDateDisplay(p.submittedAt) : '—';
+
+    return [
+      (idx + 1).toString(),
+      p.employeeId || '—',
+      p.name || 'Officer',
+      p.designation || 'Nursing Officer',
+      p.department || cne.area || '—',
+      isManual ? 'MANUAL' : 'POST-TEST',
+      scoreStr,
+      statusStr,
+      formattedSubmittedAt
+    ];
+  });
+
+  autoTable(doc, {
+    startY: 87,
+    head: [['Sr', 'Emp ID', 'Officer Name', 'Designation', 'Area/Dept', 'Source', 'Score / %', 'Status', 'Date']],
+    body: tableRows.length > 0 ? tableRows : [['-', '-', 'No participants recorded yet', '-', '-', '-', '-', '-', '-']],
+    theme: 'grid',
+    headStyles: {
+      fillColor: [30, 41, 59],
+      textColor: [255, 255, 255],
+      fontSize: 8,
+      fontStyle: 'bold',
+      halign: 'center'
+    },
+    columnStyles: {
+      0: { cellWidth: 8, halign: 'center' },
+      1: { cellWidth: 16, halign: 'center' },
+      2: { cellWidth: 34 },
+      3: { cellWidth: 26 },
+      4: { cellWidth: 22 },
+      5: { cellWidth: 18, halign: 'center' },
+      6: { cellWidth: 26, halign: 'center' },
+      7: { cellWidth: 16, halign: 'center' },
+      8: { cellWidth: 16, halign: 'center' }
+    },
+    styles: {
+      fontSize: 7.5,
+      cellPadding: 2,
+      textColor: [15, 23, 42],
+      lineColor: [226, 232, 240],
+      lineWidth: 0.2
+    },
+    alternateRowStyles: {
+      fillColor: [248, 250, 252]
+    },
+    margin: { left: 14, right: 14 }
+  });
+
+  // 4. Signatures Section
+  const finalY = (doc as any).lastAutoTable.finalY + 12;
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const safeFinalY = finalY > pageHeight - 35 ? 30 : finalY;
+  if (finalY > pageHeight - 35) {
+    doc.addPage();
+  }
+
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(71, 85, 105);
+
+  doc.line(16, safeFinalY, 68, safeFinalY);
+  doc.text('Signature of Resource Person', 16, safeFinalY + 5);
+  doc.text(`(${cne.resourcePersonName || cne.resourcePersonEmpId || 'Faculty / Instructor'})`, 16, safeFinalY + 9);
+
+  doc.line(76, safeFinalY, 130, safeFinalY);
+  doc.text('Signature of CNE Incharge', 76, safeFinalY + 5);
+  doc.text(`(${cne.area || 'Department'})`, 76, safeFinalY + 9);
+
+  doc.line(138, safeFinalY, 194, safeFinalY);
+  doc.text('Chairperson, CNE Committee / CNO', 138, safeFinalY + 5);
+  doc.text('AIIMS Rishikesh', 138, safeFinalY + 9);
+
+  // Footer
+  doc.setFontSize(7.5);
+  doc.setTextColor(148, 163, 184);
+  doc.text('Verified Institutional Post-Test Record • Clinical Nursing Education (CNE) Portal • AIIMS Rishikesh', 105, pageHeight - 8, { align: 'center' });
+
+  const cleanCneId = (cne.classId || 'CNE').replace(/[^a-zA-Z0-9-]/g, '_');
+  doc.save(`CNE_Report_${cleanCneId}.pdf`);
 }
