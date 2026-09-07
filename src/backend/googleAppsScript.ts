@@ -2919,7 +2919,7 @@ function handleGetChairpersonMessage(params) {
   var message = props.getProperty('CHAIRPERSON_MESSAGE');
   var name = props.getProperty('CHAIRPERSON_NAME') || 'Dr. Anita Rani Kansal';
   var designation = props.getProperty('CHAIRPERSON_DESIG') || 'Chief Nursing Officer (C.N.O) & Chairperson, CNE Committee';
-  var photoUrl = props.getProperty('CHAIRPERSON_PHOTO') || 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=600&q=80';
+  var photoUrl = props.getProperty('CHAIRPERSON_PHOTO') || 'https://lh3.googleusercontent.com/d/1kJlJauCym75Gl8-4pdvo8xCvbXsw8jQ0';
   var driveFileId = props.getProperty('CHAIRPERSON_PHOTO_DRIVE_ID') || '';
   
   if (!message) {

@@ -18,7 +18,6 @@ import { ApiService } from '../services/api';
 import { INITIAL_CHAIRPERSON_MESSAGE } from '../services/initialData';
 import { generateAnnualCNEPdf } from '../services/pdfGenerator';
 import { useToast } from './Toast';
-import { ChangeCnoPhotoModal } from './ChangeCnoPhotoModal';
 
 // Modular Child Widgets
 import { UpcomingClassesWidget } from './home/UpcomingClassesWidget';
@@ -58,7 +57,6 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
   const [selectedQuickLink, setSelectedQuickLink] = useState<QuickLinkItem | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<GalleryItem | null>(null);
   const [selectedClass, setSelectedClass] = useState<UpcomingClass | null>(null);
-  const [isChangePhotoModalOpen, setIsChangePhotoModalOpen] = useState(false);
 
   const { success, error, info } = useToast();
   const isAdmin = user?.role === 'ADMIN';
@@ -139,7 +137,6 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
           <CnoLeadershipCard
             cnoMessage={cnoMessage}
             isAdmin={isAdmin}
-            onOpenChangePhoto={() => setIsChangePhotoModalOpen(true)}
             accentColor="teal"
           />
           <UpcomingClassesWidget
@@ -381,14 +378,6 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
           </div>
         </div>
       )}
-
-      {/* Admin Change CNO Photo Modal */}
-      <ChangeCnoPhotoModal
-        isOpen={isChangePhotoModalOpen}
-        onClose={() => setIsChangePhotoModalOpen(false)}
-        currentData={cnoMessage}
-        onSuccess={(updated) => setCnoMessage(updated)}
-      />
     </div>
   );
 };

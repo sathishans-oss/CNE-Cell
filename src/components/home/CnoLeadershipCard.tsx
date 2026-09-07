@@ -2,9 +2,7 @@ import React from 'react';
 import {
   GraduationCap,
   ShieldCheck,
-  Camera,
   CheckCircle2,
-  Edit3,
   Stethoscope,
   Activity,
   Award
@@ -13,16 +11,14 @@ import { ChairpersonMessageData } from '../../types';
 
 interface CnoLeadershipCardProps {
   cnoMessage: ChairpersonMessageData;
-  isAdmin: boolean;
-  onOpenChangePhoto: () => void;
+  isAdmin?: boolean;
   accentColor?: 'emerald' | 'blue' | 'amber' | 'teal';
   compact?: boolean;
 }
 
 export const CnoLeadershipCard: React.FC<CnoLeadershipCardProps> = ({
   cnoMessage,
-  isAdmin,
-  onOpenChangePhoto,
+  isAdmin = false,
   accentColor = 'emerald',
   compact = false
 }) => {
@@ -87,18 +83,6 @@ export const CnoLeadershipCard: React.FC<CnoLeadershipCardProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={onOpenChangePhoto}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-950/70 hover:bg-slate-900 border border-white/20 text-[11px] font-bold text-slate-200 hover:text-white transition-all cursor-pointer shadow-xs"
-              title="Change CNO Portrait Photo (Admin Permission)"
-            >
-              <Camera className="w-3.5 h-3.5 text-slate-300" />
-              <span>Change CNO Photo</span>
-            </button>
-          )}
-
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/30 border border-white/20 text-[10px] font-bold text-slate-200 shrink-0">
             <ShieldCheck className="w-3 h-3 text-emerald-400" />
             <span>AIIMS Rishikesh</span>
@@ -109,11 +93,11 @@ export const CnoLeadershipCard: React.FC<CnoLeadershipCardProps> = ({
       {/* Officer Profile & Official Content */}
       <div className="p-6 sm:p-7 space-y-6">
         <div className="flex flex-col sm:flex-row items-start gap-5">
-          {/* CNO Portrait Photo with Admin Edit Trigger */}
-          <div className="relative shrink-0 mx-auto sm:mx-0 group/cno">
+          {/* CNO Portrait Photo (Fixed) */}
+          <div className="relative shrink-0 mx-auto sm:mx-0">
             <div className={`w-24 h-28 sm:w-28 sm:h-32 rounded-2xl overflow-hidden border-2 ${photoBorder} shadow-md bg-slate-100 relative`}>
               <img
-                src={cnoMessage.photoUrl || "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=600&q=80"}
+                src={cnoMessage.photoUrl || "https://lh3.googleusercontent.com/d/1kJlJauCym75Gl8-4pdvo8xCvbXsw8jQ0"}
                 alt={`Chief Nursing Officer - ${cnoMessage.name || 'Dr. Anita Rani Kansal'}`}
                 referrerPolicy="no-referrer"
                 className="w-full h-full object-cover object-top"
@@ -121,37 +105,12 @@ export const CnoLeadershipCard: React.FC<CnoLeadershipCardProps> = ({
               <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-slate-950/80 to-transparent py-1 text-center pointer-events-none">
                 <span className="text-[9px] font-bold text-white">C.N.O</span>
               </div>
-
-              {/* Admin Hover Change Photo Overlay */}
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={onOpenChangePhoto}
-                  className="absolute inset-0 bg-slate-950/70 opacity-0 group-hover/cno:opacity-100 transition-opacity flex flex-col items-center justify-center text-white cursor-pointer rounded-2xl z-10"
-                  title="Click to Change CNO Photo"
-                >
-                  <Camera className="w-6 h-6 mb-1 text-slate-200" />
-                  <span className="text-[10px] font-bold">Change Photo</span>
-                </button>
-              )}
             </div>
 
             {/* Verified Badge */}
             <div className={`absolute -bottom-2 -right-2 p-1 ${checkBadgeBg} rounded-full text-white shadow-xs border-2 border-white z-20`}>
               <CheckCircle2 className="w-3.5 h-3.5" />
             </div>
-
-            {/* Admin Quick Action Badge */}
-            {isAdmin && (
-              <button
-                type="button"
-                onClick={onOpenChangePhoto}
-                className="absolute -top-2 -left-2 p-1.5 bg-slate-900 hover:bg-slate-800 rounded-full text-white shadow-md border-2 border-white cursor-pointer transition-colors z-20"
-                title="Admin: Change CNO Photo"
-              >
-                <Camera className="w-3.5 h-3.5" />
-              </button>
-            )}
           </div>
 
           {/* Title & Credentials */}
@@ -163,16 +122,6 @@ export const CnoLeadershipCard: React.FC<CnoLeadershipCardProps> = ({
               <h3 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
                 {cnoMessage.name || 'Dr. Anita Rani Kansal'}
               </h3>
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={onOpenChangePhoto}
-                  className="p-1 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                  title="Edit Leadership Profile"
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                </button>
-              )}
             </div>
             <p className="text-xs font-semibold text-slate-700">
               {cnoMessage.designation || 'Chief Nursing Officer (C.N.O) & Chairperson, CNE Committee'}
