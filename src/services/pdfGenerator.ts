@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { CNERecord, SessionUser } from '../types';
+import { formatCneDateRangeDisplay } from '../utils';
 
 export function generateAnnualCNEPdf(
   user: SessionUser,
@@ -109,9 +110,7 @@ export function generateAnnualCNEPdf(
   const tableData = records.map((rec, index) => {
     const isResourcePerson = (rec.resourcePersonEmpId || '').toLowerCase().includes((user.employeeId || '').toLowerCase());
     const roleLabel = isResourcePerson ? 'Resource Person' : 'Participant';
-    const dateDisplay = rec.toDate && rec.toDate !== rec.fromDate 
-      ? `${rec.fromDate} to ${rec.toDate}` 
-      : rec.fromDate;
+    const dateDisplay = formatCneDateRangeDisplay(rec.fromDate, rec.toDate);
 
     return [
       (index + 1).toString(),

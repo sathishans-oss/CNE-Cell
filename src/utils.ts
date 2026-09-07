@@ -1,3 +1,5 @@
+import { Employee } from './types';
+
 const MONTH_NAMES = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
@@ -85,4 +87,123 @@ export function formatCneDateRangeDisplay(fromDate?: string | null, toDate?: str
     return formattedFrom;
   }
   return `${formattedFrom} - ${formattedTo}`;
+}
+
+/**
+ * Resolves an individual Employee ID to the employee's name from the authoritative officers list.
+ * If not found, safely returns the Employee ID.
+ */
+export function resolveEmployeeName(
+  empId?: string | null,
+  officers?: Employee[]
+): string {
+  if (!empId) return '';
+  const trimmedId = empId.trim();
+  if (!trimmedId) return '';
+
+  if (officers && officers.length > 0) {
+    const norm = trimmedId.toLowerCase();
+    const found = officers.find(
+      (o) => (o.employeeId || '').trim().toLowerCase() === norm
+    );
+    if (found && found.name && found.name.trim()) {
+      return found.name.trim();
+    }
+  }
+
+  return trimmedId;
+}
+
+/**
+ * Resolves a comma/semicolon/newline-separated string or array of Employee IDs
+ * to their corresponding Employee Names using the authoritative officers list.
+ * Any ID that cannot be resolved safely falls back to its Employee ID.
+ */
+export function resolveEmployeeNamesList(
+  empIds?: string | string[] | null,
+  officers?: Employee[]
+): string[] {
+  if (!empIds) return [];
+  const list = Array.isArray(empIds) ? empIds : String(empIds).split(/[,;\n]+/);
+  return list
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .map((id) => resolveEmployeeName(id, officers));
+}
+
+/**
+ * Formats the full Resource Persons display string for an activity or class.
+ * Internal Resource Persons are displayed by Employee Name (separated by commas).
+ * External Resource Persons are appended with their entered name, marked with '(Ext)'.
+ * If multiple internal RPs exist, displays their names separated by commas.
+ */
+export function formatResourcePersonsDisplay(params: {
+  resourcePersonEmpId?: string | null;
+  resourcePersonName?: string | null;
+  externalResourcePersons?: string[] | null;
+  officers?: Employee[];
+}): string {
+  const { resourcePersonEmpId, resourcePersonName, externalResourcePersons, officers } = params;
+
+  let internalNames: string[] = [];
+
+  if (officers && officers.length > 0 && resourcePersonEmpId) {
+    internalNames = resolveEmployeeNamesList(resourcePersonEmpId, officers);
+  } else if (resourcePersonName && resourcePersonName.trim()) {
+    internalNames = resourcePersonName
+      .split(/[,;\n]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  } else if (resourcePersonEmpId && resourcePersonEmpId.trim()) {
+    internalNames = resourcePersonEmpId
+      .split(/[,;\n]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  const extNames = (externalResourcePersons || [])
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `${p} (Ext)`);
+
+  const combined = [...internalNames, ...extNames];
+  return combined.length > 0 ? combined.join(', ') : '—';
+}
+
+/**
+ * Formats internal and external staff participants display for an activity.
+ * Returns both formatted summary text and individual names array.
+ */
+export function formatStaffParticipantsDisplay(params: {
+  staffEmpIds?: string[] | null;
+  staffNames?: string[] | null;
+  externalStaffParticipants?: string[] | null;
+  officers?: Employee[];
+}): {
+  internalNames: string[];
+  externalNames: string[];
+  allNames: string[];
+  summaryText: string;
+} {
+  const { staffEmpIds, staffNames, externalStaffParticipants, officers } = params;
+
+  let internal: string[] = [];
+  if (officers && officers.length > 0 && staffEmpIds && staffEmpIds.length > 0) {
+    internal = staffEmpIds.map((id) => resolveEmployeeName(id, officers));
+  } else if (staffNames && staffNames.length > 0) {
+    internal = staffNames.map((s) => s.trim()).filter(Boolean);
+  } else if (staffEmpIds && staffEmpIds.length > 0) {
+    internal = staffEmpIds.map((id) => id.trim()).filter(Boolean);
+  }
+
+  const external = (externalStaffParticipants || []).map((s) => s.trim()).filter(Boolean);
+  const extFormatted = external.map((s) => `${s} (Ext)`);
+
+  const allNames = [...internal, ...extFormatted];
+  return {
+    internalNames: internal,
+    externalNames: external,
+    allNames,
+    summaryText: allNames.length > 0 ? allNames.join(', ') : 'None'
+  };
 }

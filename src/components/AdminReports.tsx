@@ -11,9 +11,10 @@ import {
   Layers,
   GraduationCap
 } from 'lucide-react';
-import { CNERecord, SessionUser } from '../types';
+import { CNERecord, Employee, SessionUser } from '../types';
 import { ApiService } from '../services/api';
 import { useToast } from './Toast';
+import { resolveEmployeeName } from '../utils';
 
 interface AdminReportsProps {
   user: SessionUser;
@@ -21,6 +22,7 @@ interface AdminReportsProps {
 
 export const AdminReports: React.FC<AdminReportsProps> = () => {
   const [records, setRecords] = useState<CNERecord[]>([]);
+  const [officers, setOfficers] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedYear, setSelectedYear] = useState('2026');
 
@@ -33,9 +35,15 @@ export const AdminReports: React.FC<AdminReportsProps> = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const res = await ApiService.getCNERecords();
+      const [res, officersRes] = await Promise.all([
+        ApiService.getCNERecords(),
+        ApiService.getOfficersDropdown().catch(() => ({ success: true, data: [] }))
+      ]);
       if (res.success && res.data) {
         setRecords(res.data);
+      }
+      if (officersRes.success && officersRes.data) {
+        setOfficers(officersRes.data);
       }
     } catch (e: any) {
       error('Failed to load records for report.');
@@ -76,8 +84,10 @@ export const AdminReports: React.FC<AdminReportsProps> = () => {
     modeCounts[r.modeOfTeaching] = (modeCounts[r.modeOfTeaching] || 0) + 1;
 
     // Instructor
-    const instName = r.resourcePersonName || r.resourcePersonEmpId;
-    instructorCounts[instName] = (instructorCounts[instName] || 0) + 1;
+    const instName = r.resourcePersonName || resolveEmployeeName(r.resourcePersonEmpId, officers) || r.resourcePersonEmpId;
+    if (instName) {
+      instructorCounts[instName] = (instructorCounts[instName] || 0) + 1;
+    }
 
     // Month (YYYY-MM)
     const monthKey = r.fromDate.substring(0, 7);

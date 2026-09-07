@@ -19,7 +19,13 @@ import {
 import { Area, CNERecord, Employee, SessionUser } from '../types';
 import { ApiService } from '../services/api';
 import { useToast } from './Toast';
-import { formatCneDateDisplay, formatCneDateRangeDisplay } from '../utils';
+import {
+  formatCneDateDisplay,
+  formatCneDateRangeDisplay,
+  formatResourcePersonsDisplay,
+  formatStaffParticipantsDisplay,
+  resolveEmployeeName
+} from '../utils';
 
 interface AdminCNEDataProps {
   user: SessionUser;
@@ -126,9 +132,18 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
         const q = searchTerm.toLowerCase();
         const matchTopic = (rec.topic || '').toLowerCase().includes(q);
         const matchArea = (rec.area || '').toLowerCase().includes(q);
-        const matchRp = (rec.resourcePersonName || rec.resourcePersonEmpId || '').toLowerCase().includes(q);
+        const rpDisplay = formatResourcePersonsDisplay({
+          resourcePersonEmpId: rec.resourcePersonEmpId,
+          resourcePersonName: rec.resourcePersonName,
+          externalResourcePersons: rec.externalResourcePersons,
+          officers
+        }).toLowerCase();
+        const matchRp = rpDisplay.includes(q) || (rec.resourcePersonEmpId || '').toLowerCase().includes(q);
         const matchRemarks = (rec.remarks || '').toLowerCase().includes(q);
-        const matchStaff = (rec.staffEmpIds || []).some((s) => s.toLowerCase().includes(q));
+        const matchStaff = (rec.staffEmpIds || []).some((s) => {
+          const staffName = resolveEmployeeName(s, officers).toLowerCase();
+          return s.toLowerCase().includes(q) || staffName.includes(q);
+        });
 
         if (!matchTopic && !matchArea && !matchRp && !matchRemarks && !matchStaff) {
           return false;
@@ -696,14 +711,14 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                         {/* Resource Person(s) */}
                         <td className="py-3 px-3 text-slate-700">
                           <div className="line-clamp-2">
-                            <span>{rec.resourcePersonName || rec.resourcePersonEmpId || ''}</span>
-                            {rec.externalResourcePersons && rec.externalResourcePersons.length > 0 && (
-                              <span className="text-amber-800 font-medium">
-                                {rec.resourcePersonName || rec.resourcePersonEmpId ? ', ' : ''}
-                                {rec.externalResourcePersons.map((p) => `${p} (Ext)`).join(', ')}
-                              </span>
-                            )}
-                            {!rec.resourcePersonName && !rec.resourcePersonEmpId && (!rec.externalResourcePersons || rec.externalResourcePersons.length === 0) && '—'}
+                            <span>
+                              {formatResourcePersonsDisplay({
+                                resourcePersonEmpId: rec.resourcePersonEmpId,
+                                resourcePersonName: rec.resourcePersonName,
+                                externalResourcePersons: rec.externalResourcePersons,
+                                officers
+                              })}
+                            </span>
                           </div>
                         </td>
 
@@ -712,15 +727,18 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                           {rec.modeOfTeaching}
                         </td>
 
-                        {/* Staff Count */}
+                        {/* Staff Count with Names in Tooltip */}
                         <td className="py-3 px-3 text-center">
                           <span
-                            className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-full text-[11px]"
-                            title={
-                              rec.externalStaffParticipants && rec.externalStaffParticipants.length > 0
-                                ? `${rec.staffEmpIds?.length || 0} Internal + ${rec.externalStaffParticipants.length} External`
-                                : undefined
-                            }
+                            className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-full text-[11px] cursor-help"
+                            title={`Staff Participants (${rec.staffCount || 0}):\n${
+                              formatStaffParticipantsDisplay({
+                                staffEmpIds: rec.staffEmpIds,
+                                staffNames: rec.staffNames,
+                                externalStaffParticipants: rec.externalStaffParticipants,
+                                officers
+                              }).allNames.join(', ') || 'None'
+                            }`}
                           >
                             {rec.staffCount || ((rec.staffEmpIds ? rec.staffEmpIds.length : 0) + (rec.externalStaffParticipants ? rec.externalStaffParticipants.length : 0))}
                           </span>
@@ -936,7 +954,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                           key={id}
                           className="inline-flex items-center gap-1 text-[11px] font-medium bg-purple-50 text-purple-900 px-2 py-0.5 rounded-md border border-purple-200"
                         >
-                          <span>{id} — {off ? off.name : ''}</span>
+                          <span>{off ? off.name : id} <span className="text-[10px] text-purple-700 opacity-75 font-mono">({id})</span></span>
                           <button
                             type="button"
                             onClick={() => toggleRpSelection(id)}
@@ -1063,7 +1081,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                           key={id}
                           className="inline-flex items-center gap-1 text-[11px] font-medium bg-slate-100 text-slate-800 px-2 py-0.5 rounded-md border border-slate-300"
                         >
-                          <span>{id} — {off ? off.name : ''}</span>
+                          <span>{off ? off.name : id} <span className="text-[10px] text-slate-500 opacity-75 font-mono">({id})</span></span>
                           <button
                             type="button"
                             onClick={() => toggleStaffSelection(id)}
@@ -1349,7 +1367,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                           key={id}
                           className="inline-flex items-center gap-1 text-[11px] font-medium bg-purple-50 text-purple-900 px-2 py-0.5 rounded-md border border-purple-200"
                         >
-                          <span>{id} — {off ? off.name : ''}</span>
+                          <span>{off ? off.name : id} <span className="text-[10px] text-purple-700 opacity-75 font-mono">({id})</span></span>
                           <button
                             type="button"
                             onClick={() => toggleEditRpSelection(id)}
@@ -1476,7 +1494,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                           key={id}
                           className="inline-flex items-center gap-1 text-[11px] font-medium bg-slate-100 text-slate-800 px-2 py-0.5 rounded-md border border-slate-300"
                         >
-                          <span>{id} — {off ? off.name : ''}</span>
+                          <span>{off ? off.name : id} <span className="text-[10px] text-slate-500 opacity-75 font-mono">({id})</span></span>
                           <button
                             type="button"
                             onClick={() => toggleEditStaffSelection(id)}

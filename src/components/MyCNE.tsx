@@ -13,11 +13,15 @@ import {
   CheckCircle2,
   Loader2
 } from 'lucide-react';
-import { CNERecord, SessionUser } from '../types';
+import { CNERecord, Employee, SessionUser } from '../types';
 import { ApiService } from '../services/api';
 import { generateAnnualCNEPdf } from '../services/pdfGenerator';
 import { useToast } from './Toast';
-import { formatCneDateDisplay, formatCneDateRangeDisplay } from '../utils';
+import {
+  formatCneDateDisplay,
+  formatCneDateRangeDisplay,
+  formatResourcePersonsDisplay
+} from '../utils';
 
 interface MyCNEProps {
   user: SessionUser;
@@ -25,6 +29,7 @@ interface MyCNEProps {
 
 export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
   const [records, setRecords] = useState<CNERecord[]>([]);
+  const [officers, setOfficers] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -42,11 +47,17 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
   const loadMyRecords = async () => {
     setLoading(true);
     try {
-      const res = await ApiService.getCNERecords();
+      const [res, offRes] = await Promise.all([
+        ApiService.getCNERecords(),
+        ApiService.getOfficersDropdown().catch(() => null)
+      ]);
       if (res.success && res.data) {
         setRecords(res.data);
       } else {
         error(res.message || 'Failed to load CNE records.');
+      }
+      if (offRes && offRes.success && offRes.data) {
+        setOfficers(offRes.data);
       }
     } catch (e: any) {
       error(e?.message || 'Error loading records.');
@@ -84,7 +95,13 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
         const matchTopic = rec.topic.toLowerCase().includes(q);
         const matchArea = rec.area.toLowerCase().includes(q);
         const matchMode = rec.modeOfTeaching.toLowerCase().includes(q);
-        const matchRp = (rec.resourcePersonName || rec.resourcePersonEmpId).toLowerCase().includes(q);
+        const rpDisplay = formatResourcePersonsDisplay({
+          resourcePersonEmpId: rec.resourcePersonEmpId,
+          resourcePersonName: rec.resourcePersonName,
+          externalResourcePersons: rec.externalResourcePersons,
+          officers
+        }).toLowerCase();
+        const matchRp = rpDisplay.includes(q) || (rec.resourcePersonEmpId || '').toLowerCase().includes(q);
         const matchExtRp = rec.externalResourcePersons?.some(p => p.toLowerCase().includes(q));
         if (!matchTopic && !matchArea && !matchMode && !matchRp && !matchExtRp) return false;
       }
@@ -325,7 +342,12 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
                           </span>
                         </td>
                         <td className="py-3 px-4 text-slate-600">
-                          {rec.resourcePersonName || rec.resourcePersonEmpId}
+                          {formatResourcePersonsDisplay({
+                            resourcePersonEmpId: rec.resourcePersonEmpId,
+                            resourcePersonName: rec.resourcePersonName,
+                            externalResourcePersons: rec.externalResourcePersons,
+                            officers
+                          })}
                         </td>
                         <td className="py-3 px-4 whitespace-nowrap text-slate-700 flex items-center gap-1">
                           <Clock className="w-3.5 h-3.5 text-slate-400" />
@@ -382,7 +404,13 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
 
                     <div className="flex items-center justify-between pt-1">
                       <span className="text-xs text-slate-500 truncate max-w-[200px]">
-                        Instructor: {rec.resourcePersonName || rec.resourcePersonEmpId}
+                        Instructor:{' '}
+                        {formatResourcePersonsDisplay({
+                          resourcePersonEmpId: rec.resourcePersonEmpId,
+                          resourcePersonName: rec.resourcePersonName,
+                          externalResourcePersons: rec.externalResourcePersons,
+                          officers
+                        })}
                       </span>
                       <button
                         onClick={() => setSelectedRecord(rec)}
@@ -447,10 +475,12 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                   <span className="block text-slate-500 font-semibold uppercase text-[10px]">Resource Person(s)</span>
                   <span className="font-semibold text-slate-900 mt-0.5 block">
-                    {[
-                      selectedRecord.resourcePersonName || selectedRecord.resourcePersonEmpId,
-                      ...(selectedRecord.externalResourcePersons?.map(p => `${p} (External)`) || [])
-                    ].filter(Boolean).join(', ')}
+                    {formatResourcePersonsDisplay({
+                      resourcePersonEmpId: selectedRecord.resourcePersonEmpId,
+                      resourcePersonName: selectedRecord.resourcePersonName,
+                      externalResourcePersons: selectedRecord.externalResourcePersons,
+                      officers
+                    })}
                   </span>
                 </div>
               </div>
