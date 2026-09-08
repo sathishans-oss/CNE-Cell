@@ -2387,7 +2387,7 @@ function handleAddDepartmentalSchedule(params, session) {
     return { success: false, errorCode: 'UNAUTHORIZED', message: 'Authentication required. Please sign in.' };
   }
 
-  var rawClasses = params.schedules;
+  var rawClasses = params.schedules || params.classes;
   if (!rawClasses || !Array.isArray(rawClasses) || rawClasses.length === 0) {
     return { success: false, message: 'At least one departmental CNE schedule row is required.' };
   }

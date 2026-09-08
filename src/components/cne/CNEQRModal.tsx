@@ -75,102 +75,160 @@ export const CNEQRModal: React.FC<CNEQRModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 relative text-center">
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 cursor-pointer"
-        >
-          <X className="w-5 h-5" />
-        </button>
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
+      <div className="bg-white rounded-2xl w-[90vw] max-w-[1050px] max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+        {/* Modal Header */}
+        <div className="px-6 py-3.5 border-b border-slate-200 flex items-center justify-between shrink-0 bg-slate-50/80">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+              <QrCode className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800 border border-indigo-200">
+                  QR Evaluation Access
+                </span>
+                <span className="text-[11px] font-mono text-slate-400">
+                  ({cne.classId})
+                </span>
+              </div>
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 mt-0.5 truncate max-w-xl">
+                {cne.topic} &mdash; Participant Post-Test QR
+              </h3>
+            </div>
+          </div>
 
-        <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center mx-auto mb-3">
-          <QrCode className="w-6 h-6" />
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200/60 cursor-pointer transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        <h3 className="text-base font-bold text-slate-900 leading-snug mb-1">
-          Participant Post-Test QR Code
-        </h3>
-        <p className="text-xs text-slate-500 mb-4 truncate px-4" title={cne.topic}>
-          {cne.topic}
-        </p>
-
         {loading ? (
-          <div className="py-16 flex flex-col items-center justify-center gap-2 text-slate-500">
+          <div className="py-24 flex flex-col items-center justify-center gap-2 text-slate-500">
             <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
             <span className="text-xs">Generating secure evaluation QR token...</span>
           </div>
         ) : (
-          <div className="space-y-4">
-            {finalizedCount === 0 && (
-              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 flex items-start gap-2 text-left">
-                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                <span>
-                  <strong>Notice:</strong> No finalized questions have been published yet for this CNE. Please finalize questions in the Question Bank before participants can submit.
-                </span>
+          <div className="p-6 overflow-y-auto flex-1 grid grid-cols-1 md:grid-cols-12 gap-6 bg-slate-50/40 items-center">
+            {/* Left Column: QR Code Display */}
+            <div className="md:col-span-5 flex flex-col items-center justify-center p-5 bg-white rounded-2xl border border-slate-200 shadow-xs text-center">
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 shadow-inner">
+                {qrDataUrl ? (
+                  <img
+                    src={qrDataUrl}
+                    alt={`Post-Test QR for ${cne.topic}`}
+                    className="w-52 h-52 mx-auto rounded-xl shadow-xs"
+                  />
+                ) : (
+                  <div className="w-52 h-52 flex items-center justify-center text-slate-400 text-xs">
+                    Failed to load QR
+                  </div>
+                )}
               </div>
-            )}
+              <p className="text-[11px] text-slate-500 mt-3 font-medium">
+                Scan with any mobile camera or scanner
+              </p>
+            </div>
 
-            {/* QR Code Graphic */}
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 inline-block shadow-inner mx-auto">
-              {qrDataUrl ? (
-                <img
-                  src={qrDataUrl}
-                  alt={`Post-Test QR for ${cne.topic}`}
-                  className="w-56 h-56 mx-auto rounded-xl shadow-xs"
-                />
+            {/* Right Column: Information, Link, and Actions */}
+            <div className="md:col-span-7 space-y-4">
+              {finalizedCount === 0 ? (
+                <div className="p-3.5 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="block mb-0.5">Question Bank Pending:</strong>
+                    <span>No finalized questions have been published yet for this CNE. Finalize questions in the Question Bank before participants can submit responses.</span>
+                  </div>
+                </div>
               ) : (
-                <div className="w-56 h-56 flex items-center justify-center text-slate-400 text-xs">
-                  Failed to load QR
+                <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-900 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  <span><strong>{finalizedCount} questions</strong> are active and ready for participant post-test submission.</span>
                 </div>
               )}
-            </div>
 
-            <p className="text-[11px] text-slate-500">
-              Scan with any smartphone camera to open the instant post-test evaluation form.
-            </p>
+              {/* Meta details */}
+              <div className="p-3.5 bg-white rounded-xl border border-slate-200 space-y-2 text-xs">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <span className="text-slate-500">Topic:</span>
+                  <span className="font-bold text-slate-800 text-right max-w-xs truncate">{cne.topic}</span>
+                </div>
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <span className="text-slate-500">Department / Area:</span>
+                  <span className="font-semibold text-slate-700">{cne.area}</span>
+                </div>
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <span className="text-slate-500">Schedule Date:</span>
+                  <span className="font-semibold text-slate-700">{cne.date} {cne.time ? `• ${cne.time}` : ''}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Resource Person:</span>
+                  <span className="font-semibold text-slate-700">{cne.resourcePersonName || cne.resourcePersonEmpId || 'Department Faculty'}</span>
+                </div>
+              </div>
 
-            {/* Direct Link & Actions */}
-            <div className="flex items-center gap-1.5 p-1.5 bg-slate-100 rounded-xl border border-slate-200 text-left">
-              <input
-                type="text"
-                readOnly
-                value={postTestUrl}
-                className="flex-1 bg-transparent text-[11px] text-slate-700 px-2 truncate outline-none font-mono"
-              />
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold shadow-xs cursor-pointer"
-              >
-                {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copied ? 'Copied' : 'Copy'}</span>
-              </button>
-            </div>
+              {/* Direct Link */}
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                  Direct Participant Evaluation URL
+                </label>
+                <div className="flex items-center gap-2 p-1.5 bg-white rounded-xl border border-slate-300 shadow-xs">
+                  <input
+                    type="text"
+                    readOnly
+                    value={postTestUrl}
+                    className="flex-1 bg-transparent text-xs text-slate-700 px-2 truncate outline-none font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCopy}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold cursor-pointer transition-colors shrink-0"
+                  >
+                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copied ? 'Copied' : 'Copy Link'}</span>
+                  </button>
+                </div>
+              </div>
 
-            <div className="flex items-center justify-center gap-2 pt-2">
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                <span>Print QR Poster</span>
-              </button>
-
-              {onOpenPostTest && qrToken && (
+              {/* Action Buttons */}
+              <div className="flex flex-wrap items-center gap-2.5 pt-2">
                 <button
                   type="button"
-                  onClick={() => onOpenPostTest(qrToken)}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer shadow-xs"
+                  onClick={handlePrint}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs"
                 >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Open Post-Test Now</span>
+                  <Printer className="w-3.5 h-3.5 text-slate-600" />
+                  <span>Print QR Poster</span>
                 </button>
-              )}
+
+                {onOpenPostTest && qrToken && (
+                  <button
+                    type="button"
+                    onClick={() => onOpenPostTest(qrToken)}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer shadow-xs transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Open Post-Test Preview</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}
+
+        {/* Modal Footer */}
+        <div className="px-6 py-3 border-t border-slate-200 bg-white flex justify-end shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl font-medium text-xs cursor-pointer transition-colors"
+          >
+            Close
+          </button>
+        </div>
       </div>
     </div>
   );

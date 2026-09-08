@@ -207,12 +207,12 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
   const finalizedCount = questions.filter((q) => q.isFinalized).length;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 relative overflow-hidden">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
+      <div className="bg-white rounded-2xl w-[92vw] max-w-[1440px] max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 relative overflow-hidden">
         {/* Header */}
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
+        <div className="px-6 py-3.5 border-b border-slate-200 flex items-center justify-between shrink-0 bg-slate-50/70">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
@@ -230,9 +230,12 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                     {finalizedCount} of {questions.length} Finalized
                   </span>
                 )}
+                <span className="text-[11px] font-mono text-slate-400">
+                  ({cne.classId})
+                </span>
               </div>
-              <h3 className="text-base font-bold text-slate-900 mt-0.5 truncate max-w-xl">
-                {cne.topic}
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 mt-0.5 truncate max-w-2xl">
+                {cne.topic} &mdash; Clinical Evaluation &amp; Assessment Setup
               </h3>
             </div>
           </div>
@@ -240,7 +243,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
           <button
             onClick={onClose}
             disabled={isSaving || isGenerating}
-            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 disabled:opacity-40 cursor-pointer"
+            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200/60 disabled:opacity-40 cursor-pointer transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -248,10 +251,11 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
 
         {/* AI & Manual Action Bar */}
         {!isLocked && isAuthorized && (
-          <div className="p-3.5 bg-purple-50/60 border-b border-purple-100 flex flex-wrap items-center justify-between gap-3 shrink-0">
+          <div className="px-6 py-2.5 bg-purple-50/50 border-b border-purple-100 flex flex-wrap items-center justify-between gap-3 shrink-0">
             <div className="flex items-center gap-2 text-xs text-purple-950 font-medium">
               <Sparkles className="w-4 h-4 text-purple-600" />
-              <span>Generate AI MCQs grounded in clinical topic & reference text:</span>
+              <span>Grounded Question Synthesizer:</span>
+              <span className="text-purple-700 text-[11px]">Generate evidence-based clinical MCQs from syllabus &amp; notes</span>
             </div>
 
             <div className="flex items-center gap-2">
@@ -259,7 +263,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                 value={aiQuestionCount}
                 onChange={(e) => setAiQuestionCount(parseInt(e.target.value, 10))}
                 disabled={isGenerating || isSaving}
-                className="bg-white border border-purple-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 font-semibold"
+                className="bg-white border border-purple-200 rounded-lg px-2.5 py-1 text-xs text-slate-700 font-semibold shadow-xs"
               >
                 <option value={3}>3 Questions</option>
                 <option value={5}>5 Questions</option>
@@ -290,237 +294,239 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                 type="button"
                 onClick={handleAddManualQuestion}
                 disabled={isGenerating || isSaving}
-                className="flex items-center gap-1 px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-lg font-bold text-xs cursor-pointer"
+                className="flex items-center gap-1 px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-lg font-bold text-xs cursor-pointer shadow-xs"
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>+ Add Question</span>
+                <Plus className="w-3.5 h-3.5 text-purple-600" />
+                <span>+ Add Manual Question</span>
               </button>
             </div>
           </div>
         )}
 
         {isLocked && (
-          <div className="p-3 bg-amber-50 border-b border-amber-200 flex items-center gap-2 text-xs text-amber-900 shrink-0">
+          <div className="px-6 py-2.5 bg-amber-50 border-b border-amber-200 flex items-center gap-2 text-xs text-amber-900 shrink-0">
             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
             <span>
-              <strong>Question Bank is Locked:</strong> Participants have already submitted post-test responses. Questions, options, and answer keys are immutable to preserve evaluation integrity.
+              <strong>Question Bank is Locked:</strong> Participants have already submitted post-test responses. Questions, options, and answer keys are permanently immutable to preserve evaluation integrity.
             </span>
           </div>
         )}
 
-        {/* Question List Content */}
-        <div className="p-5 overflow-y-auto flex-1 space-y-4 text-xs">
+        {/* Question List Content - 2-Column Wide Grid on Desktop */}
+        <div className="p-6 overflow-y-auto flex-1 bg-slate-50/40 text-xs">
           {loading ? (
-            <div className="py-16 flex flex-col items-center justify-center gap-2 text-slate-500">
+            <div className="py-20 flex flex-col items-center justify-center gap-2 text-slate-500">
               <Loader2 className="w-6 h-6 animate-spin text-purple-600" />
               <span>Loading questions...</span>
             </div>
           ) : questions.length === 0 ? (
-            <div className="py-12 text-center p-8 bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-3">
+            <div className="py-16 text-center p-8 bg-white rounded-2xl border border-dashed border-slate-300 space-y-3 max-w-xl mx-auto my-8">
               <HelpCircle className="w-10 h-10 text-slate-300 mx-auto" />
               <h4 className="text-sm font-bold text-slate-800">No Post-Test Questions Configured</h4>
-              <p className="text-xs text-slate-500 max-w-md mx-auto">
-                Use the AI Generator above to formulate instant scenario-based questions from the topic, or manually enter your own post-test MCQs.
+              <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                Use the AI Generator above to formulate instant scenario-based questions from the topic, or click <strong>+ Add Manual Question</strong> to enter your own assessment items.
               </p>
             </div>
           ) : (
-            questions.map((q, idx) => {
-              const isEditing = editingIndex === idx;
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+              {questions.map((q, idx) => {
+                const isEditing = editingIndex === idx;
 
-              return (
-                <div
-                  key={q.id || idx}
-                  className={`p-4 rounded-xl border transition-all ${
-                    q.isFinalized
-                      ? 'border-purple-200 bg-white shadow-xs'
-                      : 'border-slate-200 bg-slate-50/70'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-full bg-purple-100 text-purple-800 font-bold flex items-center justify-center text-xs shrink-0">
-                        {idx + 1}
-                      </span>
-                      {q.isFinalized ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                          <CheckCircle2 className="w-3 h-3" />
-                          Included in Post-Test
+                return (
+                  <div
+                    key={q.id || idx}
+                    className={`p-4 rounded-xl border transition-all ${
+                      q.isFinalized
+                        ? 'border-purple-200 bg-white shadow-xs'
+                        : 'border-slate-200 bg-slate-50/80'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-purple-100 text-purple-800 font-bold flex items-center justify-center text-[11px] shrink-0">
+                          {idx + 1}
                         </span>
-                      ) : (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
-                          Draft (Excluded)
-                        </span>
+                        {q.isFinalized ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                            <CheckCircle2 className="w-3 h-3" />
+                            Included in Post-Test
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
+                            Draft (Excluded)
+                          </span>
+                        )}
+                      </div>
+
+                      {!isLocked && isAuthorized && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleFinalized(idx)}
+                            className={`text-[11px] font-bold px-2 py-0.5 rounded-md cursor-pointer transition-colors ${
+                              q.isFinalized
+                                ? 'text-slate-600 hover:bg-slate-100'
+                                : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                            }`}
+                          >
+                            {q.isFinalized ? 'Exclude' : 'Finalize'}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setEditingIndex(isEditing ? null : idx)}
+                            className="p-1 text-slate-500 hover:text-purple-700 hover:bg-purple-50 rounded-md cursor-pointer"
+                            title="Edit Question"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteQuestion(idx)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md cursor-pointer"
+                            title="Delete Question"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       )}
                     </div>
 
-                    {!isLocked && isAuthorized && (
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleFinalized(idx)}
-                          className={`text-[11px] font-bold px-2 py-1 rounded-md cursor-pointer transition-colors ${
-                            q.isFinalized
-                              ? 'text-slate-600 hover:bg-slate-100'
-                              : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
-                          }`}
-                        >
-                          {q.isFinalized ? 'Exclude' : 'Finalize'}
-                        </button>
+                    {/* Question Text */}
+                    {isEditing && !isLocked ? (
+                      <div className="space-y-3 mt-3">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                            Question Stem:
+                          </label>
+                          <textarea
+                            rows={2}
+                            value={q.question}
+                            onChange={(e) => handleUpdateQuestion(idx, { question: e.target.value })}
+                            className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+                          />
+                        </div>
 
-                        <button
-                          type="button"
-                          onClick={() => setEditingIndex(isEditing ? null : idx)}
-                          className="p-1.5 text-slate-500 hover:text-purple-700 hover:bg-purple-50 rounded-md cursor-pointer"
-                          title="Edit Question"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {(['A', 'B', 'C', 'D'] as const).map((optKey) => (
+                            <div key={optKey} className="flex items-center gap-2">
+                              <span className="font-bold text-slate-700 w-4">{optKey}:</span>
+                              <input
+                                type="text"
+                                value={q.options[optKey]}
+                                onChange={(e) => handleOptionChange(idx, optKey, e.target.value)}
+                                className="flex-1 p-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+                              />
+                            </div>
+                          ))}
+                        </div>
 
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteQuestion(idx)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md cursor-pointer"
-                          title="Delete Question"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center gap-3 pt-1">
+                          <label className="text-[11px] font-bold text-slate-700">Correct Option:</label>
+                          <div className="flex gap-2">
+                            {(['A', 'B', 'C', 'D'] as const).map((optKey) => (
+                              <label key={optKey} className="flex items-center gap-1 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name={`correct_${idx}`}
+                                  checked={q.correctOption === optKey}
+                                  onChange={() => handleUpdateQuestion(idx, { correctOption: optKey })}
+                                  className="text-purple-600 focus:ring-purple-500"
+                                />
+                                <span className="font-bold">{optKey}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                            Clinical Explanation / Rationales:
+                          </label>
+                          <input
+                            type="text"
+                            value={q.explanation || ''}
+                            onChange={(e) => handleUpdateQuestion(idx, { explanation: e.target.value })}
+                            placeholder="Evidence-based reasoning shown to participants in review..."
+                            className="w-full p-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+                          />
+                        </div>
+
+                        <div className="flex justify-end pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setEditingIndex(null)}
+                            className="px-3 py-1 bg-purple-600 text-white rounded-md text-xs font-bold"
+                          >
+                            Done Editing
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="font-semibold text-slate-900 leading-relaxed mb-2.5">
+                          {q.question}
+                        </p>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                          {(['A', 'B', 'C', 'D'] as const).map((optKey) => {
+                            const isCorrect = q.correctOption === optKey;
+                            return (
+                              <div
+                                key={optKey}
+                                className={`p-2 rounded-lg border flex items-start gap-2 ${
+                                  isCorrect
+                                    ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-medium'
+                                    : 'bg-slate-50/80 border-slate-200 text-slate-700'
+                                }`}
+                              >
+                                <span className={`font-bold shrink-0 ${isCorrect ? 'text-emerald-700' : 'text-slate-500'}`}>
+                                  {optKey}.
+                                </span>
+                                <span className="flex-1 leading-snug">{q.options[optKey]}</span>
+                                {isCorrect && (
+                                  <span className="text-[10px] font-bold text-emerald-700 uppercase shrink-0">
+                                    ✓ Key
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {q.explanation && (
+                          <p className="text-[11px] text-slate-500 bg-slate-50 p-2 rounded-lg mt-2 border border-slate-100">
+                            <strong>Rationale:</strong> {q.explanation}
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
-
-                  {/* Question Text */}
-                  {isEditing && !isLocked ? (
-                    <div className="space-y-3 mt-3">
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                          Question Stem:
-                        </label>
-                        <textarea
-                          rows={2}
-                          value={q.question}
-                          onChange={(e) => handleUpdateQuestion(idx, { question: e.target.value })}
-                          className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        {(['A', 'B', 'C', 'D'] as const).map((optKey) => (
-                          <div key={optKey} className="flex items-center gap-2">
-                            <span className="font-bold text-slate-700 w-4">{optKey}:</span>
-                            <input
-                              type="text"
-                              value={q.options[optKey]}
-                              onChange={(e) => handleOptionChange(idx, optKey, e.target.value)}
-                              className="flex-1 p-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                            />
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="flex items-center gap-3 pt-1">
-                        <label className="text-[11px] font-bold text-slate-700">Correct Option:</label>
-                        <div className="flex gap-2">
-                          {(['A', 'B', 'C', 'D'] as const).map((optKey) => (
-                            <label key={optKey} className="flex items-center gap-1 cursor-pointer">
-                              <input
-                                type="radio"
-                                name={`correct_${idx}`}
-                                checked={q.correctOption === optKey}
-                                onChange={() => handleUpdateQuestion(idx, { correctOption: optKey })}
-                                className="text-purple-600 focus:ring-purple-500"
-                              />
-                              <span className="font-bold">{optKey}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                          Clinical Explanation / Rationales:
-                        </label>
-                        <input
-                          type="text"
-                          value={q.explanation || ''}
-                          onChange={(e) => handleUpdateQuestion(idx, { explanation: e.target.value })}
-                          placeholder="Evidence-based reasoning shown to participants in review..."
-                          className="w-full p-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                        />
-                      </div>
-
-                      <div className="flex justify-end pt-1">
-                        <button
-                          type="button"
-                          onClick={() => setEditingIndex(null)}
-                          className="px-3 py-1 bg-purple-600 text-white rounded-md text-xs font-bold"
-                        >
-                          Done Editing
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <p className="font-semibold text-slate-900 leading-relaxed mb-2.5">
-                        {q.question}
-                      </p>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
-                        {(['A', 'B', 'C', 'D'] as const).map((optKey) => {
-                          const isCorrect = q.correctOption === optKey;
-                          return (
-                            <div
-                              key={optKey}
-                              className={`p-2 rounded-lg border flex items-start gap-2 ${
-                                isCorrect
-                                  ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-medium'
-                                  : 'bg-slate-50/80 border-slate-200 text-slate-700'
-                              }`}
-                            >
-                              <span className={`font-bold shrink-0 ${isCorrect ? 'text-emerald-700' : 'text-slate-500'}`}>
-                                {optKey}.
-                              </span>
-                              <span className="flex-1 leading-snug">{q.options[optKey]}</span>
-                              {isCorrect && (
-                                <span className="text-[10px] font-bold text-emerald-700 uppercase shrink-0">
-                                  ✓ Key
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {q.explanation && (
-                        <p className="text-[11px] text-slate-500 bg-slate-50 p-2 rounded-lg mt-2 border border-slate-100">
-                          <strong>Rationale:</strong> {q.explanation}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })
+                );
+              })}
+            </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+        <div className="px-6 py-3.5 border-t border-slate-200 bg-white flex items-center justify-between shrink-0">
           <div className="text-xs text-slate-500">
             {finalizedCount === 0 ? (
               <span className="text-amber-600 font-semibold">
                 ⚠ Please finalize at least 1 question for the post-test to become available.
               </span>
             ) : (
-              <span>Ready for evaluation: {finalizedCount} questions active</span>
+              <span>Evaluation ready: <strong>{finalizedCount}</strong> questions active in question bank</span>
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <button
               type="button"
               onClick={onClose}
               disabled={isSaving || isGenerating}
-              className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl font-medium text-xs disabled:opacity-40 cursor-pointer"
+              className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl font-medium text-xs disabled:opacity-40 cursor-pointer transition-colors"
             >
               Close
             </button>
@@ -530,7 +536,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                 type="button"
                 onClick={handleSaveQuestions}
                 disabled={isSaving || isGenerating || questions.length === 0}
-                className="flex items-center gap-1.5 px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl font-bold text-xs shadow-xs disabled:opacity-50 cursor-pointer transition-colors"
+                className="flex items-center gap-1.5 px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl font-bold text-xs shadow-xs disabled:opacity-50 cursor-pointer transition-colors"
               >
                 {isSaving ? (
                   <>
@@ -540,7 +546,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                 ) : (
                   <>
                     <Save className="w-3.5 h-3.5" />
-                    <span>Save & Publish Question Bank</span>
+                    <span>Save &amp; Publish Question Bank</span>
                   </>
                 )}
               </button>

@@ -133,10 +133,12 @@ export const CnoLeadershipCard: React.FC<CnoLeadershipCardProps> = ({
         <div className="space-y-3 text-xs sm:text-[13px] text-slate-700 leading-relaxed border-t border-slate-100 pt-5">
           {Array.isArray(cnoMessage.message) && cnoMessage.message.length > 0 ? (
             cnoMessage.message.map((para, idx) => <p key={idx}>{para}</p>)
+          ) : typeof cnoMessage.message === 'string' && cnoMessage.message.trim() ? (
+            <p>{cnoMessage.message}</p>
           ) : (
             <>
               <p>
-                Welcome to the <strong>Continuing Nursing Education (CNE) Portal</strong> of AIIMS Rishikesh. Continuing nursing education is not merely a professional obligation; it is the cornerstone of clinical excellence, patient safety, and compassionate nursing leadership.
+                Clinical Nursing Education is the bedrock of patient safety and clinical excellence. At AIIMS Rishikesh, our CNE cell is committed to providing evidence-based, continuous professional development to empower nursing professionals across all clinical wards.
               </p>
               <p>
                 In our tertiary apex healthcare institution, nursing officers stand on the frontlines of complex critical care, advanced surgical procedures, and intensive hemodynamic management. Ongoing skill development guarantees that our clinical practices adhere strictly to evidence-based national and international benchmarks.

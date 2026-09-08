@@ -636,324 +636,351 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
 
       {/* Modal: Admin Schedule Class */}
       {isAddClassOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200 relative">
-            <button
-              onClick={() => setIsAddClassOpen(false)}
-              disabled={isSubmitting}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 disabled:opacity-40 cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
+          <div className="bg-white rounded-2xl w-[92vw] max-w-[1440px] max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 relative overflow-hidden">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/70">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                  <PlusCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Schedule New CNE
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Publish training session to the institutional CNE Schedule
+                  </p>
+                </div>
+              </div>
 
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center">
-                <PlusCircle className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Schedule New CNE
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Publish training session to the institutional CNE Schedule
-                </p>
-              </div>
+              <button
+                onClick={() => setIsAddClassOpen(false)}
+                disabled={isSubmitting}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 cursor-pointer transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            <form onSubmit={handleCreateUpcomingClass} className="space-y-3.5 text-xs">
-              {/* CNE Type: Central vs Departmental */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                  CNE Category / Type *
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    disabled={!isAdmin}
-                    onClick={() => setNewCneType('CENTRAL')}
-                    className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
-                      newCneType === 'CENTRAL'
-                        ? 'bg-blue-50 border-blue-400 text-blue-900 font-bold'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-50'
-                    }`}
-                  >
-                    <div className="text-xs">Central CNE</div>
-                    <div className="text-[10px] text-slate-500 font-normal">Hospital-wide clinical seminar</div>
-                  </button>
+            <form onSubmit={handleCreateUpcomingClass} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                  {/* Column 1: Classification & Topic */}
+                  <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-purple-900 border-b border-purple-100 pb-2 flex items-center gap-1.5">
+                      <span>1. Category & Curriculum</span>
+                    </h4>
 
-                  <button
-                    type="button"
-                    onClick={() => setNewCneType('DEPARTMENTAL')}
-                    className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
-                      newCneType === 'DEPARTMENTAL'
-                        ? 'bg-teal-50 border-teal-400 text-teal-900 font-bold'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <div className="text-xs">Departmental CNE</div>
-                    <div className="text-[10px] text-slate-500 font-normal">Ward / Specialty-specific training</div>
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                  Topic / Skills Training Subject *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Pediatric Advanced Life Support & Defibrillator Handling"
-                  value={newTopic}
-                  onChange={(e) => setNewTopic(e.target.value)}
-                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                  Clinical Ward / Area *
-                </label>
-                <select
-                  required
-                  value={newArea}
-                  onChange={(e) => setNewArea(e.target.value)}
-                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                >
-                  <option value="">Select Area...</option>
-                  {areasList.map((a) => (
-                    <option key={a} value={a}>{a}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Scheduled / From Date *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    min={todayStr}
-                    value={newDate}
-                    onChange={(e) => setNewDate(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    To Date (Optional)
-                  </label>
-                  <input
-                    type="date"
-                    min={newDate || todayStr}
-                    value={newToDate}
-                    onChange={(e) => setNewToDate(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Time / Hours
-                  </label>
-                  <input
-                    type="text"
-                    value={newTime}
-                    onChange={(e) => setNewTime(e.target.value)}
-                    placeholder="14:00 - 15:30"
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Duration
-                  </label>
-                  <input
-                    type="text"
-                    value={newDuration}
-                    onChange={(e) => setNewDuration(e.target.value)}
-                    placeholder="1:30:00"
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                  />
-                </div>
-              </div>
-
-              {/* Internal Resource Persons Multi-Select */}
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
-                    Internal Resource Persons (AIIMS Faculty)
-                  </label>
-                  <span className="text-[10px] text-slate-500 font-medium">
-                    {selectedRpEmpIds.length} selected
-                  </span>
-                </div>
-
-                {/* Selected RP Tags */}
-                {selectedRpEmpIds.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pb-1">
-                    {selectedRpEmpIds.map((empId) => {
-                      const officer = officersList.find((o) => o.employeeId === empId);
-                      return (
-                        <span
-                          key={empId}
-                          className="inline-flex items-center gap-1 text-[11px] font-medium bg-emerald-50 text-emerald-900 px-2 py-0.5 rounded-md border border-emerald-200"
-                        >
-                          <span>{empId} - {officer ? officer.name : ''}</span>
-                          <button
-                            type="button"
-                            onClick={() => toggleRpSelection(empId)}
-                            className="hover:text-rose-600 cursor-pointer"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Search input for officers */}
-                <input
-                  type="text"
-                  placeholder="Filter officers by name, employee ID, or designation..."
-                  value={rpSearchQuery}
-                  onChange={(e) => setRpSearchQuery(e.target.value)}
-                  className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
-                />
-
-                {/* Officers Dropdown / Selection List */}
-                <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg bg-white divide-y divide-slate-100">
-                  {filteredRpOfficers.length === 0 ? (
-                    <div className="p-2 text-center text-xs text-slate-400">No officers found matching search</div>
-                  ) : (
-                    filteredRpOfficers.slice(0, 50).map((officer) => {
-                      const isSelected = selectedRpEmpIds.includes(officer.employeeId);
-                      return (
-                        <div
-                          key={officer.employeeId}
-                          onClick={() => toggleRpSelection(officer.employeeId)}
-                          className={`flex items-center justify-between p-2 text-xs cursor-pointer transition-colors ${
-                            isSelected ? 'bg-emerald-50 text-emerald-900 font-semibold' : 'hover:bg-slate-50 text-slate-700'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 truncate">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => {}} // handled by div
-                              className="rounded text-emerald-600 focus:ring-emerald-500 pointer-events-none"
-                            />
-                            <span className="truncate">
-                              {officer.employeeId} - {officer.name}{' '}
-                              {officer.designation ? `(${officer.designation})` : ''}
-                            </span>
-                          </div>
-                          {isSelected && <span className="text-[10px] text-emerald-600 font-bold shrink-0">Selected</span>}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                  Max Participant Seats
-                </label>
-                <input
-                  type="number"
-                  min={5}
-                  max={200}
-                  value={newMaxParticipants}
-                  onChange={(e) => setNewMaxParticipants(parseInt(e.target.value, 10))}
-                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                />
-              </div>
-
-              {/* External Resource Persons */}
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
-                    External Resource Persons (Guest Faculty / Outside Experts)
-                  </label>
-                  <span className="text-[10px] text-slate-400">No Employee ID required</span>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="e.g. Dr. A. Sen (Visiting Faculty)..."
-                    value={newExternalRpInput}
-                    onChange={(e) => setNewExternalRpInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddExternalRp();
-                      }
-                    }}
-                    className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddExternalRp}
-                    className="px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-900 font-semibold rounded-lg text-xs cursor-pointer"
-                  >
-                    + Add
-                  </button>
-                </div>
-                {newExternalRpList.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {newExternalRpList.map((rp, idx) => (
-                      <span
-                        key={idx}
-                        className="inline-flex items-center gap-1 text-[11px] font-medium bg-amber-50 text-amber-900 px-2 py-0.5 rounded-md border border-amber-200"
-                      >
-                        <span>{rp} (External)</span>
+                    {/* CNE Type: Central vs Departmental */}
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        CNE Category / Type *
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
-                          onClick={() => handleRemoveExternalRp(idx)}
-                          className="hover:text-rose-600 cursor-pointer"
+                          disabled={!isAdmin}
+                          onClick={() => setNewCneType('CENTRAL')}
+                          className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                            newCneType === 'CENTRAL'
+                              ? 'bg-blue-50 border-blue-400 text-blue-900 font-bold'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-50'
+                          }`}
                         >
-                          <X className="w-3 h-3" />
+                          <div className="text-xs">Central CNE</div>
+                          <div className="text-[10px] text-slate-500 font-normal">Hospital-wide clinical seminar</div>
                         </button>
-                      </span>
-                    ))}
+
+                        <button
+                          type="button"
+                          onClick={() => setNewCneType('DEPARTMENTAL')}
+                          className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                            newCneType === 'DEPARTMENTAL'
+                              ? 'bg-teal-50 border-teal-400 text-teal-900 font-bold'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          <div className="text-xs">Departmental CNE</div>
+                          <div className="text-[10px] text-slate-500 font-normal">Ward / Specialty training</div>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Topic / Skills Training Subject *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Pediatric Advanced Life Support & Defibrillator Handling"
+                        value={newTopic}
+                        onChange={(e) => setNewTopic(e.target.value)}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Clinical Ward / Area *
+                      </label>
+                      <select
+                        required
+                        value={newArea}
+                        onChange={(e) => setNewArea(e.target.value)}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                      >
+                        <option value="">Select Area...</option>
+                        {areasList.map((a) => (
+                          <option key={a} value={a}>{a}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Description / Prerequisites
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={newDescription}
+                        onChange={(e) => setNewDescription(e.target.value)}
+                        placeholder="Outline syllabus, target audience, or lab preparations..."
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                      />
+                    </div>
                   </div>
-                )}
+
+                  {/* Column 2: Date, Time & Logistics */}
+                  <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-900 border-b border-indigo-100 pb-2 flex items-center gap-1.5">
+                      <span>2. Date, Time & Capacity</span>
+                    </h4>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                          From Date *
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          min={todayStr}
+                          value={newDate}
+                          onChange={(e) => setNewDate(e.target.value)}
+                          className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                          To Date (Optional)
+                        </label>
+                        <input
+                          type="date"
+                          min={newDate || todayStr}
+                          value={newToDate}
+                          onChange={(e) => setNewToDate(e.target.value)}
+                          className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                          Time / Hours
+                        </label>
+                        <input
+                          type="text"
+                          value={newTime}
+                          onChange={(e) => setNewTime(e.target.value)}
+                          placeholder="14:00 - 15:30"
+                          className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                          Duration
+                        </label>
+                        <input
+                          type="text"
+                          value={newDuration}
+                          onChange={(e) => setNewDuration(e.target.value)}
+                          placeholder="1:30:00"
+                          className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Max Participant Seats
+                      </label>
+                      <input
+                        type="number"
+                        min={5}
+                        max={200}
+                        value={newMaxParticipants}
+                        onChange={(e) => setNewMaxParticipants(parseInt(e.target.value, 10))}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Column 3: Resource Persons Multi-Select */}
+                  <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200 flex flex-col">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-teal-900 border-b border-teal-100 pb-2 flex items-center justify-between">
+                      <span>3. Resource Persons</span>
+                      <span className="text-[10px] text-slate-500 font-semibold lowercase">
+                        {selectedRpEmpIds.length} selected
+                      </span>
+                    </h4>
+
+                    {/* Internal Resource Persons Multi-Select */}
+                    <div className="space-y-2 flex-1 flex flex-col">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                          Internal Faculty (AIIMS Staff)
+                        </label>
+                      </div>
+
+                      {/* Selected RP Tags */}
+                      {selectedRpEmpIds.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto p-1 bg-white rounded-lg border border-slate-200">
+                          {selectedRpEmpIds.map((empId) => {
+                            const officer = officersList.find((o) => o.employeeId === empId);
+                            return (
+                              <span
+                                key={empId}
+                                className="inline-flex items-center gap-1 text-[11px] font-medium bg-emerald-50 text-emerald-900 px-2 py-0.5 rounded-md border border-emerald-200"
+                              >
+                                <span>{empId} - {officer ? officer.name : ''}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleRpSelection(empId)}
+                                  className="hover:text-rose-600 cursor-pointer"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Search input for officers */}
+                      <input
+                        type="text"
+                        placeholder="Filter officers by name or ID..."
+                        value={rpSearchQuery}
+                        onChange={(e) => setRpSearchQuery(e.target.value)}
+                        className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                      />
+
+                      {/* Officers Dropdown / Selection List */}
+                      <div className="max-h-28 overflow-y-auto border border-slate-200 rounded-lg bg-white divide-y divide-slate-100 flex-1">
+                        {filteredRpOfficers.length === 0 ? (
+                          <div className="p-2 text-center text-xs text-slate-400">No officers found</div>
+                        ) : (
+                          filteredRpOfficers.slice(0, 50).map((officer) => {
+                            const isSelected = selectedRpEmpIds.includes(officer.employeeId);
+                            return (
+                              <div
+                                key={officer.employeeId}
+                                onClick={() => toggleRpSelection(officer.employeeId)}
+                                className={`flex items-center justify-between p-1.5 text-xs cursor-pointer transition-colors ${
+                                  isSelected ? 'bg-emerald-50 text-emerald-900 font-semibold' : 'hover:bg-slate-50 text-slate-700'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 truncate">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => {}}
+                                    className="rounded text-emerald-600 pointer-events-none"
+                                  />
+                                  <span className="truncate">
+                                    {officer.employeeId} - {officer.name}
+                                  </span>
+                                </div>
+                                {isSelected && <span className="text-[10px] text-emerald-600 font-bold shrink-0">Selected</span>}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+
+                    {/* External Resource Persons */}
+                    <div className="pt-2 border-t border-slate-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                          External Resource Persons (Guest Faculty)
+                        </label>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="e.g. Dr. A. Sen (Visiting Faculty)..."
+                          value={newExternalRpInput}
+                          onChange={(e) => setNewExternalRpInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddExternalRp();
+                            }
+                          }}
+                          className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddExternalRp}
+                          className="px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-900 font-semibold rounded-lg text-xs cursor-pointer"
+                        >
+                          + Add
+                        </button>
+                      </div>
+                      {newExternalRpList.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {newExternalRpList.map((rp, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center gap-1 text-[11px] font-medium bg-amber-50 text-amber-900 px-2 py-0.5 rounded-md border border-amber-200"
+                            >
+                              <span>{rp} (External)</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveExternalRp(idx)}
+                                className="hover:text-rose-600 cursor-pointer"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                  Description / Prerequisites
-                </label>
-                <textarea
-                  rows={2}
-                  value={newDescription}
-                  onChange={(e) => setNewDescription(e.target.value)}
-                  placeholder="Outline syllabus, target audience, or lab preparations..."
-                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
+              {/* Sticky Footer */}
+              <div className="px-6 py-3.5 border-t border-slate-200 flex items-center justify-end gap-2 bg-slate-50/70 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsAddClassOpen(false)}
                   disabled={isSubmitting}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium disabled:opacity-40"
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl font-medium text-xs disabled:opacity-40 cursor-pointer transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
+                  className="flex items-center gap-1.5 px-5 py-2 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 disabled:opacity-50 cursor-pointer transition-colors shadow-xs"
                 >
                   {isSubmitting ? (
                     <>
@@ -971,146 +998,213 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
       )}
 
       {/* Part 2 Modals */}
-      {/* Modal: CNE Details & Actions */}
+      {/* Modal: CNE Details & Actions (Wide Horizontal Layout) */}
       {selectedDetailCne && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-xl border border-slate-200 relative animate-in fade-in zoom-in-95 duration-150">
-            <button
-              onClick={() => setSelectedDetailCne(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 cursor-pointer transition-colors rounded-lg hover:bg-slate-100"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            {/* Header badges */}
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              <span className="font-mono text-xs font-bold bg-slate-100 text-slate-800 border border-slate-200 px-2.5 py-1 rounded-md inline-flex items-center gap-1.5">
-                <Lock className="w-3 h-3 text-slate-500" />
-                <span>{selectedDetailCne.classId}</span>
-              </span>
-
-              <span
-                className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${
-                  (selectedDetailCne.cneType || 'CENTRAL').toUpperCase() === 'CENTRAL'
-                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                    : 'bg-teal-50 text-teal-700 border border-teal-200'
-                }`}
-              >
-                {(selectedDetailCne.cneType || 'CENTRAL').toUpperCase()} CNE
-              </span>
-
-              {selectedDetailCne.status === 'Completed' ? (
-                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                  ✓ Completed
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
+          <div className="bg-white rounded-2xl w-[92vw] max-w-[1440px] max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 relative overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/70">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span className="font-mono text-xs font-bold bg-slate-100 text-slate-800 border border-slate-200 px-2.5 py-1 rounded-md inline-flex items-center gap-1.5 shadow-2xs">
+                  <Lock className="w-3 h-3 text-slate-500" />
+                  <span>{selectedDetailCne.classId}</span>
                 </span>
-              ) : selectedDetailCne.status === 'Canceled' ? (
-                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-800 border border-rose-200">
-                  Canceled
+
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${
+                    (selectedDetailCne.cneType || 'CENTRAL').toUpperCase() === 'CENTRAL'
+                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                      : 'bg-teal-50 text-teal-700 border border-teal-200'
+                  }`}
+                >
+                  {(selectedDetailCne.cneType || 'CENTRAL').toUpperCase()} CNE
                 </span>
-              ) : (
-                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                  Scheduled
-                </span>
-              )}
 
-              {selectedDetailCne.isLocked && (
-                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 inline-flex items-center gap-1">
-                  <Lock className="w-3 h-3" /> Questions Locked
-                </span>
-              )}
-            </div>
-
-            {/* Topic Title */}
-            <h3 className="text-xl font-bold text-slate-900 leading-snug mb-2">
-              {selectedDetailCne.topic}
-            </h3>
-
-            {/* Description */}
-            {selectedDetailCne.description && (
-              <p className="text-xs text-slate-600 mb-4 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
-                {selectedDetailCne.description}
-              </p>
-            )}
-
-            {/* Details Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-slate-50/60 p-4 rounded-xl border border-slate-200/80 mb-5">
-              <div className="space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Area / Department</span>
-                <div className="font-semibold text-slate-800 flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-teal-600" />
-                  <span>{selectedDetailCne.area}</span>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date Schedule</span>
-                <div className="font-semibold text-slate-800 flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>{formatCneDateRangeDisplay(selectedDetailCne.date, selectedDetailCne.toDate)}</span>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Timing & Duration</span>
-                <div className="font-semibold text-slate-800 flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-slate-400" />
-                  <span>{selectedDetailCne.time} ({selectedDetailCne.duration || '1:30:00'})</span>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Teaching Mode</span>
-                <div className="font-semibold text-slate-800 flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-slate-400" />
-                  <span>{selectedDetailCne.modeOfTeaching || 'Lecture Cum Discussion'}</span>
-                </div>
-              </div>
-
-              <div className="space-y-1 sm:col-span-2">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Resource Persons</span>
-                <div className="font-medium text-slate-800 flex items-start gap-1.5">
-                  <User className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
-                  <span className="leading-relaxed">
-                    {formatResourcePersonsDisplay({
-                      resourcePersonEmpId: selectedDetailCne.resourcePersonEmpId,
-                      resourcePersonName: selectedDetailCne.resourcePersonName,
-                      externalResourcePersons: selectedDetailCne.externalResourcePersons,
-                      officers: officersList
-                    })}
+                {selectedDetailCne.status === 'Completed' ? (
+                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    ✓ Completed
                   </span>
+                ) : selectedDetailCne.status === 'Canceled' ? (
+                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-800 border border-rose-200">
+                    Canceled
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                    Scheduled
+                  </span>
+                )}
+
+                {selectedDetailCne.isLocked && (
+                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 inline-flex items-center gap-1">
+                    <Lock className="w-3 h-3" /> Questions Locked
+                  </span>
+                )}
+              </div>
+
+              <button
+                onClick={() => setSelectedDetailCne(null)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 cursor-pointer transition-colors rounded-lg hover:bg-slate-100"
+                title="Close popup"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Scrollable Content Body */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
+              {/* Row 1: Key Metadata Highlights Bar */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">CNE ID</span>
+                  <div className="font-mono font-bold text-slate-900 text-sm mt-0.5 flex items-center gap-1">
+                    <Lock className="w-3.5 h-3.5 text-slate-400" />
+                    <span>{selectedDetailCne.classId}</span>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Category / Type</span>
+                  <div className="font-bold text-slate-800 text-xs mt-1">
+                    {(selectedDetailCne.cneType || 'CENTRAL').toUpperCase()} CNE
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Status</span>
+                  <div className="font-bold text-slate-800 text-xs mt-1">
+                    {selectedDetailCne.status || 'Scheduled'}
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Date Schedule</span>
+                  <div className="font-bold text-slate-800 text-xs mt-1 flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>{formatCneDateRangeDisplay(selectedDetailCne.date, selectedDetailCne.toDate)}</span>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Time & Duration</span>
+                  <div className="font-bold text-slate-800 text-xs mt-1 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-slate-500" />
+                    <span>{selectedDetailCne.time} ({selectedDetailCne.duration || '1:30:00'})</span>
+                  </div>
                 </div>
               </div>
 
-              {selectedDetailCne.maxParticipants && (
-                <div className="space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Max Capacity</span>
-                  <div className="font-semibold text-slate-800 flex items-center gap-1.5">
-                    <Users className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{selectedDetailCne.maxParticipants} Attendees</span>
-                  </div>
-                </div>
-              )}
+              {/* Row 2: Comprehensive 3-Column Content Panels */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {/* Column 1: Topic & Scope */}
+                <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-3">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-200 pb-1.5">
+                    Topic & Clinical Scope
+                  </span>
 
-              {selectedDetailCne.proposedByName && (
-                <div className="space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Proposed By</span>
-                  <div className="font-semibold text-slate-800">
-                    {selectedDetailCne.proposedByName}
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 leading-snug">
+                      {selectedDetailCne.topic}
+                    </h3>
                   </div>
-                </div>
-              )}
 
-              {selectedDetailCne.adminRemarks && (
-                <div className="space-y-1 sm:col-span-2">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Remarks / Notes</span>
-                  <div className="text-slate-700 italic">
-                    {selectedDetailCne.adminRemarks}
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-white text-teal-800 border border-teal-200 flex items-center gap-1">
+                      <MapPin className="w-3 h-3 text-teal-600" />
+                      <span>{selectedDetailCne.area}</span>
+                    </span>
+
+                    <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-white text-slate-700 border border-slate-200 flex items-center gap-1">
+                      <FileText className="w-3 h-3 text-slate-500" />
+                      <span>{selectedDetailCne.modeOfTeaching || 'Lecture Cum Discussion'}</span>
+                    </span>
+                  </div>
+
+                  {selectedDetailCne.description ? (
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Curriculum & Description</span>
+                      <p className="text-xs text-slate-600 leading-relaxed bg-white p-3 rounded-lg border border-slate-200">
+                        {selectedDetailCne.description}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 italic">No syllabus notes provided.</p>
+                  )}
+                </div>
+
+                {/* Column 2: Resource Persons & Faculty */}
+                <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-3">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-200 pb-1.5">
+                    Resource Persons & Faculty
+                  </span>
+
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Faculty / Speakers</span>
+                    <div className="bg-white p-3 rounded-lg border border-slate-200 text-slate-800 leading-relaxed flex items-start gap-2">
+                      <User className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+                      <div>
+                        {formatResourcePersonsDisplay({
+                          resourcePersonEmpId: selectedDetailCne.resourcePersonEmpId,
+                          resourcePersonName: selectedDetailCne.resourcePersonName,
+                          externalResourcePersons: selectedDetailCne.externalResourcePersons,
+                          officers: officersList
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Capacity</span>
+                      <div className="font-semibold text-slate-800 flex items-center gap-1 mt-0.5">
+                        <Users className="w-3.5 h-3.5 text-slate-500" />
+                        <span>{selectedDetailCne.maxParticipants || 40} Seats</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Proposed By</span>
+                      <div className="font-semibold text-slate-800 truncate mt-0.5" title={selectedDetailCne.proposedByName || 'Coordinator'}>
+                        {selectedDetailCne.proposedByName || 'Coordinator'}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              )}
+
+                {/* Column 3: Administration & Remarks */}
+                <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-3">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-200 pb-1.5">
+                    Administration & Observations
+                  </span>
+
+                  {selectedDetailCne.adminRemarks ? (
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Admin Remarks</span>
+                      <div className="bg-white p-3 rounded-lg border border-slate-200 text-slate-700 italic">
+                        {selectedDetailCne.adminRemarks}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 italic">No administrative remarks logged.</p>
+                  )}
+
+                  <div className="bg-white p-3 rounded-lg border border-slate-200 space-y-1.5">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Portal Readiness</span>
+                    <div className="flex flex-col gap-1 text-[11px] text-slate-600">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        <span>QR Attendance token generated</span>
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span className={`w-2 h-2 rounded-full ${selectedDetailCne.isLocked ? 'bg-rose-500' : 'bg-amber-500'}`} />
+                        <span>{selectedDetailCne.isLocked ? 'Question bank locked' : 'Question bank active'}</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {/* Actions Bar inside details popup */}
+            {/* Sticky Actions Bar at bottom */}
             {(() => {
               const isAuthorized = isCneAuthorized(user, selectedDetailCne.area, selectedDetailCne.cneType);
               const isCompleted = selectedDetailCne.status === 'Completed';
@@ -1118,7 +1212,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
               const canEdit = isAuthorized && !isCompleted && !isCanceled;
 
               return (
-                <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center gap-2">
+                <div className="px-6 py-3.5 border-t border-slate-200 flex flex-wrap items-center gap-2 bg-slate-50/70 shrink-0">
                   {/* Post Test */}
                   {!isCanceled && (
                     <button
@@ -1143,7 +1237,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                       setSelectedDetailCne(null);
                       setActiveQRCne(target);
                     }}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold cursor-pointer transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-2xs"
                     title="Display or print Post-Test QR code"
                   >
                     <QrCode className="w-4 h-4" />
@@ -1158,7 +1252,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                       setSelectedDetailCne(null);
                       setActiveReferenceCne(target);
                     }}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold cursor-pointer transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-2xs"
                     title="View or edit reference notes and syllabus"
                   >
                     <BookOpen className="w-4 h-4 text-teal-600" />
@@ -1174,7 +1268,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                         setSelectedDetailCne(null);
                         handleOpenEditModal(target);
                       }}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-xl text-xs font-bold cursor-pointer transition-colors"
+                      className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-2xs"
                       title="Edit CNE workshop details"
                     >
                       <Edit3 className="w-4 h-4 text-amber-700" />
@@ -1191,7 +1285,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                         setSelectedDetailCne(null);
                         setActiveQuestionsCne(target);
                       }}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold cursor-pointer transition-colors"
+                      className="flex items-center gap-1.5 px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-2xs"
                       title="Generate AI questions or edit question bank"
                     >
                       <Sparkles className="w-4 h-4 text-purple-600" />
@@ -1208,7 +1302,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                         setSelectedDetailCne(null);
                         setActiveParticipantsCne(target);
                       }}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-xl text-xs font-bold cursor-pointer transition-colors"
+                      className="flex items-center gap-1.5 px-3 py-2 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-2xs"
                       title="View attendee list, post-test scores, and record attendance"
                     >
                       <Users className="w-4 h-4 text-teal-600" />
@@ -1225,13 +1319,21 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                         setSelectedDetailCne(null);
                         setActiveFinalizeCne(target);
                       }}
-                      className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors ml-auto shadow-xs"
+                      className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs"
                       title="Complete and archive CNE into institutional master"
                     >
                       <CheckCircle className="w-4 h-4 text-emerald-200" />
                       <span>Finalize</span>
                     </button>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDetailCne(null)}
+                    className="ml-auto px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl text-xs font-bold cursor-pointer transition-colors"
+                  >
+                    Close
+                  </button>
                 </div>
               );
             })()}
@@ -1239,331 +1341,346 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
         </div>
       )}
 
-      {/* Modal: Edit CNE */}
+      {/* Modal: Edit CNE (Wide Horizontal Layout) */}
       {editingCne && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200 relative">
-            <button
-              onClick={() => setEditingCne(null)}
-              disabled={isEditSubmitting}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 disabled:opacity-40 cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
-                <Edit3 className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900">
-                  Edit CNE
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Update workshop details. CNE ID is permanently immutable.
-                </p>
-              </div>
-            </div>
-
-            {/* Permanent Immutable CNE ID Banner - Never editable */}
-            <div className="bg-slate-100 border border-slate-200 rounded-xl p-3 flex items-center justify-between mb-4">
-              <div>
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                  CNE ID (Permanently Immutable)
-                </span>
-                <span className="font-mono text-xs font-bold text-slate-900">
-                  {editingCne.classId}
-                </span>
-              </div>
-              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-white border border-slate-200 px-2 py-0.5 rounded-md">
-                <Lock className="w-3 h-3 text-slate-500" />
-                Immutable
-              </span>
-            </div>
-
-            <form onSubmit={handleUpdateClassSubmit} className="space-y-3.5 text-xs">
-              {/* CNE Type: Central vs Departmental */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                  CNE Category / Type *
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    disabled={!isAdmin}
-                    onClick={() => setEditCneType('CENTRAL')}
-                    className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
-                      editCneType === 'CENTRAL'
-                        ? 'bg-blue-50 border-blue-400 text-blue-900 font-bold'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-50'
-                    }`}
-                  >
-                    <div className="text-xs">Central CNE</div>
-                    <div className="text-[10px] text-slate-500 font-normal">Hospital-wide clinical seminar</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setEditCneType('DEPARTMENTAL')}
-                    className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
-                      editCneType === 'DEPARTMENTAL'
-                        ? 'bg-teal-50 border-teal-400 text-teal-900 font-bold'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    <div className="text-xs">Departmental CNE</div>
-                    <div className="text-[10px] text-slate-500 font-normal">Ward / ICU / Unit-specific</div>
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                  Topic Title *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editTopic}
-                  onChange={(e) => setEditTopic(e.target.value)}
-                  placeholder="e.g., Advanced Ventilator Nursing Protocols"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                  Target Area / Department *
-                </label>
-                <select
-                  required
-                  value={editArea}
-                  onChange={(e) => setEditArea(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white"
-                >
-                  <option value="">Select Area / Unit</option>
-                  {areasList.map((a) => (
-                    <option key={a} value={a}>
-                      {a}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    From Date *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={editDate}
-                    onChange={(e) => setEditDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  />
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
+          <div className="bg-white rounded-2xl w-[92vw] max-w-[1440px] max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 relative overflow-hidden">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/70">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                  <Edit3 className="w-5 h-5" />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    To Date (Optional)
-                  </label>
-                  <input
-                    type="date"
-                    value={editToDate}
-                    min={editDate}
-                    onChange={(e) => setEditToDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Time
-                  </label>
-                  <input
-                    type="text"
-                    value={editTime}
-                    onChange={(e) => setEditTime(e.target.value)}
-                    placeholder="14:00 - 15:30"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Duration
-                  </label>
-                  <input
-                    type="text"
-                    value={editDuration}
-                    onChange={(e) => setEditDuration(e.target.value)}
-                    placeholder="1:30:00"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Resource Persons Selection */}
-              <div className="border border-slate-200 rounded-xl p-3 bg-slate-50 space-y-2.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                  Resource Persons *
-                </label>
-
-                {officersList.length > 0 && (
-                  <div>
-                    <span className="text-[11px] font-semibold text-slate-600 block mb-1">
-                      Internal Staff (Select one or more):
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-slate-900">
+                      Edit CNE Workshop
+                    </h3>
+                    <span className="font-mono text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+                      <Lock className="w-3 h-3 text-amber-700" />
+                      <span>ID: {editingCne.classId} (Immutable)</span>
                     </span>
-                    <input
-                      type="text"
-                      placeholder="Search officer by name, ID, designation..."
-                      value={editRpSearchQuery}
-                      onChange={(e) => setEditRpSearchQuery(e.target.value)}
-                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white mb-2"
-                    />
-                    <div className="max-h-32 overflow-y-auto space-y-1 bg-white border border-slate-200 rounded-lg p-2">
-                      {filteredEditRpOfficers.slice(0, 30).map((o) => {
-                        const isSelected = editSelectedRpEmpIds.includes(o.employeeId);
-                        return (
-                          <div
-                            key={o.employeeId}
-                            onClick={() => toggleEditRpSelection(o.employeeId)}
-                            className={`flex items-center justify-between p-1.5 rounded cursor-pointer text-xs ${
-                              isSelected ? 'bg-amber-50 text-amber-900 font-semibold' : 'hover:bg-slate-50'
-                            }`}
-                          >
-                            <span>
-                              {o.name} ({o.employeeId})
-                            </span>
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              readOnly
-                              className="rounded text-amber-600 pointer-events-none"
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
                   </div>
-                )}
+                  <p className="text-xs text-slate-500">
+                    Update workshop curriculum and resource persons. The CNE ID is permanently immutable.
+                  </p>
+                </div>
+              </div>
 
-                <div>
-                  <span className="text-[11px] font-semibold text-slate-600 block mb-1">
-                    External Resource Persons (Optional):
-                  </span>
-                  <div className="flex gap-1.5">
-                    <input
-                      type="text"
-                      placeholder="Enter external faculty name"
-                      value={editExternalRpInput}
-                      onChange={(e) => setEditExternalRpInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleAddEditExternalRp();
-                        }
-                      }}
-                      className="flex-1 px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddEditExternalRp}
-                      className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer"
-                    >
-                      Add
-                    </button>
-                  </div>
-                  {editExternalRpList.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1.5">
-                      {editExternalRpList.map((p, idx) => (
-                        <span
-                          key={idx}
-                          className="inline-flex items-center gap-1 text-[11px] bg-slate-200 text-slate-800 px-2 py-0.5 rounded-full"
+              <button
+                onClick={() => setEditingCne(null)}
+                disabled={isEditSubmitting}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 cursor-pointer transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateClassSubmit} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                  {/* Column 1: Classification & Topic */}
+                  <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-amber-900 border-b border-amber-100 pb-2 flex items-center gap-1.5">
+                      <span>1. Topic & Department</span>
+                    </h4>
+
+                    {/* CNE Type */}
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        CNE Category / Type *
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          disabled={!isAdmin}
+                          onClick={() => setEditCneType('CENTRAL')}
+                          className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                            editCneType === 'CENTRAL'
+                              ? 'bg-blue-50 border-blue-400 text-blue-900 font-bold'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-50'
+                          }`}
                         >
-                          {p} (Ext)
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveEditExternalRp(idx)}
-                            className="text-slate-500 hover:text-rose-600"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      ))}
+                          <div className="text-xs">Central CNE</div>
+                          <div className="text-[10px] text-slate-500 font-normal">Hospital-wide clinical seminar</div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setEditCneType('DEPARTMENTAL')}
+                          className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                            editCneType === 'DEPARTMENTAL'
+                              ? 'bg-teal-50 border-teal-400 text-teal-900 font-bold'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          <div className="text-xs">Departmental CNE</div>
+                          <div className="text-[10px] text-slate-500 font-normal">Ward / ICU / Unit-specific</div>
+                        </button>
+                      </div>
                     </div>
-                  )}
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Topic Title *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editTopic}
+                        onChange={(e) => setEditTopic(e.target.value)}
+                        placeholder="e.g., Advanced Ventilator Nursing Protocols"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Target Area / Department *
+                      </label>
+                      <select
+                        required
+                        value={editArea}
+                        onChange={(e) => setEditArea(e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs"
+                      >
+                        <option value="">Select Area / Unit</option>
+                        {areasList.map((a) => (
+                          <option key={a} value={a}>
+                            {a}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Session Description / Objectives
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        placeholder="Clinical objectives, scope, target audience..."
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Column 2: Date, Time & Logistics */}
+                  <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-900 border-b border-indigo-100 pb-2 flex items-center gap-1.5">
+                      <span>2. Scheduling & Logistics</span>
+                    </h4>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                          From Date *
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={editDate}
+                          onChange={(e) => setEditDate(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                          To Date (Optional)
+                        </label>
+                        <input
+                          type="date"
+                          value={editToDate}
+                          min={editDate}
+                          onChange={(e) => setEditToDate(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                          Time
+                        </label>
+                        <input
+                          type="text"
+                          value={editTime}
+                          onChange={(e) => setEditTime(e.target.value)}
+                          placeholder="14:00 - 15:30"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                          Duration
+                        </label>
+                        <input
+                          type="text"
+                          value={editDuration}
+                          onChange={(e) => setEditDuration(e.target.value)}
+                          placeholder="1:30:00"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Mode of Teaching
+                      </label>
+                      <input
+                        type="text"
+                        value={editMode}
+                        onChange={(e) => setEditMode(e.target.value)}
+                        placeholder="Lecture Cum Discussion"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                          Max Capacity
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={500}
+                          value={editMaxParticipants}
+                          onChange={(e) => setEditMaxParticipants(Number(e.target.value))}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                          Admin Remarks
+                        </label>
+                        <input
+                          type="text"
+                          value={editAdminRemarks}
+                          onChange={(e) => setEditAdminRemarks(e.target.value)}
+                          placeholder="Internal notes..."
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Column 3: Resource Persons Selection */}
+                  <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200 flex flex-col">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-teal-900 border-b border-teal-100 pb-2 flex items-center justify-between">
+                      <span>3. Resource Persons</span>
+                      <span className="text-[10px] text-slate-500 font-semibold lowercase">
+                        {editSelectedRpEmpIds.length} internal selected
+                      </span>
+                    </h4>
+
+                    {officersList.length > 0 && (
+                      <div className="space-y-2 flex-1 flex flex-col">
+                        <span className="text-[11px] font-semibold text-slate-600 block">
+                          Internal Staff (AIIMS Faculty):
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="Search officer by name or ID..."
+                          value={editRpSearchQuery}
+                          onChange={(e) => setEditRpSearchQuery(e.target.value)}
+                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                        />
+                        <div className="max-h-28 overflow-y-auto space-y-1 bg-white border border-slate-200 rounded-lg p-2 flex-1">
+                          {filteredEditRpOfficers.slice(0, 40).map((o) => {
+                            const isSelected = editSelectedRpEmpIds.includes(o.employeeId);
+                            return (
+                              <div
+                                key={o.employeeId}
+                                onClick={() => toggleEditRpSelection(o.employeeId)}
+                                className={`flex items-center justify-between p-1.5 rounded cursor-pointer text-xs ${
+                                  isSelected ? 'bg-amber-50 text-amber-900 font-semibold' : 'hover:bg-slate-50 text-slate-700'
+                                }`}
+                              >
+                                <span className="truncate">
+                                  {o.name} ({o.employeeId})
+                                </span>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  readOnly
+                                  className="rounded text-amber-600 pointer-events-none"
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="pt-2 border-t border-slate-200 space-y-2">
+                      <span className="text-[11px] font-semibold text-slate-600 block">
+                        External Resource Persons (Optional):
+                      </span>
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          placeholder="Enter external faculty name"
+                          value={editExternalRpInput}
+                          onChange={(e) => setEditExternalRpInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddEditExternalRp();
+                            }
+                          }}
+                          className="flex-1 px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddEditExternalRp}
+                          className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer"
+                        >
+                          Add
+                        </button>
+                      </div>
+                      {editExternalRpList.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {editExternalRpList.map((p, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center gap-1 text-[11px] bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-md"
+                            >
+                              {p} (Ext)
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveEditExternalRp(idx)}
+                                className="text-slate-500 hover:text-rose-600 cursor-pointer"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                  Mode of Teaching
-                </label>
-                <input
-                  type="text"
-                  value={editMode}
-                  onChange={(e) => setEditMode(e.target.value)}
-                  placeholder="Lecture Cum Discussion"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                  Session Description / Objectives
-                </label>
-                <textarea
-                  rows={2}
-                  value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
-                  placeholder="Clinical objectives, scope, target audience..."
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Max Capacity
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={500}
-                    value={editMaxParticipants}
-                    onChange={(e) => setEditMaxParticipants(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Admin Remarks
-                  </label>
-                  <input
-                    type="text"
-                    value={editAdminRemarks}
-                    onChange={(e) => setEditAdminRemarks(e.target.value)}
-                    placeholder="Internal reference notes..."
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              {/* Sticky Footer */}
+              <div className="px-6 py-3.5 border-t border-slate-200 flex items-center justify-end gap-2 bg-slate-50/70 shrink-0">
                 <button
                   type="button"
                   onClick={() => setEditingCne(null)}
                   disabled={isEditSubmitting}
-                  className="px-4 py-2 text-slate-600 hover:text-slate-800 text-xs font-bold cursor-pointer"
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl text-xs font-bold cursor-pointer transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isEditSubmitting}
-                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors shadow-xs"
+                  className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors shadow-xs"
                 >
                   {isEditSubmitting ? (
                     <>

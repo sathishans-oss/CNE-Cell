@@ -134,24 +134,27 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 relative overflow-hidden">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
+      <div className="bg-white rounded-2xl w-[92vw] max-w-[1440px] max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 relative overflow-hidden">
         {/* Header */}
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
+        <div className="px-6 py-3.5 border-b border-slate-200 flex items-center justify-between shrink-0 bg-slate-50/70">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-teal-100 text-teal-800 flex items-center justify-center shrink-0">
               <Users className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-200">
-                  Attendance & Evaluation Roster
+                  Attendance &amp; Evaluation Roster
                 </span>
-                <span className="text-[10px] font-semibold text-slate-500">
+                <span className="text-[11px] font-semibold text-slate-600">
                   {cne.area}
                 </span>
+                <span className="text-[11px] font-mono text-slate-400">
+                  ({cne.classId})
+                </span>
               </div>
-              <h3 className="text-base font-bold text-slate-900 mt-0.5 truncate max-w-xl">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 mt-0.5 truncate max-w-2xl">
                 {cne.topic}
               </h3>
             </div>
@@ -159,33 +162,33 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
 
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 cursor-pointer"
+            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200/60 cursor-pointer transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Stats Summary Bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 bg-slate-50 border-b border-slate-200 text-xs shrink-0">
-          <div className="bg-white p-3 rounded-xl border border-slate-200">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 px-6 py-3 bg-slate-50 border-b border-slate-200 text-xs shrink-0">
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
             <span className="text-[11px] text-slate-500 font-medium">Total Attendees</span>
             <p className="text-lg font-bold text-slate-900 mt-0.5">
               {summary?.totalParticipants || 0}
             </p>
           </div>
-          <div className="bg-white p-3 rounded-xl border border-slate-200">
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
             <span className="text-[11px] text-slate-500 font-medium">Post-Test Evaluated</span>
             <p className="text-lg font-bold text-indigo-700 mt-0.5">
               {summary?.postTestCount || 0}
             </p>
           </div>
-          <div className="bg-white p-3 rounded-xl border border-slate-200">
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
             <span className="text-[11px] text-slate-500 font-medium">Manual Attendance</span>
             <p className="text-lg font-bold text-teal-700 mt-0.5">
               {summary?.manualCount || 0}
             </p>
           </div>
-          <div className="bg-white p-3 rounded-xl border border-slate-200">
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
             <span className="text-[11px] text-slate-500 font-medium">Average Score</span>
             <p className="text-lg font-bold text-emerald-700 mt-0.5">
               {summary && summary.averageScore ? `${summary.averageScore}%` : '—'}
@@ -194,15 +197,15 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
         </div>
 
         {/* Action & Filter Bar */}
-        <div className="p-3.5 border-b border-slate-100 flex items-center justify-between gap-3 shrink-0">
-          <div className="relative flex-1 max-w-xs">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+        <div className="px-6 py-3 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0 bg-white">
+          <div className="relative flex-1 min-w-[240px] max-w-md">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder="Search by Employee ID, name, or ward..."
+              placeholder="Search by Employee ID, staff name, or department..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+              className="w-full pl-8.5 pr-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:bg-white focus:ring-1 focus:ring-teal-500"
             />
           </div>
 
@@ -210,7 +213,7 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
             <button
               type="button"
               onClick={() => setIsAddingManual(!isAddingManual)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer transition-colors"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>{isAddingManual ? 'Close Form' : '+ Add In-Person Attendee'}</span>
@@ -222,14 +225,14 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
         {isAddingManual && isAuthorized && (
           <form
             onSubmit={handleAddManualAttendee}
-            className="p-4 bg-teal-50/70 border-b border-teal-100 text-xs space-y-3 shrink-0"
+            className="px-6 py-3.5 bg-teal-50/60 border-b border-teal-100 text-xs space-y-3 shrink-0"
           >
             <div className="font-bold text-teal-950 flex items-center gap-1.5">
               <UserCheck className="w-4 h-4 text-teal-700" />
               <span>Record In-Person / Offline Participant</span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
                   Employee ID:
@@ -239,7 +242,7 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
                   placeholder="e.g. EMP1024"
                   value={selectedEmpId}
                   onChange={(e) => handleOfficerSelect(e.target.value)}
-                  className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
                 />
               </div>
 
@@ -253,7 +256,7 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
                   placeholder="Full Name"
                   value={empName}
                   onChange={(e) => setEmpName(e.target.value)}
-                  className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
                 />
               </div>
 
@@ -266,7 +269,7 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
                   placeholder="e.g. Staff Nurse / Sr. MO"
                   value={empDesignation}
                   onChange={(e) => setEmpDesignation(e.target.value)}
-                  className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
                 />
               </div>
 
@@ -279,7 +282,7 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
                   placeholder="e.g. ICU / OT"
                   value={empDepartment}
                   onChange={(e) => setEmpDepartment(e.target.value)}
-                  className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
                 />
               </div>
             </div>
@@ -289,14 +292,14 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
                 type="button"
                 onClick={() => setIsAddingManual(false)}
                 disabled={isSubmitting}
-                className="px-3 py-1.5 text-slate-600 hover:bg-slate-200 rounded-lg text-xs font-semibold"
+                className="px-3 py-1.5 text-slate-600 hover:bg-slate-200 rounded-lg text-xs font-semibold cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="flex items-center gap-1.5 px-4 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-lg font-bold text-xs shadow-xs disabled:opacity-50 cursor-pointer"
+                className="flex items-center gap-1.5 px-4 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-lg font-bold text-xs shadow-xs disabled:opacity-50 cursor-pointer transition-colors"
               >
                 {isSubmitting ? (
                   <>
@@ -315,22 +318,22 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
         )}
 
         {/* Table Content */}
-        <div className="p-4 overflow-y-auto flex-1">
+        <div className="p-6 overflow-y-auto flex-1 bg-slate-50/40">
           {loading ? (
-            <div className="py-16 flex flex-col items-center justify-center gap-2 text-slate-500 text-xs">
+            <div className="py-20 flex flex-col items-center justify-center gap-2 text-slate-500 text-xs">
               <Loader2 className="w-6 h-6 animate-spin text-teal-600" />
               <span>Loading attendance roster...</span>
             </div>
           ) : filteredParticipants.length === 0 ? (
-            <div className="py-12 text-center p-8 bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-2">
+            <div className="py-16 text-center p-8 bg-white rounded-2xl border border-dashed border-slate-300 space-y-2 max-w-md mx-auto my-8">
               <Users className="w-8 h-8 text-slate-300 mx-auto" />
               <h4 className="text-xs font-bold text-slate-800">No Participant Records Yet</h4>
-              <p className="text-[11px] text-slate-500">
-                Staff can take the post-test via the QR code or link, or coordinators can manually log in-person attendees.
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Staff can complete the post-test via the QR code or link, or coordinators can manually log in-person attendees above.
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+            <div className="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
@@ -410,15 +413,15 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+        <div className="px-6 py-3.5 border-t border-slate-200 bg-white flex items-center justify-between shrink-0">
           <span className="text-xs text-slate-500">
             Showing {filteredParticipants.length} attendee records
           </span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <button
               type="button"
               onClick={handleDownloadPdf}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-xl font-bold text-xs cursor-pointer shadow-xs transition-colors"
+              className="flex items-center gap-1.5 px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-xl font-bold text-xs cursor-pointer shadow-xs transition-colors"
             >
               <FileDown className="w-4 h-4" />
               <span>Download Session Report (PDF)</span>
@@ -426,7 +429,7 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs cursor-pointer shadow-xs"
+              className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs cursor-pointer shadow-xs transition-colors"
             >
               Done
             </button>

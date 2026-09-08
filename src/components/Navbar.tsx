@@ -22,7 +22,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   return (
     <header id="cne-navbar" className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-xs">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Brand / Institutional Title */}
           <div className="flex items-center gap-3">

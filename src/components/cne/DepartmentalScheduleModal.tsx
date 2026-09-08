@@ -181,8 +181,8 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white w-full max-w-5xl rounded-2xl shadow-xl border border-slate-200 overflow-hidden my-8 flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+      <div className="bg-white w-[92vw] max-w-[1440px] rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh]">
         {/* Header */}
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
           <div>
@@ -210,244 +210,252 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
 
         {/* Scrollable Form Body */}
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
-          <div className="p-6 overflow-y-auto space-y-6 flex-1 bg-slate-50">
+          <div className="p-6 overflow-y-auto space-y-4 flex-1 bg-slate-50">
             {rows.map((row, idx) => (
               <div
                 key={row.id}
-                className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4"
+                className="bg-white p-4.5 rounded-xl border border-slate-200 shadow-xs space-y-3"
               >
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                   <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-700 text-xs font-bold flex items-center justify-center">
+                    <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold flex items-center justify-center">
                       {idx + 1}
                     </span>
                     <span className="text-xs font-bold text-slate-800">
-                      Departmental CNE Row #{idx + 1}
+                      Departmental CNE Schedule Item #{idx + 1}
                     </span>
                   </div>
                   {rows.length > 1 && (
                     <button
                       type="button"
                       onClick={() => handleRemoveRow(idx)}
-                      className="text-rose-600 hover:text-rose-800 text-xs flex items-center gap-1 font-medium cursor-pointer"
+                      className="text-rose-600 hover:text-rose-800 text-xs flex items-center gap-1 font-semibold cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      <span>Remove Row</span>
+                      <span>Remove Item</span>
                     </button>
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* Topic */}
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      CNE Topic <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Neonatal Resuscitation & Emergency Protocols"
-                      value={row.topic}
-                      onChange={(e) => handleFieldChange(idx, 'topic', e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg shadow-xs focus:ring-1 focus:ring-emerald-500"
-                    />
-                  </div>
-
-                  {/* Ward / Area */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Department / Ward <span className="text-rose-500">*</span>
-                    </label>
-                    {isAreaIncharge && user?.assignedArea ? (
+                {/* Horizontal Grid of Fields */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                  {/* Column 1: Topic & Ward */}
+                  <div className="space-y-2.5">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        CNE Topic <span className="text-rose-500">*</span>
+                      </label>
                       <input
                         type="text"
-                        disabled
-                        value={user.assignedArea}
-                        className="w-full px-3 py-2 text-xs bg-slate-100 text-slate-700 border border-slate-300 rounded-lg cursor-not-allowed font-medium"
-                      />
-                    ) : (
-                      <select
                         required
-                        value={row.area}
-                        onChange={(e) => handleFieldChange(idx, 'area', e.target.value)}
-                        className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
-                      >
-                        <option value="">Select Department</option>
-                        {areasList.map((a) => (
-                          <option key={a} value={a}>
-                            {a}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-
-                  {/* Scheduled Date */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      From Date <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      value={row.date}
-                      onChange={(e) => handleFieldChange(idx, 'date', e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
-                    />
-                  </div>
-
-                  {/* To Date (Optional) */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      To Date (Optional)
-                    </label>
-                    <input
-                      type="date"
-                      value={row.toDate || ''}
-                      onChange={(e) => handleFieldChange(idx, 'toDate', e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
-                    />
-                  </div>
-
-                  {/* Duration */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Duration
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="1:30:00"
-                      value={row.duration}
-                      onChange={(e) => handleFieldChange(idx, 'duration', e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
-                    />
-                  </div>
-
-                  {/* Time */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Session Time
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="14:00 - 15:30"
-                      value={row.time}
-                      onChange={(e) => handleFieldChange(idx, 'time', e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
-                    />
-                  </div>
-
-                  {/* Mode of Teaching */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Teaching Mode
-                    </label>
-                    <select
-                      value={row.modeOfTeaching}
-                      onChange={(e) => handleFieldChange(idx, 'modeOfTeaching', e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
-                    >
-                      <option value="Lecture Cum Discussion">Lecture Cum Discussion</option>
-                      <option value="Demonstration">Demonstration</option>
-                      <option value="Hands-on Training">Hands-on Training</option>
-                      <option value="Workshop">Workshop</option>
-                      <option value="Case Study Presentation">Case Study Presentation</option>
-                      <option value="Simulation">Simulation</option>
-                    </select>
-                  </div>
-
-                  {/* Max Participants */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Max Participants
-                    </label>
-                    <input
-                      type="number"
-                      min={5}
-                      max={200}
-                      value={row.maxParticipants}
-                      onChange={(e) => handleFieldChange(idx, 'maxParticipants', e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
-                    />
-                  </div>
-
-                  {/* Resource Person (Internal) */}
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      Internal Resource Person (Employee ID)
-                    </label>
-                    {officersList.length > 0 ? (
-                      <select
-                        value={row.resourcePersonEmpId}
-                        onChange={(e) => handleFieldChange(idx, 'resourcePersonEmpId', e.target.value)}
-                        className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
-                      >
-                        <option value="">Select Internal Officer</option>
-                        {officersList.map((off) => (
-                          <option key={off.employeeId} value={off.employeeId}>
-                            {off.name} ({off.employeeId}) - {off.designation}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="text"
-                        placeholder="Enter Employee ID (e.g. 100045)"
-                        value={row.resourcePersonEmpId}
-                        onChange={(e) => handleFieldChange(idx, 'resourcePersonEmpId', e.target.value)}
-                        className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
+                        placeholder="e.g. Neonatal Resuscitation Protocols"
+                        value={row.topic}
+                        onChange={(e) => handleFieldChange(idx, 'topic', e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs focus:ring-1 focus:ring-emerald-500"
                       />
-                    )}
-                  </div>
-
-                  {/* External Resource Persons */}
-                  <div className="md:col-span-1">
-                    <label className="block text-xs font-bold text-slate-700 mb-1">
-                      External Resource Person (Name)
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="Add external guest"
-                        value={extRpInputMap[row.id] || ''}
-                        onChange={(e) =>
-                          setExtRpInputMap((prev) => ({ ...prev, [row.id]: e.target.value }))
-                        }
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleAddExternalRp(row.id, idx);
-                          }
-                        }}
-                        className="flex-1 px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleAddExternalRp(row.id, idx)}
-                        className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
-                      >
-                        Add
-                      </button>
                     </div>
-                    {row.externalResourcePersons && row.externalResourcePersons.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-2">
-                        {row.externalResourcePersons.map((name, rpIdx) => (
-                          <span
-                            key={rpIdx}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded text-[11px] font-medium"
-                          >
-                            <span>{name}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveExternalRp(idx, rpIdx)}
-                              className="text-emerald-500 hover:text-emerald-800"
-                            >
-                              &times;
-                            </button>
-                          </span>
-                        ))}
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Department / Ward <span className="text-rose-500">*</span>
+                      </label>
+                      {isAreaIncharge && user?.assignedArea ? (
+                        <input
+                          type="text"
+                          disabled
+                          value={user.assignedArea}
+                          className="w-full px-2.5 py-1.5 text-xs bg-slate-100 text-slate-700 border border-slate-300 rounded-lg cursor-not-allowed font-medium"
+                        />
+                      ) : (
+                        <select
+                          required
+                          value={row.area}
+                          onChange={(e) => handleFieldChange(idx, 'area', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
+                        >
+                          <option value="">Select Department</option>
+                          {areasList.map((a) => (
+                            <option key={a} value={a}>
+                              {a}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Column 2: Dates & Duration */}
+                  <div className="space-y-2.5">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          From Date <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="date"
+                          required
+                          value={row.date}
+                          onChange={(e) => handleFieldChange(idx, 'date', e.target.value)}
+                          className="w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
+                        />
                       </div>
-                    )}
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          To Date
+                        </label>
+                        <input
+                          type="date"
+                          value={row.toDate || ''}
+                          min={row.date}
+                          onChange={(e) => handleFieldChange(idx, 'toDate', e.target.value)}
+                          className="w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          Session Time
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="14:00 - 15:30"
+                          value={row.time}
+                          onChange={(e) => handleFieldChange(idx, 'time', e.target.value)}
+                          className="w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          Duration
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="1:30:00"
+                          value={row.duration}
+                          onChange={(e) => handleFieldChange(idx, 'duration', e.target.value)}
+                          className="w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Column 3: Mode & Capacity */}
+                  <div className="space-y-2.5">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Teaching Mode
+                      </label>
+                      <select
+                        value={row.modeOfTeaching}
+                        onChange={(e) => handleFieldChange(idx, 'modeOfTeaching', e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
+                      >
+                        <option value="Lecture Cum Discussion">Lecture Cum Discussion</option>
+                        <option value="Demonstration">Demonstration</option>
+                        <option value="Hands-on Training">Hands-on Training</option>
+                        <option value="Workshop">Workshop</option>
+                        <option value="Case Study Presentation">Case Study Presentation</option>
+                        <option value="Simulation">Simulation</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Max Participant Capacity
+                      </label>
+                      <input
+                        type="number"
+                        min={5}
+                        max={200}
+                        value={row.maxParticipants}
+                        onChange={(e) => handleFieldChange(idx, 'maxParticipants', e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Column 4: Faculty & Resource Persons */}
+                  <div className="space-y-2.5">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        Internal Resource Person
+                      </label>
+                      {officersList.length > 0 ? (
+                        <select
+                          value={row.resourcePersonEmpId}
+                          onChange={(e) => handleFieldChange(idx, 'resourcePersonEmpId', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
+                        >
+                          <option value="">Select Internal Officer</option>
+                          {officersList.map((off) => (
+                            <option key={off.employeeId} value={off.employeeId}>
+                              {off.name} ({off.employeeId})
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          placeholder="Enter Employee ID"
+                          value={row.resourcePersonEmpId}
+                          onChange={(e) => handleFieldChange(idx, 'resourcePersonEmpId', e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
+                        />
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        External Resource Person
+                      </label>
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          placeholder="Add guest speaker"
+                          value={extRpInputMap[row.id] || ''}
+                          onChange={(e) =>
+                            setExtRpInputMap((prev) => ({ ...prev, [row.id]: e.target.value }))
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddExternalRp(row.id, idx);
+                            }
+                          }}
+                          className="flex-1 px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleAddExternalRp(row.id, idx)}
+                          className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
+                        >
+                          Add
+                        </button>
+                      </div>
+                      {row.externalResourcePersons && row.externalResourcePersons.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {row.externalResourcePersons.map((name, rpIdx) => (
+                            <span
+                              key={rpIdx}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded text-[10px] font-medium"
+                            >
+                              <span>{name}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveExternalRp(idx, rpIdx)}
+                                className="text-emerald-500 hover:text-emerald-800"
+                              >
+                                &times;
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -468,16 +476,16 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
           </div>
 
           {/* Footer Bar */}
-          <div className="px-6 py-4 bg-white border-t border-slate-200 flex items-center justify-between shrink-0">
+          <div className="px-6 py-3.5 bg-white border-t border-slate-200 flex items-center justify-between shrink-0">
             <span className="text-xs text-slate-500 font-medium">
               {rows.length} departmental schedule row{rows.length > 1 ? 's' : ''} ready to submit
             </span>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
               <button
                 type="button"
                 onClick={onClose}
                 disabled={isSubmitting}
-                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-bold transition-colors cursor-pointer"
               >
                 Cancel
               </button>

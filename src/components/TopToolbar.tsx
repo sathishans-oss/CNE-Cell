@@ -52,7 +52,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 
   return (
     <div id="cne-top-toolbar" className="bg-slate-900 border-b border-slate-800 shadow-md sticky top-16 z-20">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+      <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between overflow-x-auto no-scrollbar py-1.5 gap-2 sm:gap-4">
           {/* Staff Primary Section */}
           <nav className="flex items-center gap-1 sm:gap-1.5 shrink-0" aria-label="Staff Navigation">
