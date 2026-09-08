@@ -2387,7 +2387,7 @@ function handleAddDepartmentalSchedule(params, session) {
     return { success: false, errorCode: 'UNAUTHORIZED', message: 'Authentication required. Please sign in.' };
   }
 
-  var rawClasses = params.classes;
+  var rawClasses = params.schedules;
   if (!rawClasses || !Array.isArray(rawClasses) || rawClasses.length === 0) {
     return { success: false, message: 'At least one departmental CNE schedule row is required.' };
   }
@@ -2555,6 +2555,21 @@ function handleUpdateUpcomingClass(params, session) {
 
   var classId = (params.classId || '').trim();
   if (!classId) return { success: false, message: 'Class ID is required.' };
+
+  // Strict CNE ID immutability: Backend must reject any attempt to modify an existing CNE ID
+  if (
+    params.newClassId ||
+    params.newCneId ||
+    params.updatedClassId ||
+    (params.id && String(params.id).trim().toLowerCase() !== classId.toLowerCase()) ||
+    (params.cneId && String(params.cneId).trim().toLowerCase() !== classId.toLowerCase())
+  ) {
+    return {
+      success: false,
+      errorCode: 'IMMUTABLE_CNE_ID',
+      message: 'CNE ID is permanently immutable and cannot be modified.'
+    };
+  }
   
   var record = getCNEClassRecord(classId);
   if (!record) return { success: false, message: 'Class not found.' };

@@ -16,7 +16,9 @@ import {
   Lock,
   CheckCircle,
   AlertTriangle,
-  FileText
+  FileText,
+  Eye,
+  Edit3
 } from 'lucide-react';
 import { SessionUser, UpcomingClass } from '../types';
 import { ApiService } from '../services/api';
@@ -66,12 +68,32 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Part 2 Active Modals
+  const [selectedDetailCne, setSelectedDetailCne] = useState<UpcomingClass | null>(null);
   const [activeReferenceCne, setActiveReferenceCne] = useState<UpcomingClass | null>(null);
   const [activeQuestionsCne, setActiveQuestionsCne] = useState<UpcomingClass | null>(null);
   const [activeQRCne, setActiveQRCne] = useState<UpcomingClass | null>(null);
   const [activeParticipantsCne, setActiveParticipantsCne] = useState<UpcomingClass | null>(null);
   const [activeFinalizeCne, setActiveFinalizeCne] = useState<UpcomingClass | null>(null);
   const [activePostTest, setActivePostTest] = useState<{ cneId?: string; qrToken?: string } | null>(null);
+
+  // Edit CNE Modal State
+  const [editingCne, setEditingCne] = useState<UpcomingClass | null>(null);
+  const [editCneType, setEditCneType] = useState<'CENTRAL' | 'DEPARTMENTAL'>('CENTRAL');
+  const [editTopic, setEditTopic] = useState('');
+  const [editArea, setEditArea] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editToDate, setEditToDate] = useState('');
+  const [editTime, setEditTime] = useState('14:00 - 15:30');
+  const [editDuration, setEditDuration] = useState('1:30:00');
+  const [editSelectedRpEmpIds, setEditSelectedRpEmpIds] = useState<string[]>([]);
+  const [editRpSearchQuery, setEditRpSearchQuery] = useState('');
+  const [editExternalRpList, setEditExternalRpList] = useState<string[]>([]);
+  const [editExternalRpInput, setEditExternalRpInput] = useState('');
+  const [editMode, setEditMode] = useState('Lecture Cum Discussion');
+  const [editDescription, setEditDescription] = useState('');
+  const [editMaxParticipants, setEditMaxParticipants] = useState(40);
+  const [editAdminRemarks, setEditAdminRemarks] = useState('');
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
 
   const { success, error } = useToast();
   const isAdmin = user?.role === 'ADMIN';
@@ -217,6 +239,141 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
     }
   };
 
+  const handleOpenEditModal = (cls: UpcomingClass) => {
+    setEditingCne(cls);
+    setEditTopic(cls.topic || '');
+    setEditArea(cls.area || '');
+    setEditCneType(((cls.cneType || 'CENTRAL').toUpperCase() as 'CENTRAL' | 'DEPARTMENTAL'));
+    setEditDate(cls.date || '');
+    setEditToDate(cls.toDate || cls.date || '');
+    setEditTime(cls.time || '14:00 - 15:30');
+    setEditDuration(cls.duration || '1:30:00');
+
+    const parsedRpIds = (cls.resourcePersonEmpId || '')
+      .split(/[,;\n]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    setEditSelectedRpEmpIds(parsedRpIds);
+    setEditRpSearchQuery('');
+    setEditExternalRpList(cls.externalResourcePersons ? [...cls.externalResourcePersons] : []);
+    setEditExternalRpInput('');
+    setEditMode(cls.modeOfTeaching || 'Lecture Cum Discussion');
+    setEditDescription(cls.description || '');
+    setEditMaxParticipants(cls.maxParticipants || 40);
+    setEditAdminRemarks(cls.adminRemarks || '');
+  };
+
+  const handleAddEditExternalRp = () => {
+    const val = editExternalRpInput.trim();
+    if (!val) return;
+    if (!editExternalRpList.includes(val)) {
+      setEditExternalRpList((prev) => [...prev, val]);
+    }
+    setEditExternalRpInput('');
+  };
+
+  const handleRemoveEditExternalRp = (idx: number) => {
+    setEditExternalRpList((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const toggleEditRpSelection = (empId: string) => {
+    setEditSelectedRpEmpIds((prev) =>
+      prev.includes(empId) ? prev.filter((id) => id !== empId) : [...prev, empId]
+    );
+  };
+
+  const filteredEditRpOfficers = officersList.filter((o) => {
+    if (!editRpSearchQuery.trim()) return true;
+    const q = editRpSearchQuery.toLowerCase();
+    return (
+      o.name.toLowerCase().includes(q) ||
+      o.employeeId.toLowerCase().includes(q) ||
+      (o.designation || '').toLowerCase().includes(q)
+    );
+  });
+
+  const handleUpdateClassSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCne) return;
+
+    if (!editTopic.trim() || !editArea.trim() || !editDate.trim()) {
+      error('Please fill in all required fields (Topic, Area, Date).');
+      return;
+    }
+    if (editToDate && editToDate < editDate) {
+      error('To Date cannot be earlier than From Date.');
+      return;
+    }
+    if (editSelectedRpEmpIds.length === 0 && editExternalRpList.length === 0) {
+      error('Please select at least one Resource Person (Internal or External).');
+      return;
+    }
+
+    const rpNames = editSelectedRpEmpIds.map((id) => {
+      const off = officersList.find((o) => o.employeeId === id);
+      return off ? off.name : id;
+    });
+    if (editExternalRpList.length > 0) {
+      rpNames.push(...editExternalRpList.map((n) => `${n} (External)`));
+    }
+
+    setIsEditSubmitting(true);
+    try {
+      // NOTE: CNE ID is permanently immutable and cannot be changed or overwritten.
+      const res = await ApiService.updateUpcomingClass(editingCne.classId, {
+        topic: editTopic.trim(),
+        area: editArea,
+        cneType: editCneType,
+        date: editDate,
+        toDate: editToDate || editDate,
+        time: editTime,
+        duration: editDuration,
+        resourcePersonEmpId: editSelectedRpEmpIds.join(', '),
+        resourcePersonEmpIds: editSelectedRpEmpIds,
+        resourcePersonName: rpNames.join(', '),
+        externalResourcePersons: editExternalRpList,
+        modeOfTeaching: editMode,
+        description: editDescription.trim(),
+        maxParticipants: editMaxParticipants,
+        adminRemarks: editAdminRemarks.trim()
+      } as any);
+
+      if (res.success) {
+        success('Upcoming CNE workshop updated successfully.', 'CNE Updated');
+        const updatedRecord: UpcomingClass = {
+          ...editingCne,
+          topic: editTopic.trim(),
+          area: editArea,
+          cneType: editCneType,
+          date: editDate,
+          toDate: editToDate || editDate,
+          time: editTime,
+          duration: editDuration,
+          resourcePersonEmpId: editSelectedRpEmpIds.join(', '),
+          resourcePersonName: rpNames.join(', '),
+          externalResourcePersons: editExternalRpList,
+          modeOfTeaching: editMode,
+          description: editDescription.trim(),
+          maxParticipants: editMaxParticipants,
+          adminRemarks: editAdminRemarks.trim()
+        };
+        setClasses((prev) =>
+          prev.map((c) => (c.classId === editingCne.classId ? updatedRecord : c))
+        );
+        if (selectedDetailCne?.classId === editingCne.classId) {
+          setSelectedDetailCne(updatedRecord);
+        }
+        setEditingCne(null);
+      } else {
+        error(res.message || 'Failed to update CNE workshop.');
+      }
+    } catch (err: any) {
+      error(err?.message || 'Error updating CNE.');
+    } finally {
+      setIsEditSubmitting(false);
+    }
+  };
+
   const getResourcePersonsDisplay = (cls: UpcomingClass) => {
     const internalNames = (cls.resourcePersonEmpId || '')
       .split(',')
@@ -240,6 +397,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
     const q = searchTerm.toLowerCase();
     const rpDisplay = getResourcePersonsDisplay(c).toLowerCase();
     return (
+      (c.classId || '').toLowerCase().includes(q) ||
       c.topic.toLowerCase().includes(q) ||
       c.area.toLowerCase().includes(q) ||
       (c.resourcePersonName || '').toLowerCase().includes(q) ||
@@ -359,190 +517,119 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
             <p className="text-xs text-slate-500">Check back soon for the upcoming CNE training schedule.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {availableClasses.map((cls) => {
-              const isAuthorized = isCneAuthorized(user, cls.area, cls.cneType);
-              const isCompleted = cls.status === 'Completed';
-              const isCanceled = cls.status === 'Canceled';
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="py-3.5 px-4 whitespace-nowrap">CNE ID</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Type of CNE</th>
+                    <th className="py-3.5 px-4 min-w-[200px]">Topic</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Area/Department</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Date</th>
+                    <th className="py-3.5 px-4 min-w-[180px]">Resource Persons</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Status</th>
+                    <th className="py-3.5 px-4 text-center whitespace-nowrap">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
+                  {availableClasses.map((cls) => {
+                    const isCompleted = cls.status === 'Completed';
+                    const isCanceled = cls.status === 'Canceled';
+                    const rpDisplay = formatResourcePersonsDisplay({
+                      resourcePersonEmpId: cls.resourcePersonEmpId,
+                      resourcePersonName: cls.resourcePersonName,
+                      externalResourcePersons: cls.externalResourcePersons,
+                      officers: officersList
+                    });
 
-              return (
-                <div
-                  key={cls.classId}
-                  className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 flex flex-col justify-between hover:shadow-md transition-all"
-                >
-                  <div>
-                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                          {cls.area}
-                        </span>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          cls.cneType === 'CENTRAL'
-                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                            : 'bg-teal-50 text-teal-700 border border-teal-200'
-                        }`}>
-                          {cls.cneType || 'CENTRAL'} CNE
-                        </span>
-                        {cls.isLocked && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
-                            <Lock className="w-2.5 h-2.5" />
-                            Questions Locked
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1.5">
-                        {isCompleted ? (
-                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                            ✓ Completed
-                          </span>
-                        ) : isCanceled ? (
-                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
-                            Canceled
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                            Scheduled
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <h3 className="text-base font-bold text-slate-900 leading-snug">
-                      {cls.topic}
-                    </h3>
-
-                    {cls.description && (
-                      <p className="text-xs text-slate-600 mt-2 line-clamp-2 leading-relaxed">
-                        {cls.description}
-                      </p>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-100 text-xs text-slate-600">
-                      <div className="flex items-center gap-1.5">
-                        <Calendar className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                        <span>
-                          {formatCneDateRangeDisplay(cls.date, cls.toDate)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span>{cls.time}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 col-span-2">
-                        <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="truncate" title={formatResourcePersonsDisplay({
-                          resourcePersonEmpId: cls.resourcePersonEmpId,
-                          resourcePersonName: cls.resourcePersonName,
-                          externalResourcePersons: cls.externalResourcePersons,
-                          officers: officersList
-                        })}>
-                          Instructor:{' '}
-                          {formatResourcePersonsDisplay({
-                            resourcePersonEmpId: cls.resourcePersonEmpId,
-                            resourcePersonName: cls.resourcePersonName,
-                            externalResourcePersons: cls.externalResourcePersons,
-                            officers: officersList
-                          })}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Actions Area */}
-                  <div className="mt-4 pt-3 border-t border-slate-100 space-y-2.5">
-                    <div className="flex items-center justify-between text-xs text-slate-500">
-                      <div className="flex items-center gap-1">
-                        <Users className="w-3.5 h-3.5 text-slate-400" />
-                        <span>Mode: {cls.modeOfTeaching || 'Lecture Cum Discussion'}</span>
-                      </div>
-                      {cls.area && (
-                        <div className="flex items-center gap-1 text-slate-400 text-[11px]">
-                          <MapPin className="w-3 h-3" />
-                          <span>{cls.area}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Action Buttons Toolbar */}
-                    <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5">
-                      {/* 1. Take Post-Test (Always accessible unless cancelled) */}
-                      {!isCanceled && (
-                        <button
-                          type="button"
-                          onClick={() => setActivePostTest({ cneId: cls.classId, qrToken: cls.qrToken })}
-                          className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer transition-colors"
-                        >
-                          <Award className="w-3.5 h-3.5" />
-                          <span>{isCompleted ? 'View Evaluation / Test' : 'Take Post-Test'}</span>
-                        </button>
-                      )}
-
-                      {/* 2. QR Code (Generate & View) */}
-                      <button
-                        type="button"
-                        onClick={() => setActiveQRCne(cls)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
-                        title="Display or print Post-Test QR code"
+                    return (
+                      <tr
+                        key={cls.classId}
+                        onClick={() => setSelectedDetailCne(cls)}
+                        className="hover:bg-slate-50/90 cursor-pointer transition-colors group"
                       >
-                        <QrCode className="w-3.5 h-3.5" />
-                        <span>QR Code</span>
-                      </button>
-
-                      {/* 3. Reference Material */}
-                      <button
-                        type="button"
-                        onClick={() => setActiveReferenceCne(cls)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
-                        title="View or edit reference notes and syllabus"
-                      >
-                        <BookOpen className="w-3.5 h-3.5 text-teal-600" />
-                        <span>Materials</span>
-                      </button>
-
-                      {/* 4. Question Bank (AI & Manual) - Authorized */}
-                      {isAuthorized && (
-                        <button
-                          type="button"
-                          onClick={() => setActiveQuestionsCne(cls)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
-                          title="Generate AI questions or edit question bank"
-                        >
-                          <Sparkles className="w-3.5 h-3.5 text-purple-600" />
-                          <span>Questions</span>
-                        </button>
-                      )}
-
-                      {/* 5. Participants Roster - Authorized */}
-                      {isAuthorized && (
-                        <button
-                          type="button"
-                          onClick={() => setActiveParticipantsCne(cls)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
-                          title="View attendee list, post-test scores, and record manual attendance"
-                        >
-                          <Users className="w-3.5 h-3.5 text-teal-600" />
-                          <span>Roster</span>
-                        </button>
-                      )}
-
-                      {/* 6. Finalize CNE - Authorized */}
-                      {isAuthorized && !isCompleted && !isCanceled && (
-                        <button
-                          type="button"
-                          onClick={() => setActiveFinalizeCne(cls)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold cursor-pointer transition-colors ml-auto"
-                          title="Complete and archive CNE into institutional master"
-                        >
-                          <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Finalize</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+                        <td className="py-3 px-4 font-mono font-bold text-slate-900 whitespace-nowrap">
+                          <span className="bg-slate-100 text-slate-800 px-2 py-1 rounded border border-slate-200 inline-block">
+                            {cls.classId}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1 ${
+                              (cls.cneType || 'CENTRAL').toUpperCase() === 'CENTRAL'
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : 'bg-teal-50 text-teal-700 border border-teal-200'
+                            }`}
+                          >
+                            {(cls.cneType || 'CENTRAL').toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="font-bold text-slate-900 line-clamp-2 max-w-xs md:max-w-sm" title={cls.topic}>
+                            {cls.topic}
+                          </div>
+                          {cls.isLocked && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-600 mt-0.5">
+                              <Lock className="w-2.5 h-2.5" /> Questions Locked
+                            </span>
+                          )}
+                          {cls.description && (
+                            <div className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
+                              {cls.description}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                            {cls.area}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <div className="font-semibold text-slate-800">
+                            {formatCneDateRangeDisplay(cls.date, cls.toDate)}
+                          </div>
+                          <div className="text-[11px] text-slate-500">{cls.time}</div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="line-clamp-2 max-w-[220px] text-slate-600 text-xs leading-relaxed" title={rpDisplay}>
+                            {rpDisplay}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          {isCompleted ? (
+                            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              Completed
+                            </span>
+                          ) : isCanceled ? (
+                            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+                              Canceled
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                              Scheduled
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-center whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedDetailCne(cls);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>View</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
@@ -884,6 +971,614 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
       )}
 
       {/* Part 2 Modals */}
+      {/* Modal: CNE Details & Actions */}
+      {selectedDetailCne && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-xl border border-slate-200 relative animate-in fade-in zoom-in-95 duration-150">
+            <button
+              onClick={() => setSelectedDetailCne(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 cursor-pointer transition-colors rounded-lg hover:bg-slate-100"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Header badges */}
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <span className="font-mono text-xs font-bold bg-slate-100 text-slate-800 border border-slate-200 px-2.5 py-1 rounded-md inline-flex items-center gap-1.5">
+                <Lock className="w-3 h-3 text-slate-500" />
+                <span>{selectedDetailCne.classId}</span>
+              </span>
+
+              <span
+                className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${
+                  (selectedDetailCne.cneType || 'CENTRAL').toUpperCase() === 'CENTRAL'
+                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                    : 'bg-teal-50 text-teal-700 border border-teal-200'
+                }`}
+              >
+                {(selectedDetailCne.cneType || 'CENTRAL').toUpperCase()} CNE
+              </span>
+
+              {selectedDetailCne.status === 'Completed' ? (
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                  ✓ Completed
+                </span>
+              ) : selectedDetailCne.status === 'Canceled' ? (
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-800 border border-rose-200">
+                  Canceled
+                </span>
+              ) : (
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                  Scheduled
+                </span>
+              )}
+
+              {selectedDetailCne.isLocked && (
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 inline-flex items-center gap-1">
+                  <Lock className="w-3 h-3" /> Questions Locked
+                </span>
+              )}
+            </div>
+
+            {/* Topic Title */}
+            <h3 className="text-xl font-bold text-slate-900 leading-snug mb-2">
+              {selectedDetailCne.topic}
+            </h3>
+
+            {/* Description */}
+            {selectedDetailCne.description && (
+              <p className="text-xs text-slate-600 mb-4 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
+                {selectedDetailCne.description}
+              </p>
+            )}
+
+            {/* Details Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-slate-50/60 p-4 rounded-xl border border-slate-200/80 mb-5">
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Area / Department</span>
+                <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-teal-600" />
+                  <span>{selectedDetailCne.area}</span>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date Schedule</span>
+                <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>{formatCneDateRangeDisplay(selectedDetailCne.date, selectedDetailCne.toDate)}</span>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Timing & Duration</span>
+                <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                  <span>{selectedDetailCne.time} ({selectedDetailCne.duration || '1:30:00'})</span>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Teaching Mode</span>
+                <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-slate-400" />
+                  <span>{selectedDetailCne.modeOfTeaching || 'Lecture Cum Discussion'}</span>
+                </div>
+              </div>
+
+              <div className="space-y-1 sm:col-span-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Resource Persons</span>
+                <div className="font-medium text-slate-800 flex items-start gap-1.5">
+                  <User className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                  <span className="leading-relaxed">
+                    {formatResourcePersonsDisplay({
+                      resourcePersonEmpId: selectedDetailCne.resourcePersonEmpId,
+                      resourcePersonName: selectedDetailCne.resourcePersonName,
+                      externalResourcePersons: selectedDetailCne.externalResourcePersons,
+                      officers: officersList
+                    })}
+                  </span>
+                </div>
+              </div>
+
+              {selectedDetailCne.maxParticipants && (
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Max Capacity</span>
+                  <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-slate-400" />
+                    <span>{selectedDetailCne.maxParticipants} Attendees</span>
+                  </div>
+                </div>
+              )}
+
+              {selectedDetailCne.proposedByName && (
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Proposed By</span>
+                  <div className="font-semibold text-slate-800">
+                    {selectedDetailCne.proposedByName}
+                  </div>
+                </div>
+              )}
+
+              {selectedDetailCne.adminRemarks && (
+                <div className="space-y-1 sm:col-span-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Remarks / Notes</span>
+                  <div className="text-slate-700 italic">
+                    {selectedDetailCne.adminRemarks}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Actions Bar inside details popup */}
+            {(() => {
+              const isAuthorized = isCneAuthorized(user, selectedDetailCne.area, selectedDetailCne.cneType);
+              const isCompleted = selectedDetailCne.status === 'Completed';
+              const isCanceled = selectedDetailCne.status === 'Canceled';
+              const canEdit = isAuthorized && !isCompleted && !isCanceled;
+
+              return (
+                <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center gap-2">
+                  {/* Post Test */}
+                  {!isCanceled && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = selectedDetailCne;
+                        setSelectedDetailCne(null);
+                        setActivePostTest({ cneId: target.classId, qrToken: target.qrToken });
+                      }}
+                      className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer transition-colors"
+                    >
+                      <Award className="w-4 h-4" />
+                      <span>{isCompleted ? 'View Evaluation / Test' : 'Take Post-Test'}</span>
+                    </button>
+                  )}
+
+                  {/* QR Code */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = selectedDetailCne;
+                      setSelectedDetailCne(null);
+                      setActiveQRCne(target);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold cursor-pointer transition-colors"
+                    title="Display or print Post-Test QR code"
+                  >
+                    <QrCode className="w-4 h-4" />
+                    <span>QR Code</span>
+                  </button>
+
+                  {/* Materials */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = selectedDetailCne;
+                      setSelectedDetailCne(null);
+                      setActiveReferenceCne(target);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold cursor-pointer transition-colors"
+                    title="View or edit reference notes and syllabus"
+                  >
+                    <BookOpen className="w-4 h-4 text-teal-600" />
+                    <span>Materials</span>
+                  </button>
+
+                  {/* Edit - only when existing permission/state rules allow it */}
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = selectedDetailCne;
+                        setSelectedDetailCne(null);
+                        handleOpenEditModal(target);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-xl text-xs font-bold cursor-pointer transition-colors"
+                      title="Edit CNE workshop details"
+                    >
+                      <Edit3 className="w-4 h-4 text-amber-700" />
+                      <span>Edit CNE</span>
+                    </button>
+                  )}
+
+                  {/* Questions */}
+                  {isAuthorized && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = selectedDetailCne;
+                        setSelectedDetailCne(null);
+                        setActiveQuestionsCne(target);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold cursor-pointer transition-colors"
+                      title="Generate AI questions or edit question bank"
+                    >
+                      <Sparkles className="w-4 h-4 text-purple-600" />
+                      <span>Questions</span>
+                    </button>
+                  )}
+
+                  {/* Roster */}
+                  {isAuthorized && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = selectedDetailCne;
+                        setSelectedDetailCne(null);
+                        setActiveParticipantsCne(target);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-xl text-xs font-bold cursor-pointer transition-colors"
+                      title="View attendee list, post-test scores, and record attendance"
+                    >
+                      <Users className="w-4 h-4 text-teal-600" />
+                      <span>Roster</span>
+                    </button>
+                  )}
+
+                  {/* Finalize */}
+                  {isAuthorized && !isCompleted && !isCanceled && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = selectedDetailCne;
+                        setSelectedDetailCne(null);
+                        setActiveFinalizeCne(target);
+                      }}
+                      className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors ml-auto shadow-xs"
+                      title="Complete and archive CNE into institutional master"
+                    >
+                      <CheckCircle className="w-4 h-4 text-emerald-200" />
+                      <span>Finalize</span>
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit CNE */}
+      {editingCne && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200 relative">
+            <button
+              onClick={() => setEditingCne(null)}
+              disabled={isEditSubmitting}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 disabled:opacity-40 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+                <Edit3 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Edit CNE
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Update workshop details. CNE ID is permanently immutable.
+                </p>
+              </div>
+            </div>
+
+            {/* Permanent Immutable CNE ID Banner - Never editable */}
+            <div className="bg-slate-100 border border-slate-200 rounded-xl p-3 flex items-center justify-between mb-4">
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                  CNE ID (Permanently Immutable)
+                </span>
+                <span className="font-mono text-xs font-bold text-slate-900">
+                  {editingCne.classId}
+                </span>
+              </div>
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-white border border-slate-200 px-2 py-0.5 rounded-md">
+                <Lock className="w-3 h-3 text-slate-500" />
+                Immutable
+              </span>
+            </div>
+
+            <form onSubmit={handleUpdateClassSubmit} className="space-y-3.5 text-xs">
+              {/* CNE Type: Central vs Departmental */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  CNE Category / Type *
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={!isAdmin}
+                    onClick={() => setEditCneType('CENTRAL')}
+                    className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                      editCneType === 'CENTRAL'
+                        ? 'bg-blue-50 border-blue-400 text-blue-900 font-bold'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-50'
+                    }`}
+                  >
+                    <div className="text-xs">Central CNE</div>
+                    <div className="text-[10px] text-slate-500 font-normal">Hospital-wide clinical seminar</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setEditCneType('DEPARTMENTAL')}
+                    className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                      editCneType === 'DEPARTMENTAL'
+                        ? 'bg-teal-50 border-teal-400 text-teal-900 font-bold'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="text-xs">Departmental CNE</div>
+                    <div className="text-[10px] text-slate-500 font-normal">Ward / ICU / Unit-specific</div>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Topic Title *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editTopic}
+                  onChange={(e) => setEditTopic(e.target.value)}
+                  placeholder="e.g., Advanced Ventilator Nursing Protocols"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Target Area / Department *
+                </label>
+                <select
+                  required
+                  value={editArea}
+                  onChange={(e) => setEditArea(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white"
+                >
+                  <option value="">Select Area / Unit</option>
+                  {areasList.map((a) => (
+                    <option key={a} value={a}>
+                      {a}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    From Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    To Date (Optional)
+                  </label>
+                  <input
+                    type="date"
+                    value={editToDate}
+                    min={editDate}
+                    onChange={(e) => setEditToDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Time
+                  </label>
+                  <input
+                    type="text"
+                    value={editTime}
+                    onChange={(e) => setEditTime(e.target.value)}
+                    placeholder="14:00 - 15:30"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Duration
+                  </label>
+                  <input
+                    type="text"
+                    value={editDuration}
+                    onChange={(e) => setEditDuration(e.target.value)}
+                    placeholder="1:30:00"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Resource Persons Selection */}
+              <div className="border border-slate-200 rounded-xl p-3 bg-slate-50 space-y-2.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                  Resource Persons *
+                </label>
+
+                {officersList.length > 0 && (
+                  <div>
+                    <span className="text-[11px] font-semibold text-slate-600 block mb-1">
+                      Internal Staff (Select one or more):
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="Search officer by name, ID, designation..."
+                      value={editRpSearchQuery}
+                      onChange={(e) => setEditRpSearchQuery(e.target.value)}
+                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white mb-2"
+                    />
+                    <div className="max-h-32 overflow-y-auto space-y-1 bg-white border border-slate-200 rounded-lg p-2">
+                      {filteredEditRpOfficers.slice(0, 30).map((o) => {
+                        const isSelected = editSelectedRpEmpIds.includes(o.employeeId);
+                        return (
+                          <div
+                            key={o.employeeId}
+                            onClick={() => toggleEditRpSelection(o.employeeId)}
+                            className={`flex items-center justify-between p-1.5 rounded cursor-pointer text-xs ${
+                              isSelected ? 'bg-amber-50 text-amber-900 font-semibold' : 'hover:bg-slate-50'
+                            }`}
+                          >
+                            <span>
+                              {o.name} ({o.employeeId})
+                            </span>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              readOnly
+                              className="rounded text-amber-600 pointer-events-none"
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <span className="text-[11px] font-semibold text-slate-600 block mb-1">
+                    External Resource Persons (Optional):
+                  </span>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      placeholder="Enter external faculty name"
+                      value={editExternalRpInput}
+                      onChange={(e) => setEditExternalRpInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddEditExternalRp();
+                        }
+                      }}
+                      className="flex-1 px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddEditExternalRp}
+                      className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-semibold cursor-pointer"
+                    >
+                      Add
+                    </button>
+                  </div>
+                  {editExternalRpList.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {editExternalRpList.map((p, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-1 text-[11px] bg-slate-200 text-slate-800 px-2 py-0.5 rounded-full"
+                        >
+                          {p} (Ext)
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveEditExternalRp(idx)}
+                            className="text-slate-500 hover:text-rose-600"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Mode of Teaching
+                </label>
+                <input
+                  type="text"
+                  value={editMode}
+                  onChange={(e) => setEditMode(e.target.value)}
+                  placeholder="Lecture Cum Discussion"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Session Description / Objectives
+                </label>
+                <textarea
+                  rows={2}
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="Clinical objectives, scope, target audience..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Max Capacity
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={500}
+                    value={editMaxParticipants}
+                    onChange={(e) => setEditMaxParticipants(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                    Admin Remarks
+                  </label>
+                  <input
+                    type="text"
+                    value={editAdminRemarks}
+                    onChange={(e) => setEditAdminRemarks(e.target.value)}
+                    placeholder="Internal reference notes..."
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setEditingCne(null)}
+                  disabled={isEditSubmitting}
+                  className="px-4 py-2 text-slate-600 hover:text-slate-800 text-xs font-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isEditSubmitting}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors shadow-xs"
+                >
+                  {isEditSubmitting ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving Changes...</span>
+                    </>
+                  ) : (
+                    <span>Save Changes</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       {activeReferenceCne && (
         <CNEReferenceModal
           cne={activeReferenceCne}
