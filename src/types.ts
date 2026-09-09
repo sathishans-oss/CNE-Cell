@@ -78,6 +78,7 @@ export interface RoleMapping {
   designation: string;
   role: UserRole;
   area?: string;
+  assignedAreas?: string[];
   updatedAt?: string;
 }
 
@@ -256,6 +257,7 @@ export interface SessionUser {
   email?: string;
   role: UserRole;
   assignedArea?: string;
+  assignedAreas?: string[];
   token: string;
   isFirstLogin?: boolean;
   mustChangePassword?: boolean;
@@ -266,6 +268,13 @@ export interface ApiResponse<T = any> {
   data?: T;
   message?: string;
   errorCode?: string;
+}
+
+export interface SheetAuditItem {
+  tab: string;
+  status: string;
+  rowCount?: number;
+  error?: string;
 }
 
 export interface CNEReportStats {

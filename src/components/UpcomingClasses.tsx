@@ -23,7 +23,7 @@ import {
 import { SessionUser, UpcomingClass } from '../types';
 import { ApiService } from '../services/api';
 import { useToast } from './Toast';
-import { formatCneDateRangeDisplay, formatResourcePersonsDisplay, isCneAuthorized } from '../utils';
+import { formatCneDateRangeDisplay, formatResourcePersonsDisplay, isCneAuthorized, getUserAssignedAreas } from '../utils';
 import { CNEReferenceModal } from './cne/CNEReferenceModal';
 import { CNEQuestionsModal } from './cne/CNEQuestionsModal';
 import { CNEQRModal } from './cne/CNEQRModal';
@@ -44,7 +44,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   const [classes, setClasses] = useState<UpcomingClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'ALL' | 'CENTRAL' | 'DEPARTMENTAL'>('ALL');
+  const [typeFilter, setTypeFilter] = useState<'ALL' | 'CENTRAL' | 'DEPARTMENTAL' | 'MY_WARDS'>('ALL');
 
   // Schedule Class Modal State
   const [isAddClassOpen, setIsAddClassOpen] = useState(false);
@@ -388,8 +388,18 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
     return all.length > 0 ? all.join(', ') : cls.resourcePersonName || 'TBD';
   };
 
+  const userAssignedAreas = getUserAssignedAreas(user);
+  const myWardsClassesCount = classes.filter((c) =>
+    (c.cneType || '').toUpperCase() === 'DEPARTMENTAL' &&
+    userAssignedAreas.some((a) => a.toLowerCase() === (c.area || '').trim().toLowerCase())
+  ).length;
+
   const filteredClasses = classes.filter((c) => {
-    if (typeFilter !== 'ALL') {
+    if (typeFilter === 'MY_WARDS') {
+      const cType = (c.cneType || '').toUpperCase();
+      if (cType !== 'DEPARTMENTAL') return false;
+      if (!userAssignedAreas.some((a) => a.toLowerCase() === (c.area || '').trim().toLowerCase())) return false;
+    } else if (typeFilter !== 'ALL') {
       const cType = (c.cneType || 'CENTRAL').toUpperCase();
       if (cType !== typeFilter) return false;
     }
@@ -502,6 +512,20 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
             >
               Departmental ({deptCount})
             </button>
+            {isAreaIncharge && userAssignedAreas.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setTypeFilter('MY_WARDS')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  typeFilter === 'MY_WARDS'
+                    ? 'bg-emerald-700 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="View CNEs for your assigned wards"
+              >
+                My Assigned Areas ({myWardsClassesCount})
+              </button>
+            )}
           </div>
         </div>
 
@@ -584,6 +608,11 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                           <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
                             {cls.area}
                           </span>
+                          {isAreaIncharge && isCneAuthorized(user, cls.area, cls.cneType) && (
+                            <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
+                              Your Ward
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 px-4 whitespace-nowrap">
                           <div className="font-semibold text-slate-800">
@@ -1445,7 +1474,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs"
                       >
                         <option value="">Select Area / Unit</option>
-                        {areasList.map((a) => (
+                        {(isAdmin ? areasList : (userAssignedAreas.length > 0 ? userAssignedAreas : areasList)).map((a) => (
                           <option key={a} value={a}>
                             {a}
                           </option>

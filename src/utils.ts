@@ -209,9 +209,41 @@ export function formatStaffParticipantsDisplay(params: {
 }
 
 /**
+ * Retrieves all unique assigned clinical areas/wards for a user (Area Incharge).
+ * Supports both array `assignedAreas` and comma/semicolon/newline-delimited `assignedArea`.
+ */
+export function getUserAssignedAreas(user?: SessionUser | null): string[] {
+  if (!user) return [];
+  const list: string[] = [];
+
+  if (user.assignedAreas && Array.isArray(user.assignedAreas)) {
+    for (const a of user.assignedAreas) {
+      if (typeof a === 'string' && a.trim()) {
+        const trimmed = a.trim();
+        if (!list.some((existing) => existing.toLowerCase() === trimmed.toLowerCase())) {
+          list.push(trimmed);
+        }
+      }
+    }
+  }
+
+  if (user.assignedArea && typeof user.assignedArea === 'string') {
+    const parts = user.assignedArea.split(/[,;\n]+/);
+    for (const p of parts) {
+      const trimmed = p.trim();
+      if (trimmed && !list.some((existing) => existing.toLowerCase() === trimmed.toLowerCase())) {
+        list.push(trimmed);
+      }
+    }
+  }
+
+  return list;
+}
+
+/**
  * Checks if a user is authorized to manage a CNE session (Reference material, Questions, QR, Attendance, Finalization).
  * Admin = full control over Central and Departmental CNEs.
- * Area Incharge = Departmental CNE only within their assigned area.
+ * Area Incharge = Departmental CNE only within their assigned area(s)/ward(s). Supports multiple assigned areas.
  * Normal users = no administrative control.
  */
 export function isCneAuthorized(
@@ -224,8 +256,10 @@ export function isCneAuthorized(
   if (user.role === 'AREA_INCHARGE') {
     const type = (cneType || '').trim().toUpperCase();
     if (type !== 'DEPARTMENTAL') return false;
-    if (!user.assignedArea || !cneArea) return false;
-    return user.assignedArea.trim().toLowerCase() === cneArea.trim().toLowerCase();
+    if (!cneArea) return false;
+    const targetArea = cneArea.trim().toLowerCase();
+    const assigned = getUserAssignedAreas(user);
+    return assigned.some((a) => a.toLowerCase() === targetArea);
   }
   return false;
 }

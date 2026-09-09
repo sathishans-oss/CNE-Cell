@@ -3,6 +3,7 @@ import { Plus, Trash2, Calendar, Clock, MapPin, User, BookOpen, AlertCircle, Loa
 import { DepartmentalScheduleRow, Employee, SessionUser } from '../../types';
 import { ApiService } from '../../services/api';
 import { useToast } from '../Toast';
+import { getUserAssignedAreas } from '../../utils';
 
 interface DepartmentalScheduleModalProps {
   isOpen: boolean;
@@ -41,7 +42,8 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
   const { success, error } = useToast();
   const isAdmin = user?.role === 'ADMIN';
   const isAreaIncharge = user?.role === 'AREA_INCHARGE';
-  const defaultArea = (isAreaIncharge && user?.assignedArea) ? user.assignedArea : (areasList[0] || '');
+  const assignedAreas = getUserAssignedAreas(user);
+  const defaultArea = (isAreaIncharge && assignedAreas.length > 0) ? assignedAreas[0] : (areasList[0] || '');
 
   // Requirement: Initially show exactly 2 blank CNE schedule rows
   const [rows, setRows] = useState<DepartmentalScheduleRow[]>([
@@ -106,6 +108,10 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
       }
       if (!r.area.trim()) {
         error(`Row #${rowNum}: Area/Department is required.`);
+        return;
+      }
+      if (isAreaIncharge && assignedAreas.length > 0 && !assignedAreas.some((a) => a.toLowerCase() === r.area.trim().toLowerCase())) {
+        error(`Row #${rowNum}: You are not authorized to schedule for "${r.area}". Authorized areas: ${assignedAreas.join(', ')}`);
         return;
       }
       if (!r.date) {
@@ -259,13 +265,36 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">
                         Department / Ward <span className="text-rose-500">*</span>
                       </label>
-                      {isAreaIncharge && user?.assignedArea ? (
-                        <input
-                          type="text"
-                          disabled
-                          value={user.assignedArea}
-                          className="w-full px-2.5 py-1.5 text-xs bg-slate-100 text-slate-700 border border-slate-300 rounded-lg cursor-not-allowed font-medium"
-                        />
+                      {isAreaIncharge ? (
+                        assignedAreas.length === 1 ? (
+                          <input
+                            type="text"
+                            disabled
+                            value={assignedAreas[0]}
+                            className="w-full px-2.5 py-1.5 text-xs bg-slate-100 text-slate-700 border border-slate-300 rounded-lg cursor-not-allowed font-medium"
+                          />
+                        ) : assignedAreas.length > 1 ? (
+                          <select
+                            required
+                            value={row.area}
+                            onChange={(e) => handleFieldChange(idx, 'area', e.target.value)}
+                            className="w-full px-2.5 py-1.5 text-xs bg-white border border-teal-300 rounded-lg shadow-xs text-teal-900 font-semibold focus:ring-1 focus:ring-teal-500"
+                          >
+                            <option value="">Select from Your Assigned Wards</option>
+                            {assignedAreas.map((a) => (
+                              <option key={a} value={a}>
+                                {a}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            disabled
+                            value={user?.assignedArea || 'No Ward Assigned'}
+                            className="w-full px-2.5 py-1.5 text-xs bg-slate-100 text-slate-700 border border-slate-300 rounded-lg cursor-not-allowed font-medium"
+                          />
+                        )
                       ) : (
                         <select
                           required

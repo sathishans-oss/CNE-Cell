@@ -19,7 +19,8 @@ import {
   CNEReferenceMaterial,
   CNEParticipant,
   CNEParticipantsSummary,
-  PostTestSubmissionResult
+  PostTestSubmissionResult,
+  SheetAuditItem
 } from '../types';
 const STORAGE_KEYS = {
   SESSION: 'cne_session_user'
@@ -392,11 +393,29 @@ export class ApiService {
   static async updateRole(
     employeeId: string,
     role: UserRole,
-    area?: string,
+    assignedAreasOrArea?: string[] | string,
     name?: string,
     designation?: string
   ): Promise<ApiResponse> {
-    return this.executeAction('updateRole', { employeeId, role, area, department: area, name, designation });
+    const rawAreas: string[] = Array.isArray(assignedAreasOrArea)
+      ? assignedAreasOrArea.map((s) => String(s).trim()).filter(Boolean)
+      : (typeof assignedAreasOrArea === 'string' && assignedAreasOrArea.trim()
+          ? assignedAreasOrArea.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean)
+          : []);
+
+    // For ADMIN and EMPLOYEE, assignedAreas should be empty
+    const assignedAreas = role === 'AREA_INCHARGE' ? rawAreas : [];
+    const areaString = assignedAreas.join(', ');
+
+    return this.executeAction('updateRole', {
+      employeeId,
+      role,
+      assignedAreas,
+      area: areaString,
+      department: areaString,
+      name,
+      designation
+    });
   }
 
   /**
@@ -437,8 +456,8 @@ export class ApiService {
     });
   }
 
-  static async setupAndVerifyCNESheets(): Promise<ApiResponse<{ results: Record<string, string> }>> {
-    return this.executeAction<{ results: Record<string, string> }>('setupAndVerifyCNESheets');
+  static async setupAndVerifyCNESheets(): Promise<ApiResponse<{ results?: Record<string, string>; auditReport?: SheetAuditItem[] }> & { auditReport?: SheetAuditItem[] }> {
+    return this.executeAction('setupAndVerifyCNESheets');
   }
 
   static async updateUpcomingClass(classId: string, classData: Partial<UpcomingClass>): Promise<ApiResponse> {
