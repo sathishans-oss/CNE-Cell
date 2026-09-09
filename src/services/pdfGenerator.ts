@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { CNERecord, SessionUser, UpcomingClass, CNEParticipant } from '../types';
-import { formatCneDateRangeDisplay, formatCneDateDisplay } from '../utils';
+import { formatCneDateRangeDisplay, formatCneDateDisplay, formatCneDateTimeDisplay } from '../utils';
 
 export function generateAnnualCNEPdf(
   user: SessionUser,
@@ -278,7 +278,9 @@ export function generateCNESessionPdf(
   const cleanTopic = (cne.topic || 'Clinical Nursing Topic').slice(0, 48);
   doc.text(cleanTopic, 48, 60);
   doc.text(cne.area || 'General Clinical Area', 48, 66);
-  doc.text(`${dateDisplay} • ${cne.time || '14:00'} (${cne.duration || 60} mins)`, 48, 72);
+  const scheduleText = formatCneDateTimeDisplay(cne.date, cne.toDate, cne.time);
+  const durText = cne.duration ? ` (${cne.duration})` : '';
+  doc.text(`${scheduleText}${durText}`, 48, 72);
 
   // Right Column
   doc.setFont('helvetica', 'bold');

@@ -111,10 +111,10 @@ export interface UpcomingClass {
   dataId?: string;
   topic: string;
   area: string;
-  date: string; // From Date or display date
-  toDate?: string; // To Date for multi-day programmes
-  time: string;
-  duration: string;
+  date: string; // From Date & Time (or legacy date)
+  toDate?: string; // To Date & Time
+  time?: string; // Optional legacy time
+  duration: string; // Duration in HH:MM:SS format
   resourcePersonEmpId: string;
   resourcePersonName?: string;
   externalResourcePersons?: string[]; // Outside resource persons
@@ -137,10 +137,10 @@ export interface DepartmentalScheduleRow {
   id: string;
   topic: string;
   area: string;
-  date: string;
-  toDate?: string;
-  time: string;
-  duration: string;
+  date: string; // From Date & Time
+  toDate?: string; // To Date & Time
+  time?: string; // Optional legacy time
+  duration: string; // Duration in HH:MM:SS format
   resourcePersonEmpId: string;
   resourcePersonName?: string;
   externalResourcePersons?: string[];

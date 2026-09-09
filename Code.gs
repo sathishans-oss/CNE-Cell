@@ -2225,58 +2225,141 @@ function handleGetUpcomingClasses(params) {
   return { success: true, data: list };
 }
 
+/**
+ * Helper: Parse duration string (HH:MM:SS or HH:MM or decimal hours) into total seconds.
+ */
+function parseDurationToSeconds(str) {
+  if (!str) return null;
+  var trimmed = String(str).trim();
+  var parts = trimmed.split(':');
+  if (parts.length >= 2 && parts.length <= 3) {
+    var h = parseInt(parts[0], 10);
+    var m = parseInt(parts[1], 10);
+    var s = parts.length === 3 ? parseInt(parts[2], 10) : 0;
+    if (isNaN(h) || isNaN(m) || isNaN(s) || m < 0 || m >= 60 || s < 0 || s >= 60 || h < 0) {
+      return null;
+    }
+    return h * 3600 + m * 60 + s;
+  }
+  var num = parseFloat(trimmed);
+  if (!isNaN(num) && num > 0) {
+    return Math.round(num * 3600);
+  }
+  return null;
+}
+
+/**
+ * Helper: Format total seconds into standard HH:MM:SS (e.g. 08:00:00).
+ */
+function formatSecondsToDuration(totalSeconds) {
+  var s = Math.max(0, Math.round(totalSeconds));
+  var hours = Math.floor(s / 3600);
+  var minutes = Math.floor((s % 3600) / 60);
+  var seconds = s % 60;
+  var pad = function(n) { return (n < 10 ? '0' : '') + n; };
+  return pad(hours) + ':' + pad(minutes) + ':' + pad(seconds);
+}
+
+/**
+ * Helper: Calculate distinct calendar days touched between fromDt and toDt inclusive.
+ */
+function getCalendarDaysTouched(fromDtStr, toDtStr) {
+  if (!fromDtStr || !toDtStr) return 1;
+  var d1 = new Date(fromDtStr);
+  var d2 = new Date(toDtStr);
+  if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return 1;
+  var utc1 = Date.UTC(d1.getFullYear(), d1.getMonth(), d1.getDate());
+  var utc2 = Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate());
+  var diffDays = Math.round((utc2 - utc1) / (1000 * 60 * 60 * 24));
+  return Math.max(1, diffDays + 1);
+}
+
+/**
+ * Helper: Authoritative CNE duration validator.
+ * Enforces minimum 00:05:00 (5 minutes) and maximum 8 hours × calendar days touched.
+ */
+function validateCneDuration(durationStr, fromDtStr, toDtStr) {
+  var daysTouched = getCalendarDaysTouched(fromDtStr, toDtStr);
+  var maxSeconds = daysTouched * 8 * 3600;
+  var maxDurationStr = formatSecondsToDuration(maxSeconds);
+  var minSeconds = 300; // 5 minutes (00:05:00)
+
+  var sec = parseDurationToSeconds(durationStr);
+  if (sec === null) {
+    return {
+      isValid: false,
+      message: 'Invalid duration format. Please enter as HH:MM:SS (e.g. 01:30:00 or 08:00:00).',
+      maxDurationStr: maxDurationStr
+    };
+  }
+
+  if (sec < minSeconds || sec > maxSeconds) {
+    return {
+      isValid: false,
+      message: 'Duration must be between 00:05:00 and ' + maxDurationStr + ' for this CNE.',
+      maxDurationStr: maxDurationStr
+    };
+  }
+
+  return { isValid: true, maxDurationStr: maxDurationStr };
+}
+
 function handleAddUpcomingClass(params, session) {
   if (!session) {
     return { success: false, errorCode: 'UNAUTHORIZED', message: 'Unauthorized session.' };
   }
 
+  // Central scheduling is strictly for Central CNE and requires ADMIN role
+  if (session.role !== 'ADMIN') {
+    return {
+      success: false,
+      errorCode: 'FORBIDDEN',
+      message: 'Permission denied. Only Administrators can schedule Central CNE programs.'
+    };
+  }
+
+  var cneType = 'CENTRAL'; // Schedule New CNE workflow creates CENTRAL CNE only!
   var topic = sanitizeCellInput(params.topic);
   var area = sanitizeCellInput(params.area);
   var date = (params.date || '').trim();
-  var toDate = (params.toDate || date).trim();
-  var cneType = normalizeCNEType(params.cneType);
-  if (!cneType) {
-    return {
-      success: false,
-      errorCode: 'INVALID_CNE_TYPE',
-      message: 'Type of CNE is required and must be either CENTRAL or DEPARTMENTAL.'
-    };
-  }
+  var toDate = (params.toDate || '').trim();
 
   if (!topic || !area || !date) {
-    return { success: false, message: 'Topic, Area, and Date are required.' };
+    return { success: false, message: 'Topic, Area, and From Date & Time are required.' };
+  }
+  if (!toDate) {
+    return { success: false, message: 'To Date & Time is required and cannot be blank.' };
   }
 
-  // Strict Date Validation: Past dates are NOT allowed!
-  var todayStr = new Date().toISOString().split('T')[0];
-  if (date < todayStr) {
+  // Strict Date & Time Validation: past dates not allowed, toDate >= date
+  var dFrom = new Date(date);
+  var dTo = new Date(toDate);
+  if (isNaN(dFrom.getTime())) {
+    return { success: false, message: 'Invalid From Date & Time format.' };
+  }
+  if (isNaN(dTo.getTime())) {
+    return { success: false, message: 'Invalid To Date & Time format.' };
+  }
+  if (dTo < dFrom) {
+    return { success: false, message: 'To Date & Time must be equal to or later than From Date & Time.' };
+  }
+
+  var todayDate = new Date();
+  todayDate.setHours(0, 0, 0, 0);
+  var checkFromDate = new Date(dFrom);
+  checkFromDate.setHours(0, 0, 0, 0);
+  if (checkFromDate < todayDate) {
     return { success: false, message: 'Past dates are not allowed. Please select today or a future date.' };
   }
-  if (toDate < date) {
-    return { success: false, message: 'To Date cannot be earlier than From Date.' };
+
+  // Duration Validation
+  var duration = (params.duration || '').trim();
+  if (!duration) {
+    return { success: false, message: 'Duration is required.' };
   }
-
-  var isAdmin = session.role === 'ADMIN';
-  var isAreaIncharge = session.role === 'AREA_INCHARGE' || session.role === 'INCHARGE';
-
-  // Authorization check
-  if (cneType === 'CENTRAL') {
-    if (!isAdmin) {
-      return {
-        success: false,
-        errorCode: 'FORBIDDEN',
-        message: 'Permission denied. Only Administrators can schedule Central CNE programs.'
-      };
-    }
-  } else if (cneType === 'DEPARTMENTAL') {
-    var authErr = checkCNEAuthorized(session, area, 'DEPARTMENTAL');
-    if (authErr) return authErr;
-  } else {
-    return {
-      success: false,
-      errorCode: 'INVALID_CNE_TYPE',
-      message: 'Type of CNE must be either CENTRAL or DEPARTMENTAL.'
-    };
+  var durValidation = validateCneDuration(duration, date, toDate);
+  if (!durValidation.isValid) {
+    return { success: false, message: durValidation.message };
   }
 
   // Validate internal Resource Persons individually
@@ -2360,7 +2443,7 @@ function handleAddUpcomingClass(params, session) {
     setCell('fromdate', 3, date);
     if (colMap['date'] !== undefined) rowData[colMap['date']] = date;
     setCell('todate', 4, toDate);
-    setCell('time', 5, params.time || '14:00');
+    setCell('time', 5, params.time || '');
     setCell('duration', 6, sanitizeCellInput(params.duration || '1:00:00'));
     setCell('resourcepersonempid', 7, rpClean.join(', '));
     setCell('modeofteaching', 8, sanitizeCellInput(params.modeOfTeaching || 'Lecture Cum Discussion'));
@@ -2417,14 +2500,39 @@ function handleAddDepartmentalSchedule(params, session) {
     var toDate = (c.toDate || date).trim();
 
     if (!topic || !area || !date) {
-      return { success: false, message: 'Row ' + (i + 1) + ': Topic, Area, and Date are required.' };
+      return { success: false, message: 'Row ' + (i + 1) + ': Topic, Area, and From Date & Time are required.' };
+    }
+    if (!toDate) {
+      return { success: false, message: 'Row ' + (i + 1) + ': To Date & Time is required and cannot be blank.' };
     }
 
-    if (date < todayStr) {
+    var dFrom = new Date(date);
+    var dTo = new Date(toDate);
+    if (isNaN(dFrom.getTime())) {
+      return { success: false, message: 'Row ' + (i + 1) + ': Invalid From Date & Time format.' };
+    }
+    if (isNaN(dTo.getTime())) {
+      return { success: false, message: 'Row ' + (i + 1) + ': Invalid To Date & Time format.' };
+    }
+    if (dTo < dFrom) {
+      return { success: false, message: 'Row ' + (i + 1) + ': To Date & Time must be equal to or later than From Date & Time.' };
+    }
+
+    var todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+    var checkFromDate = new Date(dFrom);
+    checkFromDate.setHours(0, 0, 0, 0);
+    if (checkFromDate < todayDate) {
       return { success: false, message: 'Row ' + (i + 1) + ': Scheduled date cannot be in the past.' };
     }
-    if (toDate < date) {
-      return { success: false, message: 'Row ' + (i + 1) + ': To Date cannot be earlier than From Date.' };
+
+    var duration = (c.duration || '').trim();
+    if (!duration) {
+      return { success: false, message: 'Row ' + (i + 1) + ': Duration is required.' };
+    }
+    var durVal = validateCneDuration(duration, date, toDate);
+    if (!durVal.isValid) {
+      return { success: false, message: 'Row ' + (i + 1) + ': ' + durVal.message };
     }
 
     // Check authorization for this department
@@ -2476,8 +2584,8 @@ function handleAddDepartmentalSchedule(params, session) {
       area: area,
       date: date,
       toDate: toDate,
-      time: sanitizeCellInput(c.time || '14:00'),
-      duration: sanitizeCellInput(c.duration || '1:00:00'),
+      time: sanitizeCellInput(c.time || ''),
+      duration: sanitizeCellInput(duration),
       rpClean: rpClean,
       extRpClean: extRpClean,
       mode: sanitizeCellInput(c.modeOfTeaching || 'Lecture Cum Discussion'),
@@ -2607,13 +2715,44 @@ function handleUpdateUpcomingClass(params, session) {
 
         if (params.topic !== undefined) setColVal('topic', 1, sanitizeCellInput(params.topic));
         if (params.area !== undefined) setColVal('area', 2, sanitizeCellInput(params.area));
-        if (params.date !== undefined) {
-          setColVal('fromdate', 3, params.date);
-          if (colMap['date'] !== undefined) sheet.getRange(rowNum, colMap['date'] + 1).setValue(params.date);
+
+        var effDate = params.date !== undefined ? String(params.date).trim() : String(data[r][colMap['fromdate'] !== undefined ? colMap['fromdate'] : 3] || '');
+        var effToDate = params.toDate !== undefined ? String(params.toDate).trim() : String(data[r][colMap['todate'] !== undefined ? colMap['todate'] : 4] || effDate);
+        var effDuration = params.duration !== undefined ? String(params.duration).trim() : String(data[r][colMap['duration'] !== undefined ? colMap['duration'] : 6] || '');
+
+        if (params.date !== undefined || params.toDate !== undefined) {
+          if (!effDate) {
+            return { success: false, message: 'From Date & Time is required and cannot be blank.' };
+          }
+          if (!effToDate) {
+            return { success: false, message: 'To Date & Time is required and cannot be blank.' };
+          }
+          var dFrom = new Date(effDate);
+          var dTo = new Date(effToDate);
+          if (isNaN(dFrom.getTime()) || isNaN(dTo.getTime())) {
+            return { success: false, message: 'Invalid Date & Time format.' };
+          }
+          if (dTo < dFrom) {
+            return { success: false, message: 'To Date & Time must be equal to or later than From Date & Time.' };
+          }
         }
-        if (params.toDate !== undefined) setColVal('todate', 4, params.toDate);
+
+        if (params.duration !== undefined || params.date !== undefined || params.toDate !== undefined) {
+          if (effDuration) {
+            var durVal = validateCneDuration(effDuration, effDate, effToDate);
+            if (!durVal.isValid) {
+              return { success: false, message: durVal.message };
+            }
+          }
+        }
+
+        if (params.date !== undefined) {
+          setColVal('fromdate', 3, effDate);
+          if (colMap['date'] !== undefined) sheet.getRange(rowNum, colMap['date'] + 1).setValue(effDate);
+        }
+        if (params.toDate !== undefined) setColVal('todate', 4, effToDate);
         if (params.time !== undefined) setColVal('time', 5, params.time);
-        if (params.duration !== undefined) setColVal('duration', 6, sanitizeCellInput(params.duration));
+        if (params.duration !== undefined) setColVal('duration', 6, effDuration);
         
         var existingRp = data[r][colMap['resourcepersonempid'] !== undefined ? colMap['resourcepersonempid'] : 7] 
           ? String(data[r][colMap['resourcepersonempid'] !== undefined ? colMap['resourcepersonempid'] : 7]).split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
@@ -4028,9 +4167,15 @@ function handleGetDashboardStats(params, session) {
 function formatDateValue(val) {
   if (!val) return '';
   if (val instanceof Date) {
+    var hours = val.getHours();
+    var minutes = val.getMinutes();
+    var seconds = val.getSeconds();
+    if (hours !== 0 || minutes !== 0 || seconds !== 0) {
+      return Utilities.formatDate(val, Session.getScriptTimeZone() || 'Asia/Kolkata', "yyyy-MM-dd'T'HH:mm");
+    }
     return Utilities.formatDate(val, Session.getScriptTimeZone() || 'Asia/Kolkata', 'yyyy-MM-dd');
   }
-  return String(val);
+  return String(val).trim();
 }
 
 /**

@@ -19,6 +19,7 @@ import { CNERecord, GalleryItem, SessionUser, UpcomingClass } from '../types';
 import { ApiService } from '../services/api';
 import { generateAnnualCNEPdf } from '../services/pdfGenerator';
 import { useToast } from './Toast';
+import { formatCneDateTimeDisplay } from '../utils';
 
 interface DashboardProps {
   user: SessionUser;
@@ -310,11 +311,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-emerald-300 transition-all"
                   >
                     <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-                      <span className="font-semibold text-slate-700 flex items-center gap-1">
-                        <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-                        {cls.date}
+                      <span className="font-semibold text-slate-700 flex items-center gap-1 truncate max-w-[200px]" title={formatCneDateTimeDisplay(cls.date, cls.toDate, cls.time)}>
+                        <Calendar className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span className="truncate">{formatCneDateTimeDisplay(cls.date, cls.toDate, cls.time)}</span>
                       </span>
-                      <span>{cls.time}</span>
+                      {cls.duration && <span className="font-medium text-slate-600 shrink-0">{cls.duration}</span>}
                     </div>
                     <h5 className="text-xs font-bold text-slate-900 line-clamp-2 leading-snug">
                       {cls.topic}

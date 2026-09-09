@@ -4,6 +4,7 @@ import QRCode from 'qrcode';
 import { UpcomingClass } from '../../types';
 import { ApiService } from '../../services/api';
 import { useToast } from '../Toast';
+import { formatCneDateTimeDisplay } from '../../utils';
 
 interface CNEQRModalProps {
   cne: UpcomingClass;
@@ -161,8 +162,8 @@ export const CNEQRModal: React.FC<CNEQRModalProps> = ({
                   <span className="font-semibold text-slate-700">{cne.area}</span>
                 </div>
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <span className="text-slate-500">Schedule Date:</span>
-                  <span className="font-semibold text-slate-700">{cne.date} {cne.time ? `• ${cne.time}` : ''}</span>
+                  <span className="text-slate-500">Schedule:</span>
+                  <span className="font-semibold text-slate-700">{formatCneDateTimeDisplay(cne.date, cne.toDate, cne.time)}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500">Resource Person:</span>

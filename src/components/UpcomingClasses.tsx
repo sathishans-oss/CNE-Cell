@@ -23,7 +23,16 @@ import {
 import { SessionUser, UpcomingClass } from '../types';
 import { ApiService } from '../services/api';
 import { useToast } from './Toast';
-import { formatCneDateRangeDisplay, formatResourcePersonsDisplay, isCneAuthorized, getUserAssignedAreas } from '../utils';
+import {
+  formatCneDateRangeDisplay,
+  formatResourcePersonsDisplay,
+  isCneAuthorized,
+  getUserAssignedAreas,
+  formatCneDateTimeDisplay,
+  calculateCneDuration,
+  validateCneDuration,
+  toDateTimeLocalString
+} from '../utils';
 import { CNEReferenceModal } from './cne/CNEReferenceModal';
 import { CNEQuestionsModal } from './cne/CNEQuestionsModal';
 import { CNEQRModal } from './cne/CNEQRModal';
@@ -49,13 +58,11 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   // Schedule Class Modal State
   const [isAddClassOpen, setIsAddClassOpen] = useState(false);
   const [isDeptScheduleOpen, setIsDeptScheduleOpen] = useState(false);
-  const [newCneType, setNewCneType] = useState<'CENTRAL' | 'DEPARTMENTAL'>('CENTRAL');
   const [newTopic, setNewTopic] = useState('');
   const [newArea, setNewArea] = useState('');
   const [newDate, setNewDate] = useState('');
   const [newToDate, setNewToDate] = useState('');
-  const [newTime, setNewTime] = useState('14:00 - 15:30');
-  const [newDuration, setNewDuration] = useState('1:30:00');
+  const [newDuration, setNewDuration] = useState('01:30:00');
   const [selectedRpEmpIds, setSelectedRpEmpIds] = useState<string[]>([]);
   const [rpSearchQuery, setRpSearchQuery] = useState('');
   const [newExternalRpList, setNewExternalRpList] = useState<string[]>([]);
@@ -83,8 +90,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   const [editArea, setEditArea] = useState('');
   const [editDate, setEditDate] = useState('');
   const [editToDate, setEditToDate] = useState('');
-  const [editTime, setEditTime] = useState('14:00 - 15:30');
-  const [editDuration, setEditDuration] = useState('1:30:00');
+  const [editDuration, setEditDuration] = useState('01:30:00');
   const [editSelectedRpEmpIds, setEditSelectedRpEmpIds] = useState<string[]>([]);
   const [editRpSearchQuery, setEditRpSearchQuery] = useState('');
   const [editExternalRpList, setEditExternalRpList] = useState<string[]>([]);
@@ -164,20 +170,66 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
     );
   });
 
+  const handleNewFromDateChange = (val: string) => {
+    setNewDate(val);
+    if (val && newToDate) {
+      const dFrom = new Date(val);
+      const dTo = new Date(newToDate);
+      if (!isNaN(dFrom.getTime()) && !isNaN(dTo.getTime()) && dTo >= dFrom) {
+        const autoDur = calculateCneDuration(val, newToDate);
+        if (autoDur) setNewDuration(autoDur);
+      }
+    }
+  };
+
+  const handleNewToDateChange = (val: string) => {
+    setNewToDate(val);
+    if (newDate && val) {
+      const dFrom = new Date(newDate);
+      const dTo = new Date(val);
+      if (!isNaN(dFrom.getTime()) && !isNaN(dTo.getTime()) && dTo >= dFrom) {
+        const autoDur = calculateCneDuration(newDate, val);
+        if (autoDur) setNewDuration(autoDur);
+      }
+    }
+  };
+
   const handleCreateUpcomingClass = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTopic.trim() || !newArea.trim() || !newDate.trim()) {
-      error('Please fill in all required fields (Topic, Area, Date).');
+      error('Please fill in all required fields (Topic, Area, From Date & Time).');
       return;
     }
 
-    if (newDate < todayStr) {
+    if (!newToDate.trim()) {
+      error('To Date & Time is required.');
+      return;
+    }
+
+    const dFrom = new Date(newDate);
+    const dTo = new Date(newToDate);
+    if (isNaN(dFrom.getTime()) || isNaN(dTo.getTime())) {
+      error('Please enter valid From Date & Time and To Date & Time.');
+      return;
+    }
+
+    if (dTo < dFrom) {
+      error('To Date & Time cannot be earlier than From Date & Time.');
+      return;
+    }
+
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+    const checkFrom = new Date(dFrom);
+    checkFrom.setHours(0, 0, 0, 0);
+    if (checkFrom < todayDate) {
       error('Scheduled From Date cannot be in the past. Please select today or a future date.');
       return;
     }
 
-    if (newToDate && newToDate < newDate) {
-      error('To Date cannot be earlier than From Date.');
+    const durVal = validateCneDuration(newDuration, newDate, newToDate);
+    if (!durVal.isValid) {
+      error(durVal.message);
       return;
     }
 
@@ -196,14 +248,15 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
 
     setIsSubmitting(true);
     try {
+      // The Schedule New CNE workflow MUST ALWAYS submit cneType: 'CENTRAL'
       const res = await ApiService.addUpcomingClass({
         topic: newTopic.trim(),
         area: newArea,
-        cneType: newCneType,
+        cneType: 'CENTRAL',
         date: newDate,
-        toDate: newToDate || newDate,
-        time: newTime,
-        duration: newDuration,
+        toDate: newToDate,
+        time: '',
+        duration: newDuration.trim(),
         resourcePersonEmpId: selectedRpEmpIds.join(', '),
         resourcePersonEmpIds: selectedRpEmpIds,
         resourcePersonName: rpNames.join(', '),
@@ -217,13 +270,14 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
       } as any);
 
       if (res.success) {
-        success('Upcoming CNE workshop created and published successfully.', 'CNE Scheduled');
+        success('Upcoming Central CNE workshop created and published successfully.', 'CNE Scheduled');
         setIsAddClassOpen(false);
         // Reset form
         setNewTopic('');
         setNewDescription('');
         setNewDate('');
         setNewToDate('');
+        setNewDuration('01:30:00');
         setSelectedRpEmpIds([]);
         setRpSearchQuery('');
         setNewExternalRpList([]);
@@ -239,15 +293,38 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
     }
   };
 
+  const handleEditFromDateChange = (val: string) => {
+    setEditDate(val);
+    if (val && editToDate) {
+      const dFrom = new Date(val);
+      const dTo = new Date(editToDate);
+      if (!isNaN(dFrom.getTime()) && !isNaN(dTo.getTime()) && dTo >= dFrom) {
+        const autoDur = calculateCneDuration(val, editToDate);
+        if (autoDur) setEditDuration(autoDur);
+      }
+    }
+  };
+
+  const handleEditToDateChange = (val: string) => {
+    setEditToDate(val);
+    if (editDate && val) {
+      const dFrom = new Date(editDate);
+      const dTo = new Date(val);
+      if (!isNaN(dFrom.getTime()) && !isNaN(dTo.getTime()) && dTo >= dFrom) {
+        const autoDur = calculateCneDuration(editDate, val);
+        if (autoDur) setEditDuration(autoDur);
+      }
+    }
+  };
+
   const handleOpenEditModal = (cls: UpcomingClass) => {
     setEditingCne(cls);
     setEditTopic(cls.topic || '');
     setEditArea(cls.area || '');
     setEditCneType(((cls.cneType || 'CENTRAL').toUpperCase() as 'CENTRAL' | 'DEPARTMENTAL'));
-    setEditDate(cls.date || '');
-    setEditToDate(cls.toDate || cls.date || '');
-    setEditTime(cls.time || '14:00 - 15:30');
-    setEditDuration(cls.duration || '1:30:00');
+    setEditDate(toDateTimeLocalString(cls.date));
+    setEditToDate(toDateTimeLocalString(cls.toDate || cls.date));
+    setEditDuration(cls.duration || '01:30:00');
 
     const parsedRpIds = (cls.resourcePersonEmpId || '')
       .split(/[,;\n]+/)
@@ -297,13 +374,31 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
     if (!editingCne) return;
 
     if (!editTopic.trim() || !editArea.trim() || !editDate.trim()) {
-      error('Please fill in all required fields (Topic, Area, Date).');
+      error('Please fill in all required fields (Topic, Area, From Date & Time).');
       return;
     }
-    if (editToDate && editToDate < editDate) {
-      error('To Date cannot be earlier than From Date.');
+    if (!editToDate.trim()) {
+      error('To Date & Time is required.');
       return;
     }
+
+    const dFrom = new Date(editDate);
+    const dTo = new Date(editToDate);
+    if (isNaN(dFrom.getTime()) || isNaN(dTo.getTime())) {
+      error('Please enter valid From Date & Time and To Date & Time.');
+      return;
+    }
+    if (dTo < dFrom) {
+      error('To Date & Time cannot be earlier than From Date & Time.');
+      return;
+    }
+
+    const durVal = validateCneDuration(editDuration, editDate, editToDate);
+    if (!durVal.isValid) {
+      error(durVal.message);
+      return;
+    }
+
     if (editSelectedRpEmpIds.length === 0 && editExternalRpList.length === 0) {
       error('Please select at least one Resource Person (Internal or External).');
       return;
@@ -325,9 +420,9 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
         area: editArea,
         cneType: editCneType,
         date: editDate,
-        toDate: editToDate || editDate,
-        time: editTime,
-        duration: editDuration,
+        toDate: editToDate,
+        time: '',
+        duration: editDuration.trim(),
         resourcePersonEmpId: editSelectedRpEmpIds.join(', '),
         resourcePersonEmpIds: editSelectedRpEmpIds,
         resourcePersonName: rpNames.join(', '),
@@ -346,9 +441,9 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
           area: editArea,
           cneType: editCneType,
           date: editDate,
-          toDate: editToDate || editDate,
-          time: editTime,
-          duration: editDuration,
+          toDate: editToDate,
+          time: '',
+          duration: editDuration.trim(),
           resourcePersonEmpId: editSelectedRpEmpIds.join(', '),
           resourcePersonName: rpNames.join(', '),
           externalResourcePersons: editExternalRpList,
@@ -449,7 +544,6 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                 id="btn-admin-add-upcoming-class"
                 type="button"
                 onClick={() => {
-                  setNewCneType('CENTRAL');
                   setIsAddClassOpen(true);
                 }}
                 className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer shadow-xs"
@@ -616,9 +710,9 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                         </td>
                         <td className="py-3 px-4 whitespace-nowrap">
                           <div className="font-semibold text-slate-800">
-                            {formatCneDateRangeDisplay(cls.date, cls.toDate)}
+                            {formatCneDateTimeDisplay(cls.date, cls.toDate, cls.time)}
                           </div>
-                          <div className="text-[11px] text-slate-500">{cls.time}</div>
+                          <div className="text-[11px] text-slate-500">Duration: {cls.duration || 'N/A'}</div>
                         </td>
                         <td className="py-3 px-4">
                           <div className="line-clamp-2 max-w-[220px] text-slate-600 text-xs leading-relaxed" title={rpDisplay}>
@@ -701,38 +795,22 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                       <span>1. Category & Curriculum</span>
                     </h4>
 
-                    {/* CNE Type: Central vs Departmental */}
+                    {/* CNE Type: Always Central for Schedule New CNE */}
                     <div>
                       <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                        CNE Category / Type *
+                        CNE Category / Type
                       </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          disabled={!isAdmin}
-                          onClick={() => setNewCneType('CENTRAL')}
-                          className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
-                            newCneType === 'CENTRAL'
-                              ? 'bg-blue-50 border-blue-400 text-blue-900 font-bold'
-                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-50'
-                          }`}
-                        >
-                          <div className="text-xs">Central CNE</div>
-                          <div className="text-[10px] text-slate-500 font-normal">Hospital-wide clinical seminar</div>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setNewCneType('DEPARTMENTAL')}
-                          className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
-                            newCneType === 'DEPARTMENTAL'
-                              ? 'bg-teal-50 border-teal-400 text-teal-900 font-bold'
-                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
-                          }`}
-                        >
-                          <div className="text-xs">Departmental CNE</div>
-                          <div className="text-[10px] text-slate-500 font-normal">Ward / Specialty training</div>
-                        </button>
+                      <div className="p-2.5 rounded-xl border border-blue-200 bg-blue-50/70 text-blue-900 flex items-center justify-between">
+                        <div>
+                          <div className="text-xs font-bold flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-blue-600 inline-block"></span>
+                            Central CNE
+                          </div>
+                          <div className="text-[10px] text-blue-700 font-normal">Hospital-wide clinical seminar (Admin Authoritative)</div>
+                        </div>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200 uppercase tracking-wider">
+                          Central
+                        </span>
                       </div>
                     </div>
 
@@ -784,64 +862,56 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                   {/* Column 2: Date, Time & Logistics */}
                   <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-900 border-b border-indigo-100 pb-2 flex items-center gap-1.5">
-                      <span>2. Date, Time & Capacity</span>
+                      <span>2. Date & Schedule</span>
                     </h4>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                          From Date *
+                          From Date &amp; Time *
                         </label>
                         <input
-                          type="date"
+                          type="datetime-local"
                           required
-                          min={todayStr}
                           value={newDate}
-                          onChange={(e) => setNewDate(e.target.value)}
+                          onChange={(e) => handleNewFromDateChange(e.target.value)}
                           className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                         />
                       </div>
 
                       <div>
                         <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                          To Date (Optional)
+                          To Date &amp; Time *
                         </label>
                         <input
-                          type="date"
-                          min={newDate || todayStr}
+                          type="datetime-local"
+                          required
+                          min={newDate}
                           value={newToDate}
-                          onChange={(e) => setNewToDate(e.target.value)}
+                          onChange={(e) => handleNewToDateChange(e.target.value)}
                           className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                         />
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                          Time / Hours
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                          Duration (HH:MM:SS) *
                         </label>
-                        <input
-                          type="text"
-                          value={newTime}
-                          onChange={(e) => setNewTime(e.target.value)}
-                          placeholder="14:00 - 15:30"
-                          className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                        />
+                        <span className="text-[10px] text-indigo-600 font-semibold">Auto-calculated • Editable</span>
                       </div>
-
-                      <div>
-                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                          Duration
-                        </label>
-                        <input
-                          type="text"
-                          value={newDuration}
-                          onChange={(e) => setNewDuration(e.target.value)}
-                          placeholder="1:30:00"
-                          className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                        />
-                      </div>
+                      <input
+                        type="text"
+                        required
+                        value={newDuration}
+                        onChange={(e) => setNewDuration(e.target.value)}
+                        placeholder="01:30:00"
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Calculated from From/To dates. Max 8 hours per calendar day. Format: HH:MM:SS
+                      </p>
                     </div>
 
                     <div>
@@ -1106,18 +1176,18 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                 </div>
 
                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Date Schedule</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Date &amp; Schedule</span>
                   <div className="font-bold text-slate-800 text-xs mt-1 flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>{formatCneDateRangeDisplay(selectedDetailCne.date, selectedDetailCne.toDate)}</span>
+                    <span>{formatCneDateTimeDisplay(selectedDetailCne.date, selectedDetailCne.toDate, selectedDetailCne.time)}</span>
                   </div>
                 </div>
 
                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Time & Duration</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Duration</span>
                   <div className="font-bold text-slate-800 text-xs mt-1 flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5 text-slate-500" />
-                    <span>{selectedDetailCne.time} ({selectedDetailCne.duration || '1:30:00'})</span>
+                    <span>{selectedDetailCne.duration || 'N/A'}</span>
                   </div>
                 </div>
               </div>
@@ -1502,58 +1572,52 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                       <span>2. Scheduling & Logistics</span>
                     </h4>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                          From Date *
+                          From Date &amp; Time *
                         </label>
                         <input
-                          type="date"
+                          type="datetime-local"
                           required
                           value={editDate}
-                          onChange={(e) => setEditDate(e.target.value)}
+                          onChange={(e) => handleEditFromDateChange(e.target.value)}
                           className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs"
                         />
                       </div>
                       <div>
                         <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                          To Date (Optional)
+                          To Date &amp; Time *
                         </label>
                         <input
-                          type="date"
-                          value={editToDate}
+                          type="datetime-local"
+                          required
                           min={editDate}
-                          onChange={(e) => setEditToDate(e.target.value)}
+                          value={editToDate}
+                          onChange={(e) => handleEditToDateChange(e.target.value)}
                           className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs"
                         />
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                          Time
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                          Duration (HH:MM:SS) *
                         </label>
-                        <input
-                          type="text"
-                          value={editTime}
-                          onChange={(e) => setEditTime(e.target.value)}
-                          placeholder="14:00 - 15:30"
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs"
-                        />
+                        <span className="text-[10px] text-amber-700 font-semibold">Auto-calculated • Editable</span>
                       </div>
-                      <div>
-                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                          Duration
-                        </label>
-                        <input
-                          type="text"
-                          value={editDuration}
-                          onChange={(e) => setEditDuration(e.target.value)}
-                          placeholder="1:30:00"
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs"
-                        />
-                      </div>
+                      <input
+                        type="text"
+                        required
+                        value={editDuration}
+                        onChange={(e) => setEditDuration(e.target.value)}
+                        placeholder="01:30:00"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs font-mono"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Calculated from From/To dates. Max 8 hours per calendar day. Format: HH:MM:SS
+                      </p>
                     </div>
 
                     <div>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Sparkles, Calendar, Clock, ChevronRight, Loader2 } from 'lucide-react';
 import { UpcomingClass, ViewMode } from '../../types';
+import { formatCneDateTimeDisplay } from '../../utils';
 
 interface UpcomingClassesWidgetProps {
   openClasses: UpcomingClass[];
@@ -109,7 +110,7 @@ export const UpcomingClassesWidget: React.FC<UpcomingClassesWidgetProps> = ({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 mb-1">
                       <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${durationBadgeBg}`}>
-                        {item.duration || '2:00'} Hrs
+                        {item.duration || '01:30:00'}
                       </span>
                       <span className="text-[10px] text-slate-400 truncate">{item.area}</span>
                     </div>
@@ -120,9 +121,9 @@ export const UpcomingClassesWidget: React.FC<UpcomingClassesWidgetProps> = ({
                 </div>
 
                 <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
-                  <div className="flex items-center gap-1 truncate max-w-[140px]">
+                  <div className="flex items-center gap-1 truncate max-w-[200px]" title={formatCneDateTimeDisplay(item.date, item.toDate, item.time)}>
                     <Clock className="w-3 h-3 text-slate-400 shrink-0" />
-                    <span className="truncate">{item.time || '09:00 AM'}</span>
+                    <span className="truncate">{formatCneDateTimeDisplay(item.date, item.toDate, item.time)}</span>
                   </div>
 
                   <button

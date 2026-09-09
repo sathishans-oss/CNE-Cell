@@ -3,7 +3,7 @@ import { Plus, Trash2, Calendar, Clock, MapPin, User, BookOpen, AlertCircle, Loa
 import { DepartmentalScheduleRow, Employee, SessionUser } from '../../types';
 import { ApiService } from '../../services/api';
 import { useToast } from '../Toast';
-import { getUserAssignedAreas } from '../../utils';
+import { getUserAssignedAreas, calculateCneDuration, validateCneDuration } from '../../utils';
 
 interface DepartmentalScheduleModalProps {
   isOpen: boolean;
@@ -20,8 +20,8 @@ const createInitialRow = (userArea: string = ''): DepartmentalScheduleRow => ({
   area: userArea,
   date: '',
   toDate: '',
-  time: '14:00 - 15:30',
-  duration: '1:30:00',
+  time: '',
+  duration: '01:30:00',
   resourcePersonEmpId: '',
   resourcePersonName: '',
   externalResourcePersons: [],
@@ -67,6 +67,42 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
     setRows((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleDateChange = (index: number, newDate: string) => {
+    setRows((prev) => {
+      const updated = [...prev];
+      const r = updated[index];
+      let newDuration = r.duration;
+      if (newDate && r.toDate) {
+        const dFrom = new Date(newDate);
+        const dTo = new Date(r.toDate);
+        if (!isNaN(dFrom.getTime()) && !isNaN(dTo.getTime()) && dTo >= dFrom) {
+          const autoDur = calculateCneDuration(newDate, r.toDate);
+          if (autoDur) newDuration = autoDur;
+        }
+      }
+      updated[index] = { ...r, date: newDate, duration: newDuration };
+      return updated;
+    });
+  };
+
+  const handleToDateChange = (index: number, newToDate: string) => {
+    setRows((prev) => {
+      const updated = [...prev];
+      const r = updated[index];
+      let newDuration = r.duration;
+      if (r.date && newToDate) {
+        const dFrom = new Date(r.date);
+        const dTo = new Date(newToDate);
+        if (!isNaN(dFrom.getTime()) && !isNaN(dTo.getTime()) && dTo >= dFrom) {
+          const autoDur = calculateCneDuration(r.date, newToDate);
+          if (autoDur) newDuration = autoDur;
+        }
+      }
+      updated[index] = { ...r, toDate: newToDate, duration: newDuration };
+      return updated;
+    });
+  };
+
   const handleFieldChange = (index: number, field: keyof DepartmentalScheduleRow, value: any) => {
     setRows((prev) => {
       const updated = [...prev];
@@ -98,7 +134,9 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
     e.preventDefault();
 
     // Validation
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       const rowNum = i + 1;
@@ -115,17 +153,38 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
         return;
       }
       if (!r.date) {
-        error(`Row #${rowNum}: Scheduled Date is required.`);
+        error(`Row #${rowNum}: From Date & Time is required.`);
         return;
       }
-      if (r.date < todayStr) {
-        error(`Row #${rowNum}: Date cannot be in the past (${r.date}).`);
+      if (!r.toDate) {
+        error(`Row #${rowNum}: To Date & Time is required.`);
         return;
       }
-      if (r.toDate && r.toDate < r.date) {
-        error(`Row #${rowNum}: To Date cannot be earlier than From Date.`);
+
+      const dFrom = new Date(r.date);
+      const dTo = new Date(r.toDate);
+      if (isNaN(dFrom.getTime()) || isNaN(dTo.getTime())) {
+        error(`Row #${rowNum}: Please enter valid From Date & Time and To Date & Time.`);
         return;
       }
+      if (dTo < dFrom) {
+        error(`Row #${rowNum}: To Date & Time cannot be earlier than From Date & Time.`);
+        return;
+      }
+
+      const checkFrom = new Date(dFrom);
+      checkFrom.setHours(0, 0, 0, 0);
+      if (checkFrom < todayDate) {
+        error(`Row #${rowNum}: Scheduled From Date cannot be in the past.`);
+        return;
+      }
+
+      const durVal = validateCneDuration(r.duration, r.date, r.toDate);
+      if (!durVal.isValid) {
+        error(`Row #${rowNum}: ${durVal.message}`);
+        return;
+      }
+
       const hasInternalRp = !!r.resourcePersonEmpId.trim();
       const hasExtRp = (r.externalResourcePersons && r.externalResourcePersons.length > 0);
       if (!hasInternalRp && !hasExtRp) {
@@ -154,9 +213,9 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
           area: r.area.trim(),
           cneType: 'DEPARTMENTAL',
           date: r.date,
-          toDate: r.toDate || r.date,
-          time: r.time.trim() || '14:00 - 15:30',
-          duration: r.duration.trim() || '1:30:00',
+          toDate: r.toDate,
+          time: '',
+          duration: r.duration.trim() || '01:30:00',
           resourcePersonEmpId: rpIds.join(', '),
           resourcePersonEmpIds: rpIds,
           resourcePersonName: rpNames.join(', '),
@@ -315,60 +374,49 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
 
                   {/* Column 2: Dates & Duration */}
                   <div className="space-y-2.5">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                          From Date <span className="text-rose-500">*</span>
-                        </label>
-                        <input
-                          type="date"
-                          required
-                          value={row.date}
-                          onChange={(e) => handleFieldChange(idx, 'date', e.target.value)}
-                          className="w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                          To Date
-                        </label>
-                        <input
-                          type="date"
-                          value={row.toDate || ''}
-                          min={row.date}
-                          onChange={(e) => handleFieldChange(idx, 'toDate', e.target.value)}
-                          className="w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
-                        />
-                      </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        From Date &amp; Time <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="datetime-local"
+                        required
+                        value={row.date}
+                        onChange={(e) => handleDateChange(idx, e.target.value)}
+                        className="w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs focus:ring-1 focus:ring-emerald-500"
+                      />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                          Session Time
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="14:00 - 15:30"
-                          value={row.time}
-                          onChange={(e) => handleFieldChange(idx, 'time', e.target.value)}
-                          className="w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
-                        />
-                      </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        To Date &amp; Time <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="datetime-local"
+                        required
+                        value={row.toDate || ''}
+                        min={row.date}
+                        onChange={(e) => handleToDateChange(idx, e.target.value)}
+                        className="w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
 
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                          Duration
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[11px] font-bold text-slate-700">
+                          Duration (HH:MM:SS) <span className="text-rose-500">*</span>
                         </label>
-                        <input
-                          type="text"
-                          placeholder="1:30:00"
-                          value={row.duration}
-                          onChange={(e) => handleFieldChange(idx, 'duration', e.target.value)}
-                          className="w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
-                        />
+                        <span className="text-[9px] text-emerald-700 font-semibold">Auto-calc</span>
                       </div>
+                      <input
+                        type="text"
+                        required
+                        placeholder="01:30:00"
+                        value={row.duration}
+                        onChange={(e) => handleFieldChange(idx, 'duration', e.target.value)}
+                        className="w-full px-2 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg shadow-xs focus:ring-1 focus:ring-emerald-500"
+                      />
+                      <p className="text-[9px] text-slate-500 mt-0.5">Max 8 hrs/calendar day</p>
                     </div>
                   </div>
 

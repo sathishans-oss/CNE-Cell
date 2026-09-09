@@ -89,6 +89,342 @@ export function formatCneDateRangeDisplay(fromDate?: string | null, toDate?: str
   return `${formattedFrom} - ${formattedTo}`;
 }
 
+const MONTH_NAMES_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * Formats a Date or date-time string into standard user-facing:
+ * "DD-MMM-YYYY hh:mm AM/PM" (e.g. "01-Jan-2026 08:00 AM").
+ * If the input is date-only (e.g. "2026-01-01"), returns "DD-MMM-YYYY".
+ */
+export function formatCneDateTimeDisplay(
+  fromDate?: string | Date | null,
+  toDate?: string | null,
+  legacyTime?: string | null
+): string {
+  if (!fromDate) return '—';
+
+  // If toDate or legacyTime was passed, defer to range display
+  if (toDate !== undefined || legacyTime !== undefined) {
+    const fromStr = fromDate instanceof Date ? fromDate.toISOString() : fromDate;
+    return formatCneDateTimeRangeDisplay(fromStr, toDate, legacyTime);
+  }
+
+  const dtVal = fromDate;
+
+  // Handle Date instance
+  if (dtVal instanceof Date) {
+    if (isNaN(dtVal.getTime())) return '—';
+    const day = String(dtVal.getDate()).padStart(2, '0');
+    const month = MONTH_NAMES_SHORT[dtVal.getMonth()] || 'Jan';
+    const year = dtVal.getFullYear();
+    const h = dtVal.getHours();
+    const min = String(dtVal.getMinutes()).padStart(2, '0');
+    const h12 = h % 12 || 12;
+    const h12Str = String(h12).padStart(2, '0');
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    return `${day}-${month}-${year} ${h12Str}:${min} ${ampm}`;
+  }
+
+  const str = String(dtVal).trim();
+  if (!str) return '—';
+
+  // Match ISO YYYY-MM-DDTHH:mm(:ss)? or YYYY-MM-DD HH:mm(:ss)?
+  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (isoMatch) {
+    const year = isoMatch[1];
+    const monthIdx = parseInt(isoMatch[2], 10) - 1;
+    const month = MONTH_NAMES_SHORT[monthIdx] || 'Jan';
+    const day = isoMatch[3].padStart(2, '0');
+    const h = parseInt(isoMatch[4], 10);
+    const min = isoMatch[5].padStart(2, '0');
+    const h12 = h % 12 || 12;
+    const h12Str = String(h12).padStart(2, '0');
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    return `${day}-${month}-${year} ${h12Str}:${min} ${ampm}`;
+  }
+
+  // Match DD-MMM-YYYY hh:mm AM/PM
+  const dmmmAmPmMatch = str.match(/^(\d{1,2})[-\s/]([A-Za-z]{3})[-\s/](\d{4})\s+(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?/i);
+  if (dmmmAmPmMatch) {
+    const day = dmmmAmPmMatch[1].padStart(2, '0');
+    const rawMon = dmmmAmPmMatch[2].toLowerCase();
+    const mIdx = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].indexOf(rawMon);
+    const month = mIdx >= 0 ? MONTH_NAMES_SHORT[mIdx] : dmmmAmPmMatch[2];
+    const year = dmmmAmPmMatch[3];
+    let h = parseInt(dmmmAmPmMatch[4], 10);
+    const min = dmmmAmPmMatch[5].padStart(2, '0');
+    const ampm = (dmmmAmPmMatch[6] || (h >= 12 ? 'PM' : 'AM')).toUpperCase();
+    const h12 = h % 12 || 12;
+    const h12Str = String(h12).padStart(2, '0');
+    return `${day}-${month}-${year} ${h12Str}:${min} ${ampm}`;
+  }
+
+  // If date only, use standard formatCneDateDisplay
+  return formatCneDateDisplay(str);
+}
+
+/**
+ * Formats a CNE activity date & time range.
+ * Example: "01-Jan-2026 08:00 AM – 03-Jan-2026 05:00 PM"
+ * If fromDate and toDate are identical: "01-Jan-2026 08:00 AM"
+ * If legacy date-only with legacyTime: "01-Jan-2026 • 14:00 - 15:30"
+ */
+export function formatCneDateTimeRangeDisplay(
+  fromDate?: string | null,
+  toDate?: string | null,
+  legacyTime?: string | null
+): string {
+  if (!fromDate) return '—';
+
+  const hasFromTime = String(fromDate).includes('T') || (String(fromDate).includes(':') && /\d{1,2}:\d{2}/.test(String(fromDate)));
+  const hasToTime = toDate ? (String(toDate).includes('T') || (String(toDate).includes(':') && /\d{1,2}:\d{2}/.test(String(toDate)))) : false;
+
+  if (hasFromTime) {
+    const formattedFrom = formatCneDateTimeDisplay(fromDate);
+    if (!toDate || toDate === fromDate) {
+      return formattedFrom;
+    }
+    const formattedTo = hasToTime ? formatCneDateTimeDisplay(toDate) : formatCneDateDisplay(toDate);
+    if (formattedTo === formattedFrom || formattedTo === '—') {
+      return formattedFrom;
+    }
+    return `${formattedFrom} – ${formattedTo}`;
+  }
+
+  // Legacy date-only formatting
+  const formattedFrom = formatCneDateDisplay(fromDate);
+  const formattedTo = toDate && toDate !== fromDate ? formatCneDateDisplay(toDate) : '';
+  const datePart = formattedTo && formattedTo !== formattedFrom ? `${formattedFrom} – ${formattedTo}` : formattedFrom;
+
+  const cleanLegacyTime = legacyTime ? legacyTime.trim() : '';
+  if (cleanLegacyTime && cleanLegacyTime !== '—') {
+    return `${datePart} • ${cleanLegacyTime}`;
+  }
+  return datePart;
+}
+
+/**
+ * Formats a short time/range or duration for compact widgets.
+ */
+export function formatCneTimeOrRangeShort(
+  fromDate?: string | null,
+  toDate?: string | null,
+  legacyTime?: string | null,
+  duration?: string | null
+): string {
+  if (fromDate && (String(fromDate).includes('T') || String(fromDate).includes(':'))) {
+    const dStr = formatCneDateTimeDisplay(fromDate);
+    // Extract the time portion e.g. "08:00 AM"
+    const match = dStr.match(/(\d{2}:\d{2}\s+(?:AM|PM))$/);
+    if (match) return match[1];
+  }
+  if (legacyTime && legacyTime.trim() && legacyTime !== '—') {
+    return legacyTime.trim();
+  }
+  if (duration && duration.trim()) {
+    return `${duration.trim()} Hrs`;
+  }
+  return 'Scheduled';
+}
+
+/**
+ * Converts any date or date-time representation into YYYY-MM-DDTHH:mm
+ * for standard HTML <input type="datetime-local" /> fields.
+ */
+export function toDateTimeLocalString(val?: string | Date | null, defaultTime = '09:00'): string {
+  if (!val) return '';
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return '';
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, '0');
+    const d = String(val.getDate()).padStart(2, '0');
+    const h = String(val.getHours()).padStart(2, '0');
+    const min = String(val.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${d}T${h}:${min}`;
+  }
+
+  const str = String(val).trim();
+  if (!str) return '';
+
+  // Match YYYY-MM-DDTHH:mm(:ss)?
+  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}T${isoMatch[4]}:${isoMatch[5]}`;
+  }
+
+  // Match YYYY-MM-DD HH:mm(:ss)?
+  const spaceMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})/);
+  if (spaceMatch) {
+    return `${spaceMatch[1]}-${spaceMatch[2]}-${spaceMatch[3]}T${spaceMatch[4]}:${spaceMatch[5]}`;
+  }
+
+  // Match DD-MMM-YYYY hh:mm AM/PM
+  const dmmmAmPmMatch = str.match(/^(\d{1,2})[-\s/]([A-Za-z]{3})[-\s/](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?)?/i);
+  if (dmmmAmPmMatch) {
+    const day = dmmmAmPmMatch[1].padStart(2, '0');
+    const rawMon = dmmmAmPmMatch[2].toLowerCase();
+    const mIdx = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].indexOf(rawMon);
+    const month = mIdx >= 0 ? String(mIdx + 1).padStart(2, '0') : '01';
+    const year = dmmmAmPmMatch[3];
+    let h = parseInt(dmmmAmPmMatch[4] || '9', 10);
+    const min = (dmmmAmPmMatch[5] || '00').padStart(2, '0');
+    const ampm = (dmmmAmPmMatch[6] || '').toUpperCase();
+    if (ampm === 'PM' && h < 12) h += 12;
+    if (ampm === 'AM' && h === 12) h = 0;
+    const hStr = String(h).padStart(2, '0');
+    return `${year}-${month}-${day}T${hStr}:${min}`;
+  }
+
+  // Match date only YYYY-MM-DD
+  const ymdMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (ymdMatch) {
+    return `${ymdMatch[1]}-${ymdMatch[2]}-${ymdMatch[3]}T${defaultTime}`;
+  }
+
+  // General Date parse fallback
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+    const d = String(parsed.getDate()).padStart(2, '0');
+    const h = String(parsed.getHours()).padStart(2, '0');
+    const min = String(parsed.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${d}T${h}:${min}`;
+  }
+
+  return '';
+}
+
+/**
+ * Parses a duration string (HH:MM:SS or HH:MM or decimal hours) into total seconds.
+ */
+export function parseDurationToSeconds(str: string): number | null {
+  if (!str) return null;
+  const trimmed = str.trim();
+  const parts = trimmed.split(':');
+  if (parts.length >= 2 && parts.length <= 3) {
+    const h = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    const s = parts.length === 3 ? parseInt(parts[2], 10) : 0;
+    if (isNaN(h) || isNaN(m) || isNaN(s) || m < 0 || m >= 60 || s < 0 || s >= 60 || h < 0) {
+      return null;
+    }
+    return h * 3600 + m * 60 + s;
+  }
+  const num = parseFloat(trimmed);
+  if (!isNaN(num) && num > 0) {
+    return Math.round(num * 3600);
+  }
+  return null;
+}
+
+/**
+ * Formats total seconds into standard HH:MM:SS (e.g. 08:00:00).
+ */
+export function formatSecondsToDuration(totalSeconds: number): string {
+  const s = Math.max(0, Math.round(totalSeconds));
+  const hours = Math.floor(s / 3600);
+  const minutes = Math.floor((s % 3600) / 60);
+  const seconds = s % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+/**
+ * Calculates how many distinct calendar days are touched between fromDt and toDt inclusive.
+ */
+export function getCalendarDaysTouched(fromDtStr: string, toDtStr: string): number {
+  if (!fromDtStr || !toDtStr) return 1;
+  const d1 = new Date(fromDtStr);
+  const d2 = new Date(toDtStr);
+  if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return 1;
+
+  const utc1 = Date.UTC(d1.getFullYear(), d1.getMonth(), d1.getDate());
+  const utc2 = Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate());
+  const diffDays = Math.round((utc2 - utc1) / (1000 * 60 * 60 * 24));
+  return Math.max(1, diffDays + 1);
+}
+
+/**
+ * Authoritative CNE automatic duration calculation rule:
+ * - For each calendar day touched by the CNE:
+ *   - maximum allowed CNE duration for that day = 8 hours
+ *   - first and last days respect actual time interval
+ *   - intermediate full calendar days contribute a maximum of 8 hours each
+ */
+export function calculateCneDuration(fromDtStr: string, toDtStr: string): string {
+  if (!fromDtStr || !toDtStr) return '01:00:00';
+  const d1 = new Date(fromDtStr);
+  const d2 = new Date(toDtStr);
+  if (isNaN(d1.getTime()) || isNaN(d2.getTime()) || d2 < d1) {
+    return '01:00:00';
+  }
+
+  const daysTouched = getCalendarDaysTouched(fromDtStr, toDtStr);
+
+  // Same calendar day
+  if (daysTouched === 1) {
+    const elapsedHours = (d2.getTime() - d1.getTime()) / (1000 * 60 * 60);
+    const cappedHours = Math.min(8, Math.max(0, elapsedHours));
+    return formatSecondsToDuration(cappedHours * 3600);
+  }
+
+  // Multi-day:
+  // Day 1: respects actual time interval, capped at 8 hours.
+  // Daytime training runs from From Time up to 17:00 (or up to 24:00 if scheduled past 17:00).
+  const fromHourDecimal = d1.getHours() + d1.getMinutes() / 60 + d1.getSeconds() / 3600;
+  const day1Hours = fromHourDecimal < 17 ? (17 - fromHourDecimal) : (24 - fromHourDecimal);
+  const day1Contribution = Math.min(8, Math.max(0, day1Hours));
+
+  // Intermediate full calendar days: 8 hours maximum each
+  const intermediateContribution = daysTouched > 2 ? (daysTouched - 2) * 8 : 0;
+
+  // Last day: respects actual time interval from start of day to To Time, capped at 8 hours
+  const toHourDecimal = d2.getHours() + d2.getMinutes() / 60 + d2.getSeconds() / 3600;
+  const lastDayContribution = Math.min(8, Math.max(0, toHourDecimal));
+
+  const totalHours = day1Contribution + intermediateContribution + lastDayContribution;
+  return formatSecondsToDuration(totalHours * 3600);
+}
+
+/**
+ * Validates whether an entered duration satisfies:
+ * 1. Minimum 00:05:00 (5 minutes)
+ * 2. Maximum 8 hours × calendar days touched
+ */
+export function validateCneDuration(
+  durationStr: string,
+  fromDtStr: string,
+  toDtStr: string
+): { isValid: boolean; error?: string; message: string; maxDurationStr: string } {
+  const daysTouched = getCalendarDaysTouched(fromDtStr, toDtStr);
+  const maxSeconds = daysTouched * 8 * 3600;
+  const maxDurationStr = formatSecondsToDuration(maxSeconds);
+  const minSeconds = 300; // 00:05:00
+
+  const sec = parseDurationToSeconds(durationStr);
+  if (sec === null) {
+    const err = 'Invalid duration format. Please enter as HH:MM:SS (e.g. 01:30:00 or 08:00:00).';
+    return {
+      isValid: false,
+      error: err,
+      message: err,
+      maxDurationStr
+    };
+  }
+
+  if (sec < minSeconds || sec > maxSeconds) {
+    const err = `Duration must be between 00:05:00 and ${maxDurationStr} for this CNE.`;
+    return {
+      isValid: false,
+      error: err,
+      message: err,
+      maxDurationStr
+    };
+  }
+
+  return { isValid: true, message: '', maxDurationStr };
+}
+
 /**
  * Resolves an individual Employee ID to the employee's name from the authoritative officers list.
  * If not found, safely returns the Employee ID.

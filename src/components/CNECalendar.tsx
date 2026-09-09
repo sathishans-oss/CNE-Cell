@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { CNERecord, UpcomingClass } from '../types';
 import { ApiService } from '../services/api';
-import { formatCneDateDisplay } from '../utils';
+import { formatCneDateDisplay, formatCneDateTimeDisplay } from '../utils';
 
 type CalendarViewMode = 'month' | 'week' | 'agenda';
 
@@ -55,6 +55,7 @@ export const CNECalendar: React.FC = () => {
         title: r.topic,
         area: r.area,
         date: r.fromDate,
+        toDate: r.toDate,
         time: 'Completed Session',
         duration: r.duration,
         instructor: r.resourcePersonName || r.resourcePersonEmpId,
@@ -70,6 +71,7 @@ export const CNECalendar: React.FC = () => {
         title: c.topic,
         area: c.area,
         date: c.date,
+        toDate: c.toDate,
         time: c.time,
         duration: c.duration,
         instructor: c.resourcePersonName || c.resourcePersonEmpId,
@@ -305,9 +307,9 @@ export const CNECalendar: React.FC = () => {
                   <div className="text-right shrink-0">
                     <div className="text-xs font-bold text-slate-800 flex items-center gap-1 sm:justify-end">
                       <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
-                      <span>{ev.date}</span>
+                      <span>{formatCneDateTimeDisplay(ev.date, ev.toDate, ev.time)}</span>
                     </div>
-                    <div className="text-xs text-slate-500 mt-0.5">{ev.time}</div>
+                    {ev.duration && <div className="text-xs text-slate-500 mt-0.5">Duration: {ev.duration}</div>}
                   </div>
                 </div>
               ))}
@@ -359,7 +361,7 @@ export const CNECalendar: React.FC = () => {
                 <div className="p-3.5 bg-white rounded-xl border border-slate-200 flex items-center justify-between shadow-xs">
                   <span className="text-slate-500 font-semibold">Date &amp; Time</span>
                   <span className="font-bold text-slate-900">
-                    {formatCneDateDisplay(selectedEvent.date)} &bull; {selectedEvent.time}
+                    {formatCneDateTimeDisplay(selectedEvent.date, selectedEvent.toDate, selectedEvent.time)}
                   </span>
                 </div>
 

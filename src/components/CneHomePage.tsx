@@ -18,6 +18,7 @@ import { ApiService } from '../services/api';
 import { INITIAL_CHAIRPERSON_MESSAGE } from '../services/initialData';
 import { generateAnnualCNEPdf } from '../services/pdfGenerator';
 import { useToast } from './Toast';
+import { formatCneDateTimeDisplay } from '../utils';
 
 // Modular Child Widgets
 import { UpcomingClassesWidget } from './home/UpcomingClassesWidget';
@@ -343,12 +344,12 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
 
             <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-xs text-slate-700 border border-slate-200">
               <div className="flex items-center justify-between">
-                <span className="text-slate-500">Scheduled Date:</span>
-                <span className="font-bold text-slate-900">{selectedClass.date}</span>
+                <span className="text-slate-500">Date &amp; Schedule:</span>
+                <span className="font-bold text-slate-900">{formatCneDateTimeDisplay(selectedClass.date, selectedClass.toDate, selectedClass.time)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-500">Session Time:</span>
-                <span className="font-bold text-slate-900">{selectedClass.time || '09:00 AM - 01:00 PM'}</span>
+                <span className="text-slate-500">Duration:</span>
+                <span className="font-bold text-slate-900">{selectedClass.duration || 'N/A'}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-500">Venue / Location:</span>
