@@ -450,7 +450,7 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
         {loading ? (
           <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-500">
             <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
-            <span className="text-xs font-medium">Loading user roster from Google Sheets...</span>
+            <span className="text-xs font-medium">Loading data</span>
           </div>
         ) : (
           <div className="overflow-x-auto">

@@ -23,11 +23,11 @@ const createInitialRow = (userArea: string = ''): DepartmentalScheduleRow => ({
   time: '',
   duration: '01:30:00',
   resourcePersonEmpId: '',
+  resourcePersonEmpIds: [],
   resourcePersonName: '',
   externalResourcePersons: [],
   modeOfTeaching: 'Lecture Cum Discussion',
   description: '',
-  maxParticipants: 40,
   adminRemarks: ''
 });
 
@@ -52,6 +52,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [extRpInputMap, setExtRpInputMap] = useState<Record<string, string>>({});
+  const [rpSearchMap, setRpSearchMap] = useState<Record<string, string>>({});
 
   if (!isOpen) return null;
 
@@ -65,6 +66,33 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
       return;
     }
     setRows((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const toggleRowRpSelection = (rowIndex: number, empId: string) => {
+    setRows((prev) => {
+      const updated = [...prev];
+      const r = updated[rowIndex];
+      const currentIds = (r.resourcePersonEmpIds && r.resourcePersonEmpIds.length > 0)
+        ? r.resourcePersonEmpIds
+        : (r.resourcePersonEmpId ? r.resourcePersonEmpId.split(',').map((s) => s.trim()).filter(Boolean) : []);
+      let nextIds: string[];
+      if (currentIds.includes(empId)) {
+        nextIds = currentIds.filter((id) => id !== empId);
+      } else {
+        nextIds = [...currentIds, empId];
+      }
+      const rpNames = nextIds.map((id) => {
+        const off = officersList.find((o) => o.employeeId === id);
+        return off ? off.name : id;
+      });
+      updated[rowIndex] = {
+        ...r,
+        resourcePersonEmpIds: nextIds,
+        resourcePersonEmpId: nextIds.join(', '),
+        resourcePersonName: rpNames.join(', ')
+      };
+      return updated;
+    });
   };
 
   const handleDateChange = (index: number, newDate: string) => {
@@ -185,7 +213,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
         return;
       }
 
-      const hasInternalRp = !!r.resourcePersonEmpId.trim();
+      const hasInternalRp = (r.resourcePersonEmpIds && r.resourcePersonEmpIds.length > 0) || !!r.resourcePersonEmpId.trim();
       const hasExtRp = (r.externalResourcePersons && r.externalResourcePersons.length > 0);
       if (!hasInternalRp && !hasExtRp) {
         error(`Row #${rowNum}: Please assign at least one Resource Person (Internal or External).`);
@@ -196,10 +224,12 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
     setIsSubmitting(true);
     try {
       const payload = rows.map((r) => {
-        const rpIds = r.resourcePersonEmpId
-          .split(',')
-          .map((id) => id.trim())
-          .filter(Boolean);
+        const rpIds = (r.resourcePersonEmpIds && r.resourcePersonEmpIds.length > 0)
+          ? r.resourcePersonEmpIds
+          : r.resourcePersonEmpId
+              .split(',')
+              .map((id) => id.trim())
+              .filter(Boolean);
         const rpNames = rpIds.map((id) => {
           const off = officersList.find((o) => o.employeeId === id);
           return off ? off.name : id;
@@ -222,7 +252,6 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
           externalResourcePersons: r.externalResourcePersons || [],
           modeOfTeaching: r.modeOfTeaching || 'Lecture Cum Discussion',
           description: r.description?.trim() || '',
-          maxParticipants: Number(r.maxParticipants) || 40,
           proposedByEmpId: user?.employeeId,
           proposedByName: user?.name,
           adminRemarks: r.adminRemarks?.trim() || ''
@@ -276,11 +305,20 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
         {/* Scrollable Form Body */}
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
           <div className="p-6 overflow-y-auto space-y-4 flex-1 bg-slate-50">
-            {rows.map((row, idx) => (
-              <div
-                key={row.id}
-                className="bg-white p-4.5 rounded-xl border border-slate-200 shadow-xs space-y-3"
-              >
+            {rows.map((row, idx) => {
+              const selectedRowRpIds = (row.resourcePersonEmpIds && row.resourcePersonEmpIds.length > 0)
+                ? row.resourcePersonEmpIds
+                : (row.resourcePersonEmpId ? row.resourcePersonEmpId.split(',').map((s) => s.trim()).filter(Boolean) : []);
+              const search = (rpSearchMap[row.id] || '').toLowerCase().trim();
+              const filteredOfficers = officersList.filter(
+                (o) => !search || o.employeeId.toLowerCase().includes(search) || o.name.toLowerCase().includes(search)
+              );
+
+              return (
+                <div
+                  key={row.id}
+                  className="bg-white p-4.5 rounded-xl border border-slate-200 shadow-xs space-y-3"
+                >
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                   <div className="flex items-center gap-2">
                     <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold flex items-center justify-center">
@@ -420,7 +458,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                     </div>
                   </div>
 
-                  {/* Column 3: Mode & Capacity */}
+                  {/* Column 3: Mode & Description */}
                   <div className="space-y-2.5">
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">
@@ -442,15 +480,14 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
 
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        Max Participant Capacity
+                        Description / Objectives
                       </label>
-                      <input
-                        type="number"
-                        min={5}
-                        max={200}
-                        value={row.maxParticipants}
-                        onChange={(e) => handleFieldChange(idx, 'maxParticipants', e.target.value)}
-                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
+                      <textarea
+                        rows={3}
+                        placeholder="Brief summary or clinical objectives"
+                        value={row.description || ''}
+                        onChange={(e) => handleFieldChange(idx, 'description', e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs resize-none"
                       />
                     </div>
                   </div>
@@ -458,31 +495,86 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                   {/* Column 4: Faculty & Resource Persons */}
                   <div className="space-y-2.5">
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        Internal Resource Person
-                      </label>
-                      {officersList.length > 0 ? (
-                        <select
-                          value={row.resourcePersonEmpId}
-                          onChange={(e) => handleFieldChange(idx, 'resourcePersonEmpId', e.target.value)}
-                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
-                        >
-                          <option value="">Select Internal Officer</option>
-                          {officersList.map((off) => (
-                            <option key={off.employeeId} value={off.employeeId}>
-                              {off.name} ({off.employeeId})
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          type="text"
-                          placeholder="Enter Employee ID"
-                          value={row.resourcePersonEmpId}
-                          onChange={(e) => handleFieldChange(idx, 'resourcePersonEmpId', e.target.value)}
-                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
-                        />
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[11px] font-bold text-slate-700">
+                          Internal Resource Persons
+                        </label>
+                        {selectedRowRpIds.length > 0 && (
+                          <span className="text-[10px] text-emerald-700 font-semibold">
+                            {selectedRowRpIds.length} Selected
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Selected RP Tags */}
+                      {selectedRowRpIds.length > 0 && (
+                        <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto p-1 mb-1.5 bg-emerald-50/50 rounded-lg border border-emerald-100">
+                          {selectedRowRpIds.map((empId) => {
+                            const officer = officersList.find((o) => o.employeeId === empId);
+                            return (
+                              <span
+                                key={empId}
+                                className="inline-flex items-center gap-1 text-[10px] font-medium bg-white text-emerald-900 px-1.5 py-0.5 rounded border border-emerald-200 shadow-2xs"
+                              >
+                                <span className="truncate max-w-[130px]">{empId} - {officer ? officer.name : ''}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleRowRpSelection(idx, empId)}
+                                  className="text-emerald-500 hover:text-rose-600 cursor-pointer"
+                                >
+                                  <X className="w-2.5 h-2.5" />
+                                </button>
+                              </span>
+                            );
+                          })}
+                        </div>
                       )}
+
+                      {/* Search / Filter input */}
+                      <input
+                        type="text"
+                        placeholder="Filter officers by name or ID..."
+                        value={rpSearchMap[row.id] || ''}
+                        onChange={(e) =>
+                          setRpSearchMap((prev) => ({ ...prev, [row.id]: e.target.value }))
+                        }
+                        className="w-full px-2 py-1 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 focus:outline-none mb-1"
+                      />
+
+                      {/* Officers list dropdown / box */}
+                      <div className="max-h-24 overflow-y-auto border border-slate-200 rounded-lg bg-white divide-y divide-slate-100">
+                        {filteredOfficers.length === 0 ? (
+                          <div className="p-2 text-center text-[10px] text-slate-400">No officers found</div>
+                        ) : (
+                          filteredOfficers.slice(0, 30).map((officer) => {
+                            const isSelected = selectedRowRpIds.includes(officer.employeeId);
+                            return (
+                              <div
+                                key={officer.employeeId}
+                                onClick={() => toggleRowRpSelection(idx, officer.employeeId)}
+                                className={`flex items-center justify-between p-1 text-[11px] cursor-pointer transition-colors ${
+                                  isSelected ? 'bg-emerald-50 text-emerald-900 font-semibold' : 'hover:bg-slate-50 text-slate-700'
+                                }`}
+                              >
+                                <div className="flex items-center gap-1.5 truncate">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => {}}
+                                    className="rounded text-emerald-600 pointer-events-none w-3 h-3"
+                                  />
+                                  <span className="truncate">
+                                    {officer.employeeId} - {officer.name}
+                                  </span>
+                                </div>
+                                {isSelected && (
+                                  <span className="text-[9px] text-emerald-600 font-bold shrink-0">Selected</span>
+                                )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
                     </div>
 
                     <div>
@@ -536,7 +628,8 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
 
             {/* Add Row Button */}
             <div className="flex justify-start">

@@ -504,7 +504,7 @@ export const INITIAL_NEWS_EVENTS: NewsEventItem[] = [
     date: "2026-08-12",
     category: "Update",
     summary: "Nursing staff can now access instant digital attendance records, class schedules, and export verified CNE records.",
-    content: "The portal supports seamless integration with Google Sheets, allowing real-time synchronization of scheduled classes and verified attendance.",
+    content: "The portal supports real-time synchronization of scheduled classes and verified attendance across clinical areas.",
     venue: "Institutional Web Portal",
     isImportant: false
   }

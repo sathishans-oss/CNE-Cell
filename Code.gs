@@ -3928,6 +3928,9 @@ function handleGetProgramImpact(params, session) {
       success: true,
       data: {
         totalCompletedClasses: 0,
+        cneDuration: '00:00:00',
+        totalDuration: '00:00:00',
+        totalDurationSeconds: 0,
         uniqueStaffTrained: 0,
         uniqueWardsCount: 0,
         attendanceComplianceRate: 'N/A',
@@ -3936,12 +3939,16 @@ function handleGetProgramImpact(params, session) {
     };
   }
   
-  var data = dataSheet.getDataRange().getValues();
+  var dataRange = dataSheet.getDataRange();
+  var data = dataRange.getValues();
   if (data.length <= 1) {
     return {
       success: true,
       data: {
         totalCompletedClasses: 0,
+        cneDuration: '00:00:00',
+        totalDuration: '00:00:00',
+        totalDurationSeconds: 0,
         uniqueStaffTrained: 0,
         uniqueWardsCount: 0,
         attendanceComplianceRate: 'N/A',
@@ -3950,7 +3957,9 @@ function handleGetProgramImpact(params, session) {
     };
   }
   
+  var displayValues = dataRange.getDisplayValues();
   var completedClasses = 0;
+  var totalDurationSeconds = 0;
   var uniqueStaffMap = {};
   var uniqueWardsMap = {};
   var userTrainedOthersMap = {};
@@ -3963,6 +3972,9 @@ function handleGetProgramImpact(params, session) {
     if (!dataId) continue;
     
     var area = String(row[1] || '').trim();
+    var displayDur = (displayValues && displayValues[r]) ? displayValues[r][4] : '';
+    var duration = formatDurationValue(row[4], displayDur);
+    var durSec = parseDurationToSeconds(duration) || 0;
     var rpEmpId = normalizeEmpId(row[6]);
     var staffIdsRaw = String(row[8] || '').trim();
     var staffCount = parseInt(row[9], 10) || 0;
@@ -3978,6 +3990,7 @@ function handleGetProgramImpact(params, session) {
     if (!isUserLoggedIn) {
       // INSTITUTIONAL: All valid completed classes in Data tab
       completedClasses++;
+      totalDurationSeconds += durSec;
       if (area) {
         uniqueWardsMap[area.toLowerCase()] = true;
       }
@@ -3995,6 +4008,7 @@ function handleGetProgramImpact(params, session) {
       
       if (isResourcePerson || isParticipant) {
         completedClasses++;
+        totalDurationSeconds += durSec;
         if (area) {
           uniqueWardsMap[area.toLowerCase()] = true;
         }
@@ -4032,6 +4046,9 @@ function handleGetProgramImpact(params, session) {
     success: true,
     data: {
       totalCompletedClasses: completedClasses,
+      cneDuration: formatSecondsToDuration(totalDurationSeconds),
+      totalDuration: formatSecondsToDuration(totalDurationSeconds),
+      totalDurationSeconds: totalDurationSeconds,
       uniqueStaffTrained: totalStaff,
       uniqueWardsCount: totalWards,
       attendanceComplianceRate: 'N/A', // Data sheet contains no verification/compliance percentage column

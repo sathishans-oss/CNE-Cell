@@ -626,7 +626,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
         {loading ? (
           <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-500">
             <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
-            <span className="text-xs font-medium">Loading CNE schedule from Google Sheets...</span>
+            <span className="text-xs font-medium">Loading data</span>
           </div>
         ) : availableClasses.length === 0 ? (
           <div className="py-16 text-center bg-white rounded-2xl border border-slate-200 p-8 space-y-2">

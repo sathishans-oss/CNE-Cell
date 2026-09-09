@@ -126,14 +126,16 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
     }
   };
 
-  // Scheduled upcoming classes filter
-  const openClasses = upcomingClasses.filter((c) => c.status === 'Scheduled').slice(0, 4);
+  // Scheduled upcoming classes filter: maximum 5 classes displayed on home card
+  const scheduledClasses = upcomingClasses.filter((c) => c.status === 'Scheduled');
+  const openClasses = scheduledClasses.slice(0, 5);
+  const totalScheduledCount = scheduledClasses.length;
 
   return (
     <div className="space-y-8 pb-16">
       {/* Streamlined 2-Column Nordic Clinical Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column (7 cols: Leadership, Active Classes, Moments) */}
+        {/* Left Column (7 cols: Leadership, Active Classes, Moments, Specialty Modules) */}
         <main className="lg:col-span-7 space-y-6">
           <CnoLeadershipCard
             cnoMessage={cnoMessage}
@@ -142,6 +144,7 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
           />
           <UpcomingClassesWidget
             openClasses={openClasses}
+            totalCount={totalScheduledCount}
             loading={loading}
             onNavigate={onNavigate}
             onSelectClass={(c) => setSelectedClass(c)}
@@ -154,15 +157,16 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
             onSelectPhoto={(photo) => setSelectedPhoto(photo)}
             accentColor="teal"
           />
+          {/* Core Clinical Specialty Modules: restricted to main content flow */}
+          <SpecialtyModulesWidget accentColor="teal" />
         </main>
 
-        {/* Right Column (5 cols: Impact, Circulars, Guidelines, Desk, Quick Links, Modules) */}
+        {/* Right Column (5 cols: Impact, Circulars, Guidelines, Desk, Quick Links, Certification) */}
         <aside className="lg:col-span-5 space-y-6">
           <InstitutionalImpactWidget
             totalCompletedClasses={impactStats?.totalCompletedClasses ?? 0}
+            cneDuration={impactStats?.cneDuration || '00:00:00'}
             uniqueStaffTrained={impactStats?.uniqueStaffTrained ?? 0}
-            uniqueWardsCount={impactStats?.uniqueWardsCount ?? 0}
-            attendanceComplianceRate={impactStats?.attendanceComplianceRate ?? 'N/A'}
             loading={impactLoading}
             error={impactError}
             scope={impactStats?.scope || (user ? 'user' : 'institutional')}
@@ -184,9 +188,6 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
           <CertificationWorkflowWidget accentColor="teal" />
         </aside>
       </div>
-
-      {/* Core Clinical Specialty Modules (Full-width section at the bottom of the main page) */}
-      <SpecialtyModulesWidget accentColor="teal" />
 
       {/* ========================================================= */}
       {/* MODALS: News Detail, QuickLink Content, Photo Lightbox,   */}

@@ -120,9 +120,9 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
           (res.data as any)?.auditReport ||
           [];
         setVerifyReport(report);
-        success('CNE Google Sheets verification completed successfully.');
+        success('CNE Sheets verification completed successfully.');
       } else {
-        const errMsg = res.message || 'Failed to verify CNE Google Sheets.';
+        const errMsg = res.message || 'Failed to verify CNE Sheets.';
         setVerifyError(errMsg);
         error(errMsg);
       }
@@ -593,7 +593,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
               }}
               disabled={isVerifying || loading}
               className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
-              title="Verify or create missing CNE tabs and headers in Google Sheets"
+              title="Verify or create missing CNE tabs and headers in CNE Sheets"
             >
               {isVerifying ? (
                 <>
@@ -613,7 +613,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
             onClick={loadAllData}
             disabled={loading || isVerifying}
             className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors cursor-pointer disabled:opacity-50"
-            title="Refresh from Google Sheets"
+            title="Refresh data"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
@@ -748,7 +748,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
         {loading ? (
           <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-500">
             <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
-            <span className="text-xs font-medium">Loading CNE records from Google Sheets...</span>
+            <span className="text-xs font-medium">Loading data</span>
           </div>
         ) : filteredRecords.length === 0 ? (
           <div className="py-16 text-center space-y-2">
@@ -933,7 +933,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
               </div>
               <div>
                 <h3 className="text-base font-bold text-slate-900">Add CNE Activity Record</h3>
-                <p className="text-xs text-slate-500">Logs session into CNE Google Sheet database</p>
+                <p className="text-xs text-slate-500">Logs session into CNE database</p>
               </div>
             </div>
 
@@ -1838,7 +1838,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                 </div>
                 <div className="flex-1">
                   <h3 className="text-base font-bold text-slate-900">
-                    CNE Google Sheets verification completed successfully.
+                    CNE Sheets verification completed successfully.
                   </h3>
                   <p className="text-xs text-slate-500 mt-0.5">
                     All 13 authoritative CNE tabs and required headers were verified. Existing records remained completely untouched.
@@ -1952,17 +1952,17 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900">Verify / Initialize CNE Sheets</h3>
-                  <p className="text-xs text-slate-500">Google Spreadsheet Structure Check</p>
+                  <p className="text-xs text-slate-500">Sheet Structure Check</p>
                 </div>
               </div>
 
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs text-slate-700 leading-relaxed space-y-2">
                 <p className="font-semibold text-slate-900">Verify / Initialize CNE Sheets?</p>
                 <p>
-                  This will verify the configured CNE Google Spreadsheet and create any missing CNE tabs or required headers.
+                  This will verify the configured CNE Sheets and create any missing tabs or required headers.
                 </p>
                 <p className="text-slate-600">
-                  Existing spreadsheet data will not be deleted, cleared, reordered, or replaced.
+                  Existing sheet data will not be deleted, cleared, reordered, or replaced.
                 </p>
                 <p className="font-semibold text-slate-900 pt-1">
                   Continue?

@@ -5,6 +5,7 @@ import { formatCneDateTimeDisplay } from '../../utils';
 
 interface UpcomingClassesWidgetProps {
   openClasses: UpcomingClass[];
+  totalCount?: number;
   loading: boolean;
   onNavigate: (view: ViewMode) => void;
   onSelectClass: (c: UpcomingClass) => void;
@@ -14,12 +15,15 @@ interface UpcomingClassesWidgetProps {
 
 export const UpcomingClassesWidget: React.FC<UpcomingClassesWidgetProps> = ({
   openClasses,
+  totalCount,
   loading,
   onNavigate,
   onSelectClass,
   accentColor = 'emerald',
   compact = false
 }) => {
+  const effectiveTotal = totalCount !== undefined ? totalCount : openClasses.length;
+  const hasMoreThanFive = effectiveTotal > 5;
   const iconColor = {
     emerald: 'text-emerald-400',
     blue: 'text-blue-400',
@@ -62,21 +66,23 @@ export const UpcomingClassesWidget: React.FC<UpcomingClassesWidgetProps> = ({
           <Sparkles className={`w-4 h-4 ${iconColor}`} />
           <h2 className="text-sm font-bold tracking-tight">CNE Schedule</h2>
         </div>
-        <button
-          type="button"
-          onClick={() => onNavigate('upcoming')}
-          className={`text-[11px] font-semibold ${iconColor} hover:underline flex items-center gap-0.5 cursor-pointer`}
-        >
-          <span>View All</span>
-          <ChevronRight className="w-3.5 h-3.5" />
-        </button>
+        {hasMoreThanFive && (
+          <button
+            type="button"
+            onClick={() => onNavigate('upcoming')}
+            className={`text-[11px] font-semibold ${iconColor} hover:underline flex items-center gap-0.5 cursor-pointer`}
+          >
+            <span>View All</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
       <div className="p-3.5 divide-y divide-slate-100">
         {loading ? (
           <div className="py-8 flex flex-col items-center justify-center gap-2 text-slate-500">
             <Loader2 className={`w-5 h-5 animate-spin ${iconColor}`} />
-            <span className="text-xs font-medium">Loading CNE schedule...</span>
+            <span className="text-xs font-medium">Loading data</span>
           </div>
         ) : openClasses.length === 0 ? (
           <div className="py-8 text-center px-4 space-y-2">

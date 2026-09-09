@@ -142,11 +142,12 @@ export interface DepartmentalScheduleRow {
   time?: string; // Optional legacy time
   duration: string; // Duration in HH:MM:SS format
   resourcePersonEmpId: string;
+  resourcePersonEmpIds?: string[];
   resourcePersonName?: string;
   externalResourcePersons?: string[];
   modeOfTeaching: string;
   description?: string;
-  maxParticipants: number;
+  maxParticipants?: number;
   adminRemarks?: string;
 }
 
@@ -293,6 +294,9 @@ export interface CNEReportStats {
 
 export interface ProgramImpactStats {
   totalCompletedClasses: number;
+  cneDuration?: string;
+  totalDuration?: string;
+  totalDurationSeconds?: number;
   uniqueStaffTrained: number;
   uniqueWardsCount: number;
   attendanceComplianceRate: string;

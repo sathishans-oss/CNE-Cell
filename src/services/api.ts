@@ -148,7 +148,7 @@ export class ApiService {
       return {
         success: false,
         errorCode: 'BACKEND_NOT_CONFIGURED',
-        message: 'Google Apps Script backend URL is not configured. Please configure your Google Sheets backend to connect to Google Sheets.'
+        message: 'Backend service URL is not configured. Please configure your backend service to connect.'
       };
     }
 
@@ -259,7 +259,7 @@ export class ApiService {
         if (data.success) {
           return {
             success: true,
-            message: `Connected successfully (${latencyMs}ms). ${data.message || 'Google Sheets backend active.'}`,
+            message: `Connected successfully (${latencyMs}ms). ${data.message || 'Database service active.'}`,
             latencyMs
           };
         } else {

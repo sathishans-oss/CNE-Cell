@@ -3,9 +3,10 @@ import { Activity } from 'lucide-react';
 
 interface InstitutionalImpactWidgetProps {
   totalCompletedClasses: number;
+  cneDuration?: string;
   uniqueStaffTrained: number;
-  uniqueWardsCount: number;
-  attendanceComplianceRate: string;
+  uniqueWardsCount?: number;
+  attendanceComplianceRate?: string;
   accentColor?: 'emerald' | 'blue' | 'amber' | 'teal';
   horizontal?: boolean;
   loading?: boolean;
@@ -15,9 +16,8 @@ interface InstitutionalImpactWidgetProps {
 
 export const InstitutionalImpactWidget: React.FC<InstitutionalImpactWidgetProps> = ({
   totalCompletedClasses,
+  cneDuration = '00:00:00',
   uniqueStaffTrained,
-  uniqueWardsCount,
-  attendanceComplianceRate,
   accentColor = 'emerald',
   horizontal = false,
   loading = false,
@@ -79,36 +79,32 @@ export const InstitutionalImpactWidget: React.FC<InstitutionalImpactWidgetProps>
           {loading ? (
             <div className="py-6 flex flex-col items-center justify-center text-center gap-2">
               <div className="w-5 h-5 border-2 border-slate-300 border-t-teal-600 rounded-full animate-spin" />
-              <span className="text-xs text-slate-500 font-medium">Loading CNE impact data...</span>
+              <span className="text-xs text-slate-500 font-medium">Loading data</span>
             </div>
           ) : error ? (
             <div className="py-6 text-center">
               <p className="text-xs font-semibold text-slate-700">Unable to Load Impact Data</p>
-              <p className="text-[11px] text-slate-500 mt-0.5">Please check Google Sheets connection or try again.</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Please check network connection or try again.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
               <div className={`p-3 rounded-xl bg-white border border-slate-200 ${hoverBorder} transition-colors shadow-2xs`}>
                 <span className={`text-xl sm:text-2xl font-black ${numberColor} block`}>
                   {totalCompletedClasses}{totalCompletedClasses > 0 ? '+' : ''}
                 </span>
-                <span className="text-xs text-slate-600 font-semibold mt-0.5 block">Completed Classes</span>
+                <span className="text-xs text-slate-600 font-semibold mt-0.5 block">Total CNE Classes</span>
+              </div>
+              <div className={`p-3 rounded-xl bg-white border border-slate-200 ${hoverBorder} transition-colors shadow-2xs`}>
+                <span className={`text-xl sm:text-2xl font-black ${numberColor} block font-mono`}>
+                  {cneDuration || '00:00:00'}
+                </span>
+                <span className="text-xs text-slate-600 font-semibold mt-0.5 block">CNE Duration</span>
               </div>
               <div className={`p-3 rounded-xl bg-white border border-slate-200 ${hoverBorder} transition-colors shadow-2xs`}>
                 <span className={`text-xl sm:text-2xl font-black ${numberColor} block`}>
                   {uniqueStaffTrained}{uniqueStaffTrained > 0 ? '+' : ''}
                 </span>
                 <span className="text-xs text-slate-600 font-semibold mt-0.5 block">Officers Trained</span>
-              </div>
-              <div className={`p-3 rounded-xl bg-white border border-slate-200 ${hoverBorder} transition-colors shadow-2xs`}>
-                <span className={`text-xl sm:text-2xl font-black ${numberColor} block`}>
-                  {uniqueWardsCount}{uniqueWardsCount > 0 ? '+' : ''}
-                </span>
-                <span className="text-xs text-slate-600 font-semibold mt-0.5 block">Wards & ICUs Active</span>
-              </div>
-              <div className={`p-3 rounded-xl bg-white border border-slate-200 ${hoverBorder} transition-colors shadow-2xs`}>
-                <span className={`text-xl sm:text-2xl font-black ${numberColor} block`}>{attendanceComplianceRate}</span>
-                <span className="text-xs text-slate-600 font-semibold mt-0.5 block">Verified Compliance</span>
               </div>
             </div>
           )}
@@ -134,36 +130,32 @@ export const InstitutionalImpactWidget: React.FC<InstitutionalImpactWidgetProps>
         {loading ? (
           <div className="py-6 flex flex-col items-center justify-center text-center gap-2">
             <div className="w-5 h-5 border-2 border-slate-300 border-t-teal-600 rounded-full animate-spin" />
-            <span className="text-xs text-slate-500 font-medium">Loading CNE impact data...</span>
+            <span className="text-xs text-slate-500 font-medium">Loading data</span>
           </div>
         ) : error ? (
           <div className="py-6 text-center">
             <p className="text-xs font-semibold text-slate-700">Unable to Load Impact Data</p>
-            <p className="text-[11px] text-slate-500 mt-0.5">Please check Google Sheets connection or try again.</p>
+            <p className="text-[11px] text-slate-500 mt-0.5">Please check network connection or try again.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2.5 text-center">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-center">
             <div className={`p-3 rounded-xl bg-white border border-slate-200 ${hoverBorder} transition-colors shadow-2xs`}>
               <span className={`text-xl sm:text-2xl font-black ${numberColor} block`}>
                 {totalCompletedClasses}{totalCompletedClasses > 0 ? '+' : ''}
               </span>
-              <span className="text-xs text-slate-600 font-semibold mt-0.5 block">Completed Classes</span>
+              <span className="text-xs text-slate-600 font-semibold mt-0.5 block">Total CNE Classes</span>
+            </div>
+            <div className={`p-3 rounded-xl bg-white border border-slate-200 ${hoverBorder} transition-colors shadow-2xs`}>
+              <span className={`text-xl sm:text-2xl font-black ${numberColor} block font-mono`}>
+                {cneDuration || '00:00:00'}
+              </span>
+              <span className="text-xs text-slate-600 font-semibold mt-0.5 block">CNE Duration</span>
             </div>
             <div className={`p-3 rounded-xl bg-white border border-slate-200 ${hoverBorder} transition-colors shadow-2xs`}>
               <span className={`text-xl sm:text-2xl font-black ${numberColor} block`}>
                 {uniqueStaffTrained}{uniqueStaffTrained > 0 ? '+' : ''}
               </span>
               <span className="text-xs text-slate-600 font-semibold mt-0.5 block">Officers Trained</span>
-            </div>
-            <div className={`p-3 rounded-xl bg-white border border-slate-200 ${hoverBorder} transition-colors shadow-2xs`}>
-              <span className={`text-xl sm:text-2xl font-black ${numberColor} block`}>
-                {uniqueWardsCount}{uniqueWardsCount > 0 ? '+' : ''}
-              </span>
-              <span className="text-xs text-slate-600 font-semibold mt-0.5 block">Wards & ICUs Active</span>
-            </div>
-            <div className={`p-3 rounded-xl bg-white border border-slate-200 ${hoverBorder} transition-colors shadow-2xs`}>
-              <span className={`text-xl sm:text-2xl font-black ${numberColor} block`}>{attendanceComplianceRate}</span>
-              <span className="text-xs text-slate-600 font-semibold mt-0.5 block">Verified Compliance</span>
             </div>
           </div>
         )}

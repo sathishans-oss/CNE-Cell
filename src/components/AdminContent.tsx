@@ -635,7 +635,7 @@ export const AdminContent: React.FC<AdminContentProps> = ({
             {newsLoading ? (
               <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-500">
                 <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
-                <span className="text-xs font-medium">Loading circulars from Google Sheets...</span>
+                <span className="text-xs font-medium">Loading data</span>
               </div>
             ) : filteredNews.length === 0 ? (
               <div className="py-16 text-center text-xs text-slate-400">No circulars posted yet.</div>
@@ -840,7 +840,7 @@ export const AdminContent: React.FC<AdminContentProps> = ({
             {linksLoading ? (
               <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-500">
                 <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
-                <span className="text-xs font-medium">Loading quick links from Google Sheets...</span>
+                <span className="text-xs font-medium">Loading data</span>
               </div>
             ) : linksList.length === 0 ? (
               <div className="py-16 text-center text-xs text-slate-400">No quick links configured.</div>
@@ -945,7 +945,7 @@ export const AdminContent: React.FC<AdminContentProps> = ({
             {galleryLoading ? (
               <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-500">
                 <Loader2 className="w-8 h-8 animate-spin text-teal-600" />
-                <span className="text-xs font-medium">Loading activity photos from Google Sheets...</span>
+                <span className="text-xs font-medium">Loading data</span>
               </div>
             ) : galleryList.length === 0 ? (
               <div className="py-16 text-center text-xs text-slate-400">No activity photos published yet.</div>
