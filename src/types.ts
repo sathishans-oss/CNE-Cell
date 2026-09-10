@@ -163,6 +163,8 @@ export interface CNEQuestion {
   };
   correctOption: 'A' | 'B' | 'C' | 'D';
   explanation: string;
+  authoritativeSource?: string;
+  status?: 'ACTIVE' | 'INACTIVE' | 'REPLACED';
   isFinalized?: boolean;
   isLocked?: boolean;
 }
@@ -185,6 +187,7 @@ export interface CNEAiQuotaInfo {
   maxQuota: number;
   remaining: number;
   canGenerate: boolean;
+  status?: 'AVAILABLE' | 'USED' | 'GENERATED';
   lastAttemptAt?: string;
   lastGeneratedBy?: string;
 }

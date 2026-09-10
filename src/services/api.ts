@@ -684,8 +684,8 @@ export class ApiService {
     return this.executeAction('reserveAiQuota', { cneId });
   }
 
-  static async commitAiQuota(cneId: string, reservationToken: string): Promise<ApiResponse<CNEAiQuotaInfo>> {
-    return this.executeAction<CNEAiQuotaInfo>('commitAiQuota', { cneId, reservationToken });
+  static async commitAiQuota(cneId: string, reservationToken: string, questions?: CNEQuestion[]): Promise<ApiResponse<CNEAiQuotaInfo>> {
+    return this.executeAction<CNEAiQuotaInfo>('commitAiQuota', { cneId, reservationToken, questions });
   }
 
   static async releaseAiQuota(cneId: string, reservationToken: string): Promise<ApiResponse> {

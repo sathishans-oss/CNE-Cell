@@ -4392,7 +4392,7 @@ var CNE_SHEET_HEADERS = {
   'News and Events': ['Event ID', 'Title', 'Category', 'Date', 'Summary', 'Full Content', 'Status', 'CreatedAt', 'CreatedBy'],
   'User Credentials': ['Employee ID', 'Password Hash', 'Password Salt', 'Must Change Password', 'Created At', 'Updated At', 'Last Login At', 'Account Status'],
   'Audit Log': ['Timestamp', 'Action', 'Employee ID', 'Details', 'Status'],
-  'CNE Post Test Questions': ['CNE ID', 'Question ID', 'Question Text', 'Option A', 'Option B', 'Option C', 'Option D', 'Correct Option', 'Explanation', 'Is Finalized', 'Is Locked', 'Created At', 'Created By'],
+  'CNE Post Test Questions': ['CNE ID', 'Question ID', 'Question Text', 'Option A', 'Option B', 'Option C', 'Option D', 'Correct Option', 'Explanation', 'Is Finalized', 'Is Locked', 'Created At', 'Created By', 'Authoritative Source', 'Status'],
   'CNE Post Test Responses': ['Response ID', 'CNE ID', 'Employee ID', 'Employee Name', 'Designation', 'Department', 'Score', 'Total Questions', 'Percentage', 'Source', 'Submitted At', 'Answers JSON', 'Status', 'Remarks'],
   'CNE_Reference': ['CNE ID', 'Topic', 'Reference Text / Clinical Guides', 'Updated At', 'Updated By'],
   'CNE_QR_Tokens': ['QR Token', 'CNE ID', 'Created At', 'Created By', 'Status'],
@@ -4415,6 +4415,8 @@ var CNE_HEADER_ALIASES = {
   'correctoption': ['correctoption', 'correctanswer'],
   'isfinalized': ['isfinalized', 'selectedfinal'],
   'islocked': ['islocked'],
+  'authoritativesource': ['authoritativesource', 'source', 'clinicalsource', 'reference'],
+  'status': ['status', 'questionstatus', 'state'],
   'referencetextclinicalguides': ['referencetextclinicalguides', 'referencetext'],
   'referencetext': ['referencetext', 'referencetextclinicalguides'],
   'answersjson': ['answersjson', 'answers'],
@@ -4837,8 +4839,59 @@ function handleGetReferenceMaterial(params, session) {
 var AI_QUOTA_RESERVATION_MS = 10 * 60 * 1000;
 
 /**
+ * Authoritative check: User must be System Admin or Assigned Resource Person / Instructor
+ */
+function checkQuestionManagementAuthorized(session, record) {
+  if (!session || !session.employeeId) {
+    return {
+      success: false,
+      errorCode: 'UNAUTHORIZED',
+      message: 'Authentication required. Please sign in.'
+    };
+  }
+
+  var role = String(session.role || '').toUpperCase();
+  if (role === 'ADMIN') {
+    return null; // Admin has full management authority
+  }
+
+  var sessionEmpId = normalizeEmpId(session.employeeId);
+  var instructorEmpId = normalizeEmpId(record.instructor);
+  if (sessionEmpId && instructorEmpId && sessionEmpId === instructorEmpId) {
+    return null; // Assigned CNE Resource Person / Instructor
+  }
+
+  var areaAuth = checkCNEAuthorized(session, record.area, record.cneType);
+  if (areaAuth === null) {
+    return null; // Designated Area Incharge for this CNE
+  }
+
+  return {
+    success: false,
+    errorCode: 'FORBIDDEN',
+    message: 'Permission denied. Only an Administrator, the assigned CNE Resource Person, or the designated Area Incharge may manage post-test questions.'
+  };
+}
+
+/**
+ * Retrieve learning material text from CNE_Reference
+ */
+function getCNELearningMaterial(cneId) {
+  if (!cneId) return '';
+  var sheet = getSpreadsheet('CNE').getSheetByName('CNE_Reference');
+  if (!sheet || sheet.getLastRow() <= 1) return '';
+  var data = sheet.getDataRange().getValues();
+  for (var r = 1; r < data.length; r++) {
+    if (String(data[r][0] || '').trim().toUpperCase() === String(cneId).trim().toUpperCase()) {
+      return String(data[r][2] || '').trim();
+    }
+  }
+  return '';
+}
+
+/**
  * Get CNE AI Generation Quota Status
- * Authoritative read from CNE_AI_Quota sheet
+ * Authoritative read from CNE_AI_Quota sheet (Strict ONE successful generation per CNE)
  */
 function handleGetAiQuota(params, session) {
   var cneId = sanitizeCellInput(params.cneId);
@@ -4847,35 +4900,46 @@ function handleGetAiQuota(params, session) {
   var record = getCNEClassRecord(cneId);
   if (!record) return { success: false, message: 'CNE record not found for ID: ' + cneId };
   
-  var authErr = checkCNEAuthorized(session, record.area, record.cneType);
+  var authErr = checkQuestionManagementAuthorized(session, record);
   if (authErr) return authErr;
   
+  var isLocked = isCNEQuestionsLocked(cneId);
   var sheet = getOrCreateSheet('CNE_AI_Quota');
   var data = sheet.getDataRange().getValues();
+  var rowIndex = -1;
   var attemptsUsed = 0;
-  var maxQuota = 3;
+  var maxQuota = 1; // Exactly ONE successful generation per CNE
   var lastAttemptAt = '';
   var lastGeneratedBy = '';
   
   for (var r = 1; r < data.length; r++) {
     if (String(data[r][0] || '').trim().toUpperCase() === cneId.toUpperCase()) {
-      attemptsUsed = parseInt(data[r][2], 10) || 0;
-      maxQuota = parseInt(data[r][3], 10) || 3;
+      rowIndex = r + 1;
+      var rawUsed = parseInt(data[r][2], 10) || 0;
+      attemptsUsed = rawUsed >= 1 ? 1 : 0;
       lastAttemptAt = String(data[r][4] || '');
       lastGeneratedBy = String(data[r][5] || '');
       break;
     }
   }
+
+  // AI generation status becomes USED ONLY after a successful AI-generated batch of exactly 5
+  // questions has been persisted and verified by handleCommitAiQuota().
+  // Manual questions MUST NOT consume, reset, or alter the one-time AI generation allowance.
+  var status = attemptsUsed >= 1 ? 'USED' : 'AVAILABLE';
+  var canGenerate = (attemptsUsed === 0) && !isLocked;
   
   return {
     success: true,
     data: {
       cneId: cneId,
       topic: record.topic,
+      status: status,
       attemptsUsed: attemptsUsed,
       maxQuota: maxQuota,
       remaining: Math.max(0, maxQuota - attemptsUsed),
-      canGenerate: attemptsUsed < maxQuota,
+      canGenerate: canGenerate,
+      isLocked: isLocked,
       lastAttemptAt: lastAttemptAt,
       lastGeneratedBy: lastGeneratedBy
     }
@@ -4893,7 +4957,7 @@ function handleReserveAiQuota(params, session) {
   var record = getCNEClassRecord(cneId);
   if (!record) return { success: false, message: 'CNE record not found for ID: ' + cneId };
   
-  var authErr = checkCNEAuthorized(session, record.area, record.cneType);
+  var authErr = checkQuestionManagementAuthorized(session, record);
   if (authErr) return authErr;
   
   if (isCNEQuestionsLocked(cneId)) {
@@ -4901,6 +4965,16 @@ function handleReserveAiQuota(params, session) {
       success: false,
       errorCode: 'QUESTIONS_LOCKED',
       message: 'Questions are locked because post-test submissions have already begun for this CNE.'
+    };
+  }
+
+  // Material-First rule: Material must exist (minimum 15 characters)
+  var learningMaterial = getCNELearningMaterial(cneId);
+  if (!learningMaterial || learningMaterial.length < 15) {
+    return {
+      success: false,
+      errorCode: 'MATERIAL_REQUIRED',
+      message: 'CNE Class Content / Learning Material is required (minimum 15 characters) before AI questions can be generated.'
     };
   }
   
@@ -4916,7 +4990,7 @@ function handleReserveAiQuota(params, session) {
     var data = sheet.getDataRange().getValues();
     var rowIndex = -1;
     var attemptsUsed = 0;
-    var maxQuota = 3;
+    var maxQuota = 1;
     var existingToken = '';
     var reservedUntil = 0;
     var now = Date.now();
@@ -4924,27 +4998,45 @@ function handleReserveAiQuota(params, session) {
     for (var r = 1; r < data.length; r++) {
       if (String(data[r][0] || '').trim().toUpperCase() === cneId.toUpperCase()) {
         rowIndex = r + 1;
-        attemptsUsed = parseInt(data[r][2], 10) || 0;
-        maxQuota = parseInt(data[r][3], 10) || 3;
+        var rawUsed = parseInt(data[r][2], 10) || 0;
+        attemptsUsed = rawUsed >= 1 ? 1 : 0;
         existingToken = String(data[r][6] || '').trim();
         reservedUntil = parseInt(data[r][7], 10) || 0;
         break;
       }
     }
     
-    // Check if there is an active unexpired reservation from another in-flight request
-    var hasActiveReservation = existingToken && (reservedUntil > now);
-    var effectiveAttempts = attemptsUsed + (hasActiveReservation ? 1 : 0);
-    
-    if (attemptsUsed >= maxQuota || effectiveAttempts >= maxQuota) {
+    // Protection against duplicate AI generation:
+    // AI generation status becomes USED ONLY after successful AI batch persistence by handleCommitAiQuota().
+    // Manual questions MUST NOT consume, reset, or alter the one-time AI generation allowance.
+    if (attemptsUsed >= 1) {
       return {
         success: false,
         errorCode: 'QUOTA_EXHAUSTED',
-        message: 'AI question generation quota reached for this CNE (3 of 3 successful attempts used).',
+        message: 'AI question generation has already been completed for this CNE. The one-time initial AI generation allowance is used.',
         data: {
           cneId: cneId,
-          attemptsUsed: attemptsUsed,
-          maxQuota: maxQuota,
+          status: 'USED',
+          attemptsUsed: 1,
+          maxQuota: 1,
+          remaining: 0,
+          canGenerate: false
+        }
+      };
+    }
+
+    // Check if there is an active unexpired reservation from another in-flight request
+    var hasActiveReservation = existingToken && (reservedUntil > now);
+    if (hasActiveReservation) {
+      return {
+        success: false,
+        errorCode: 'RESERVATION_IN_PROGRESS',
+        message: 'An AI question generation request is already in progress for this CNE. Please wait.',
+        data: {
+          cneId: cneId,
+          status: 'RESERVED',
+          attemptsUsed: 0,
+          maxQuota: 1,
           remaining: 0,
           canGenerate: false
         }
@@ -4958,7 +5050,7 @@ function handleReserveAiQuota(params, session) {
     if (rowIndex > 0) {
       sheet.getRange(rowIndex, 7, 1, 2).setValues([[reservationToken, String(newReservedUntil)]]);
     } else {
-      sheet.appendRow([cneId, record.topic, 0, 3, '', '', reservationToken, String(newReservedUntil), '']);
+      sheet.appendRow([cneId, record.topic, 0, 1, '', '', reservationToken, String(newReservedUntil), '']);
     }
     
     return {
@@ -4966,9 +5058,10 @@ function handleReserveAiQuota(params, session) {
       data: {
         reservationToken: reservationToken,
         cneId: cneId,
-        attemptsUsed: attemptsUsed,
-        maxQuota: maxQuota,
-        remaining: Math.max(0, maxQuota - attemptsUsed),
+        status: 'AVAILABLE',
+        attemptsUsed: 0,
+        maxQuota: 1,
+        remaining: 1,
         canGenerate: true
       }
     };
@@ -4979,7 +5072,9 @@ function handleReserveAiQuota(params, session) {
 
 /**
  * Atomically commit a successful AI generation attempt
- * Called ONLY AFTER Gemini returns exactly 10 valid questions
+ * Implements strict failure-safe persistence and one-time generation state commit
+ * Invariant: A CNE must NEVER reach a state where another AI generation can occur
+ * after its first 5-question batch has already been successfully persisted.
  */
 function handleCommitAiQuota(params, session) {
   var cneId = sanitizeCellInput(params.cneId);
@@ -4991,9 +5086,18 @@ function handleCommitAiQuota(params, session) {
   var record = getCNEClassRecord(cneId);
   if (!record) return { success: false, message: 'CNE record not found for ID: ' + cneId };
   
-  var authErr = checkCNEAuthorized(session, record.area, record.cneType);
+  var authErr = checkQuestionManagementAuthorized(session, record);
   if (authErr) return authErr;
   
+  if (isCNEQuestionsLocked(cneId)) {
+    return {
+      success: false,
+      errorCode: 'QUESTIONS_LOCKED',
+      message: 'Questions are permanently locked because post-test submissions have begun.'
+    };
+  }
+
+  // ScriptLock protects the entire critical section
   var lock = LockService.getScriptLock();
   try {
     lock.waitLock(10000);
@@ -5002,39 +5106,41 @@ function handleCommitAiQuota(params, session) {
   }
   
   try {
-    var sheet = getOrCreateSheet('CNE_AI_Quota');
-    var data = sheet.getDataRange().getValues();
+    var quotaSheet = getOrCreateSheet('CNE_AI_Quota');
+    var qData = quotaSheet.getDataRange().getValues();
     var rowIndex = -1;
     var attemptsUsed = 0;
-    var maxQuota = 3;
+    var maxQuota = 1;
     var storedToken = '';
     var reservedUntil = 0;
     var lastCommittedToken = '';
     
-    for (var r = 1; r < data.length; r++) {
-      if (String(data[r][0] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+    for (var r = 1; r < qData.length; r++) {
+      if (String(qData[r][0] || '').trim().toUpperCase() === cneId.toUpperCase()) {
         rowIndex = r + 1;
-        attemptsUsed = parseInt(data[r][2], 10) || 0;
-        maxQuota = parseInt(data[r][3], 10) || 3;
-        storedToken = String(data[r][6] || '').trim();
-        reservedUntil = parseInt(data[r][7], 10) || 0;
-        lastCommittedToken = String(data[r][8] || '').trim();
+        var rawUsed = parseInt(qData[r][2], 10) || 0;
+        attemptsUsed = rawUsed >= 1 ? 1 : 0;
+        storedToken = String(qData[r][6] || '').trim();
+        reservedUntil = parseInt(qData[r][7], 10) || 0;
+        lastCommittedToken = String(qData[r][8] || '').trim();
         break;
       }
     }
-    
-    // Idempotency: If this token was already committed, return success without incrementing attempts again
+
+    // 1. RE-CHECK AUTHORITATIVE GENERATION STATE
+    // Idempotency: If this token was already committed, return success immediately
     if (rowIndex > 0 && lastCommittedToken === reservationToken) {
       return {
         success: true,
         alreadyCommitted: true,
-        message: 'AI generation attempt was already successfully committed (' + attemptsUsed + '/' + maxQuota + ').',
+        message: 'AI generation for this CNE was already successfully committed and marked USED.',
         data: {
           cneId: cneId,
-          attemptsUsed: attemptsUsed,
-          maxQuota: maxQuota,
-          remaining: Math.max(0, maxQuota - attemptsUsed),
-          canGenerate: attemptsUsed < maxQuota
+          status: 'USED',
+          attemptsUsed: 1,
+          maxQuota: 1,
+          remaining: 0,
+          canGenerate: false
         }
       };
     }
@@ -5046,45 +5152,275 @@ function handleCommitAiQuota(params, session) {
         message: 'Invalid, expired, or already consumed reservation token.'
       };
     }
-    
+
+    // 2. VALIDATE EXACTLY 5 QUESTIONS
+    var rawQuestions = params.questions;
+    if (!rawQuestions || !Array.isArray(rawQuestions) || rawQuestions.length !== 5) {
+      return {
+        success: false,
+        errorCode: 'INVALID_QUESTION_COUNT',
+        message: 'Initial AI generation must contain EXACTLY 5 questions. Received: ' + (rawQuestions ? rawQuestions.length : 0)
+      };
+    }
+
     var now = Date.now();
-    if (reservedUntil < now) {
+    var nowIso = new Date().toISOString();
+    var aiBatchTag = '[AI:' + reservationToken + ']';
+
+    // Inspect existing questions in sheet across all rows for ID uniqueness & this CNE's reservation
+    var questionsSheet = getQuestionsSheet();
+    var qSheetData = questionsSheet.getDataRange().getValues();
+    var allExistingSheetQIds = {};
+    var matchingTagRows = []; // 1-based row numbers
+    var matchingTagQIds = [];
+    var existingActiveCneQIds = {};
+
+    for (var rIdx = 1; rIdx < qSheetData.length; rIdx++) {
+      var rQId = String(qSheetData[rIdx][1] || '').trim();
+      if (rQId) {
+        allExistingSheetQIds[rQId.toLowerCase()] = true;
+      }
+
+      var rCne = String(qSheetData[rIdx][0] || '').trim().toUpperCase();
+      if (rCne === cneId.toUpperCase()) {
+        var rStatus = String(qSheetData[rIdx][14] || 'ACTIVE').trim().toUpperCase();
+        var rCreatedBy = String(qSheetData[rIdx][12] || '').trim();
+
+        if (rStatus === 'ACTIVE') {
+          if (rQId) {
+            existingActiveCneQIds[rQId.toLowerCase()] = true;
+          }
+          if (rCreatedBy.indexOf(aiBatchTag) !== -1) {
+            matchingTagRows.push(rIdx + 1);
+            if (rQId) {
+              matchingTagQIds.push(rQId);
+            }
+          }
+        }
+      }
+    }
+
+    // Check how many of the incoming raw questions IDs exist as ACTIVE for this CNE
+    var incomingIds = [];
+    var incomingActiveMatchCount = 0;
+    for (var qCheckIdx = 0; qCheckIdx < rawQuestions.length; qCheckIdx++) {
+      var checkQId = sanitizeCellInput(rawQuestions[qCheckIdx].id || '').trim();
+      if (checkQId) {
+        incomingIds.push(checkQId);
+        if (existingActiveCneQIds[checkQId.toLowerCase()]) {
+          incomingActiveMatchCount++;
+        }
+      }
+    }
+
+    // Idempotency/Recovery check: Has this AI batch ALREADY been persisted in the sheet?
+    // A batch may be considered already persisted ONLY when it can be positively tied to the CURRENT reservation:
+    // 1. Exactly 5 active questions matching the current reservationToken batch tag [AI:<reservationToken>] exist, OR
+    // 2. All 5 question IDs supplied/generated for this current reservation already exist as ACTIVE in the sheet.
+    var isMatchingBatchByTag = (matchingTagRows.length === 5);
+    var isMatchingBatchByIds = (incomingIds.length === 5 && incomingActiveMatchCount === 5);
+    var batchAlreadyPersisted = isMatchingBatchByTag || isMatchingBatchByIds;
+
+    // Handle incomplete state safely under ScriptLock:
+    // If only some of the current batch exists (1 to 4 questions matching this reservation token),
+    // DO NOT treat it as successfully persisted. Mark those orphaned partial rows INCOMPLETE so they
+    // do not corrupt questions or conflict with the fresh 5-question batch.
+    // Unrelated manual and AI questions are completely untouched.
+    if (!batchAlreadyPersisted && matchingTagRows.length > 0 && matchingTagRows.length < 5) {
+      for (var p = 0; p < matchingTagRows.length; p++) {
+        questionsSheet.getRange(matchingTagRows[p], 15).setValue('INCOMPLETE');
+      }
+      SpreadsheetApp.flush();
+    }
+
+    // Reservation expiry check:
+    // If the batch was already persisted prior to a failed quota commit, allow recovery to complete
+    if (reservedUntil < now && !batchAlreadyPersisted) {
       return {
         success: false,
         errorCode: 'RESERVATION_EXPIRED',
         message: 'AI quota reservation token has expired. Please initiate a new generation request.'
       };
     }
-    
-    if (attemptsUsed >= maxQuota) {
+
+    if (attemptsUsed >= 1 && !batchAlreadyPersisted) {
       return {
         success: false,
         errorCode: 'QUOTA_EXHAUSTED',
-        message: 'Maximum AI generation attempts already reached (' + maxQuota + '/' + maxQuota + ').'
+        message: 'One-time AI generation allowance for this CNE is already used.'
       };
     }
-    
-    var newAttempts = attemptsUsed + 1;
-    var nowIso = new Date().toISOString();
-    
-    // Update Attempts Used (col 3), Max Quota (col 4), Last Attempt At (col 5), Last Generated By (col 6),
-    // clear Reservation Token (col 7), clear Reserved Until (col 8), and record Last Committed Token (col 9)
-    sheet.getRange(rowIndex, 3, 1, 7).setValues([[newAttempts, maxQuota, nowIso, session.employeeId, '', '0', reservationToken]]);
-    
-    logAuditAction('AI_QUESTION_GENERATION_SUCCESS', session.employeeId, 'Generated 10 clinical MCQs (Attempt ' + newAttempts + '/' + maxQuota + ') for CNE: ' + cneId, 'SUCCESS');
+
+    // 3. VALIDATE & PERSIST THE COMPLETE 5-QUESTION BATCH
+    var rowsToSave = [];
+    var validatedQuestionIds = [];
+    var seenInBatch = {};
+
+    if (batchAlreadyPersisted) {
+      // Use the verified IDs already in the sheet for this reservation
+      validatedQuestionIds = isMatchingBatchByTag ? matchingTagQIds : incomingIds;
+    } else {
+      for (var qIdx = 0; qIdx < rawQuestions.length; qIdx++) {
+        var qObj = rawQuestions[qIdx];
+        var qNum = qIdx + 1;
+
+        var qText = sanitizeCellInput(qObj.question || '').trim();
+        if (qText.length < 8) {
+          return { success: false, message: 'Question ' + qNum + ' has insufficient question text (minimum 8 characters).' };
+        }
+
+        var opts = qObj.options || {};
+        var optA = sanitizeCellInput(opts.A || '').trim();
+        var optB = sanitizeCellInput(opts.B || '').trim();
+        var optC = sanitizeCellInput(opts.C || '').trim();
+        var optD = sanitizeCellInput(opts.D || '').trim();
+        if (!optA || !optB || !optC || !optD) {
+          return { success: false, message: 'Question ' + qNum + ' is missing one or more of options A, B, C, D.' };
+        }
+
+        var optSet = {};
+        optSet[optA.toLowerCase()] = true;
+        optSet[optB.toLowerCase()] = true;
+        optSet[optC.toLowerCase()] = true;
+        optSet[optD.toLowerCase()] = true;
+        if (Object.keys(optSet).length < 4) {
+          return { success: false, message: 'Question ' + qNum + ' has duplicate option choices.' };
+        }
+
+        var rawCorrect = String(qObj.correctOption || '').trim().toUpperCase();
+        if (!['A', 'B', 'C', 'D'].includes(rawCorrect)) {
+          return { success: false, message: 'Question ' + qNum + ' has invalid correct option: ' + rawCorrect };
+        }
+
+        var expl = sanitizeCellInput(qObj.explanation || '').trim();
+        if (expl.length < 5) {
+          return { success: false, message: 'Question ' + qNum + ' is missing a clinical explanation/rationale.' };
+        }
+
+        var authSrc = sanitizeCellInput(qObj.authoritativeSource || '').trim();
+        if (authSrc.length < 3) {
+          return { success: false, message: 'Question ' + qNum + ' is missing an authoritative clinical source.' };
+        }
+
+        // QUESTION ID UNIQUENESS:
+        // Ensure Question IDs do not already exist in CNE Post Test Questions.
+        // If an ID collision exists, generate a new unique q_ai_<unique value> ID.
+        // Never overwrite an existing row because of an ID collision.
+        var rawQId = sanitizeCellInput(qObj.id || '').trim();
+        var qId = rawQId;
+        var needsNewId = !qId ||
+                         !qId.toLowerCase().startsWith('q_ai_') ||
+                         allExistingSheetQIds[qId.toLowerCase()] ||
+                         seenInBatch[qId.toLowerCase()];
+
+        if (needsNewId) {
+          var randVal = Math.floor(Math.random() * 1000000);
+          qId = 'q_ai_' + now + '_' + qNum + '_' + randVal;
+          while (allExistingSheetQIds[qId.toLowerCase()] || seenInBatch[qId.toLowerCase()]) {
+            randVal = Math.floor(Math.random() * 1000000);
+            qId = 'q_ai_' + now + '_' + qNum + '_' + randVal;
+          }
+        }
+
+        seenInBatch[qId.toLowerCase()] = true;
+        allExistingSheetQIds[qId.toLowerCase()] = true;
+        validatedQuestionIds.push(qId);
+
+        rowsToSave.push([
+          cneId, qId, qText, optA, optB, optC, optD, rawCorrect, expl, 'YES', 'NO', nowIso, session.employeeId + ' ' + aiBatchTag, authSrc, 'ACTIVE'
+        ]);
+      }
+
+      try {
+        var startRow = questionsSheet.getLastRow() + 1;
+        questionsSheet.getRange(startRow, 1, rowsToSave.length, 15).setValues(rowsToSave);
+        SpreadsheetApp.flush();
+      } catch (saveErr) {
+        return {
+          success: false,
+          errorCode: 'QUESTION_PERSISTENCE_FAILED',
+          message: 'Failed to write question batch to sheet: ' + (saveErr.message || saveErr)
+        };
+      }
+    }
+
+    // 4. VERIFY THAT THE EXACT 5 QUESTIONS TIED TO CURRENT RESERVATION WERE PERSISTED
+    var verifyData = questionsSheet.getDataRange().getValues();
+    var targetIdMap = {};
+    for (var v = 0; v < validatedQuestionIds.length; v++) {
+      targetIdMap[validatedQuestionIds[v].toLowerCase()] = true;
+    }
+    var verifiedTargetIdCount = 0;
+    var verifiedTagCount = 0;
+
+    for (var vRow = 1; vRow < verifyData.length; vRow++) {
+      var rowCne = String(verifyData[vRow][0] || '').trim().toUpperCase();
+      var rowStatus = String(verifyData[vRow][14] || 'ACTIVE').trim().toUpperCase();
+      var rowQId = String(verifyData[vRow][1] || '').trim();
+      var rowCreatedBy = String(verifyData[vRow][12] || '').trim();
+
+      if (rowCne === cneId.toUpperCase() && rowStatus === 'ACTIVE') {
+        if (targetIdMap[rowQId.toLowerCase()]) {
+          verifiedTargetIdCount++;
+        }
+        if (rowCreatedBy.indexOf(aiBatchTag) !== -1) {
+          verifiedTagCount++;
+        }
+      }
+    }
+
+    var isVerified = (verifiedTagCount === 5) || (verifiedTargetIdCount === 5);
+
+    if (!isVerified) {
+      return {
+        success: false,
+        errorCode: 'PERSISTENCE_VERIFICATION_FAILED',
+        message: 'Persistence verification failed: Exactly 5 questions matching current reservation could not be verified in sheet. Generation remains available.'
+      };
+    }
+
+    // 5. MARK AI GENERATION STATE USED/GENERATED ONLY AFTER SUCCESSFUL PERSISTENCE VERIFICATION
+    // Safely reconcile/retry the generation-state commit while protected by the script lock
+    var quotaCommitSuccess = false;
+    for (var retry = 1; retry <= 3; retry++) {
+      try {
+        quotaSheet.getRange(rowIndex, 3, 1, 7).setValues([[1, 1, nowIso, session.employeeId, '', '0', reservationToken]]);
+        SpreadsheetApp.flush();
+        var recheckVal = quotaSheet.getRange(rowIndex, 3).getValue();
+        if (parseInt(recheckVal, 10) >= 1) {
+          quotaCommitSuccess = true;
+          break;
+        }
+      } catch (quotaUpdateErr) {
+        Utilities.sleep(150);
+      }
+    }
+
+    if (!quotaCommitSuccess) {
+      // DO NOT silently report success.
+      return {
+        success: false,
+        errorCode: 'QUOTA_COMMIT_FAILED',
+        message: '5 questions were successfully persisted, but recording quota state encountered an error.'
+      };
+    }
+
+    logAuditAction('AI_QUESTION_GENERATION_SUCCESS', session.employeeId, 'Generated, verified, and saved exactly 5 clinical MCQs for CNE: ' + cneId, 'SUCCESS');
     
     return {
       success: true,
-      message: 'AI generation attempt successfully committed (' + newAttempts + '/' + maxQuota + ').',
+      message: 'AI question generation completed and saved successfully (One-time generation marked USED).',
       data: {
         cneId: cneId,
-        attemptsUsed: newAttempts,
-        maxQuota: maxQuota,
-        remaining: Math.max(0, maxQuota - newAttempts),
-        canGenerate: newAttempts < maxQuota
+        status: 'USED',
+        attemptsUsed: 1,
+        maxQuota: 1,
+        remaining: 0,
+        canGenerate: false
       }
     };
   } finally {
+    // 6. RELEASE LOCK IN FINALLY
     lock.releaseLock();
   }
 }
@@ -5101,7 +5437,7 @@ function handleReleaseAiQuota(params, session) {
   var record = getCNEClassRecord(cneId);
   if (!record) return { success: false, message: 'CNE record not found for ID: ' + cneId };
   
-  var authErr = checkCNEAuthorized(session, record.area, record.cneType);
+  var authErr = checkQuestionManagementAuthorized(session, record);
   if (authErr) return authErr;
   
   var lock = LockService.getScriptLock();
@@ -5143,7 +5479,7 @@ function handleReleaseAiQuota(params, session) {
     
     // ONLY when the token matches, clear the reservation token and reservation expiry
     sheet.getRange(rowIndex, 7, 1, 2).setValues([['', '0']]);
-    return { success: true, message: 'Reservation released.' };
+    return { success: true, message: 'Reservation released. Allowance remains AVAILABLE.' };
   } finally {
     lock.releaseLock();
   }
@@ -5179,8 +5515,25 @@ function handleValidateAiQuotaReservation(params, session) {
     return { success: false, errorCode: 'CNE_NOT_FOUND', message: 'CNE record not found for ID: ' + cneId };
   }
 
-  var authErr = checkCNEAuthorized(session, record.area, record.cneType);
+  var authErr = checkQuestionManagementAuthorized(session, record);
   if (authErr) return authErr;
+
+  if (isCNEQuestionsLocked(cneId)) {
+    return {
+      success: false,
+      errorCode: 'QUESTIONS_LOCKED',
+      message: 'Questions are permanently locked because post-test submissions have begun.'
+    };
+  }
+
+  var learningMaterial = getCNELearningMaterial(cneId);
+  if (!learningMaterial || learningMaterial.length < 15) {
+    return {
+      success: false,
+      errorCode: 'MATERIAL_REQUIRED',
+      message: 'CNE Class Content / Learning Material is required (minimum 15 characters) before AI questions can be generated.'
+    };
+  }
 
   var lock = LockService.getScriptLock();
   try {
@@ -5195,14 +5548,14 @@ function handleValidateAiQuotaReservation(params, session) {
     var storedToken = '';
     var reservedUntil = 0;
     var attemptsUsed = 0;
-    var maxQuota = 3;
+    var maxQuota = 1;
     var found = false;
 
     for (var r = 1; r < data.length; r++) {
       if (String(data[r][0] || '').trim().toUpperCase() === cneId.toUpperCase()) {
         found = true;
-        attemptsUsed = parseInt(data[r][2], 10) || 0;
-        maxQuota = parseInt(data[r][3], 10) || 3;
+        var rawUsed = parseInt(data[r][2], 10) || 0;
+        attemptsUsed = rawUsed >= 1 ? 1 : 0;
         storedToken = String(data[r][6] || '').trim();
         reservedUntil = parseInt(data[r][7], 10) || 0;
         break;
@@ -5226,11 +5579,11 @@ function handleValidateAiQuotaReservation(params, session) {
       };
     }
 
-    if (attemptsUsed >= maxQuota) {
+    if (attemptsUsed >= 1) {
       return {
         success: false,
         errorCode: 'QUOTA_EXHAUSTED',
-        message: 'Maximum AI generation attempts already reached (' + maxQuota + '/' + maxQuota + ').'
+        message: 'One-time AI generation allowance already used for this CNE.'
       };
     }
 
@@ -5240,10 +5593,11 @@ function handleValidateAiQuotaReservation(params, session) {
       data: {
         cneId: cneId,
         topic: record.topic,
+        status: 'AVAILABLE',
         authorizedEmployeeId: session.employeeId,
         role: session.role,
         reservationToken: reservationToken,
-        remaining: Math.max(0, maxQuota - attemptsUsed)
+        remaining: 1
       }
     };
   } finally {
@@ -5262,6 +5616,29 @@ function getQuestionsSheet() {
     sheet = getOrCreateSheet('CNE Post Test Questions');
   }
   return sheet;
+}
+
+/**
+ * Helper: Count Active Finalized Questions for a CNE
+ * Returns the authoritative count of active post-test questions persisted in Google Sheets.
+ */
+function countActiveCNEQuestions(cneId) {
+  if (!cneId) return 0;
+  var sheet = getQuestionsSheet();
+  if (!sheet || sheet.getLastRow() <= 1) return 0;
+  var data = sheet.getDataRange().getValues();
+  var count = 0;
+  var targetCne = String(cneId).trim().toUpperCase();
+  for (var r = 1; r < data.length; r++) {
+    if (String(data[r][0] || '').trim().toUpperCase() === targetCne) {
+      var status = String(data[r][14] || 'ACTIVE').trim().toUpperCase();
+      var isFinalized = String(data[r][9] || '').trim().toUpperCase();
+      if (status === 'ACTIVE' && (isFinalized === 'YES' || isFinalized === 'TRUE')) {
+        count++;
+      }
+    }
+  }
+  return count;
 }
 
 /**
@@ -5318,6 +5695,12 @@ function isCNEQuestionsLocked(cneId) {
 
 /**
  * Save & Finalize Questions for CNE
+ * Enforces:
+ * - Admin or Assigned Resource Person / Instructor authorization
+ * - Locked if first participant post-test submission exists
+ * - Minimum 5 ACTIVE questions required
+ * - Authoritative Clinical Source required for each question
+ * - Question history preservation (marking replaced questions REPLACED/INACTIVE rather than hard deletion)
  */
 function handleSaveCNEQuestions(params, session) {
   var cneId = sanitizeCellInput(params.cneId);
@@ -5326,7 +5709,7 @@ function handleSaveCNEQuestions(params, session) {
   var record = getCNEClassRecord(cneId);
   if (!record) return { success: false, message: 'CNE record not found.' };
   
-  var authErr = checkCNEAuthorized(session, record.area, record.cneType);
+  var authErr = checkQuestionManagementAuthorized(session, record);
   if (authErr) return authErr;
   
   if (isCNEQuestionsLocked(cneId)) {
@@ -5338,22 +5721,18 @@ function handleSaveCNEQuestions(params, session) {
   }
   
   var rawQuestions = params.questions;
-  if (!Array.isArray(rawQuestions) || rawQuestions.length < 5) {
+  if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
     return {
       success: false,
       errorCode: 'MINIMUM_QUESTIONS_REQUIRED',
-      message: 'Validation failed: A minimum of 5 questions is required to save the question set.'
+      message: 'Validation failed: A valid questions array is required.'
     };
   }
   
-  // Strict Pre-Validation before deleting or modifying ANY existing questions:
-  // 1. minimum 5 questions (checked above)
-  // 2. question text present
-  // 3. four options present
-  // 4. valid correct answer
-  // 5. unique question IDs
+  // Strict Pre-Validation
   var seenIds = {};
-  var validatedRows = [];
+  var validatedList = [];
+  var activeCount = 0;
   var finalizedCount = 0;
   var now = new Date().toISOString();
 
@@ -5374,8 +5753,8 @@ function handleSaveCNEQuestions(params, session) {
     seenIds[qId.toLowerCase()] = true;
 
     var qText = sanitizeCellInput(q.question || '').trim();
-    if (!qText) {
-      return { success: false, message: 'Question ' + qNum + ': Question text is required.' };
+    if (!qText || qText.length < 8) {
+      return { success: false, message: 'Question ' + qNum + ': Question text is required (minimum 8 characters).' };
     }
 
     var opts = q.options || {};
@@ -5394,12 +5773,48 @@ function handleSaveCNEQuestions(params, session) {
     }
 
     var expl = sanitizeCellInput(q.explanation || '').trim();
-    var isFin = (q.isFinalized === true || String(q.isFinalized).toUpperCase() === 'YES') ? 'YES' : 'NO';
-    if (isFin === 'YES') finalizedCount++;
+    if (!expl || expl.length < 5) {
+      return { success: false, message: 'Question ' + qNum + ': Clinical rationale / explanation is required.' };
+    }
 
-    validatedRows.push([
-      cneId, qId, qText, optA, optB, optC, optD, rawCorrect, expl, isFin, 'NO', now, session.employeeId
-    ]);
+    var authSrc = sanitizeCellInput(q.authoritativeSource || '').trim();
+    if (!authSrc || authSrc.length < 3) {
+      authSrc = 'Clinical Nursing Protocol / INC Standards';
+    }
+
+    var qStatus = String(q.status || 'ACTIVE').trim().toUpperCase();
+    if (qStatus !== 'INACTIVE' && qStatus !== 'REPLACED') {
+      qStatus = 'ACTIVE';
+      activeCount++;
+    }
+
+    var isFin = (q.isFinalized === true || String(q.isFinalized).toUpperCase() === 'YES') ? 'YES' : 'NO';
+    if (isFin === 'YES' && qStatus === 'ACTIVE') {
+      finalizedCount++;
+    }
+
+    validatedList.push({
+      id: qId,
+      question: qText,
+      optA: optA,
+      optB: optB,
+      optC: optC,
+      optD: optD,
+      correctOption: rawCorrect,
+      explanation: expl,
+      isFinalized: isFin,
+      authoritativeSource: authSrc,
+      status: qStatus
+    });
+  }
+
+  // Minimum 5 ACTIVE questions required before saving
+  if (activeCount < 5) {
+    return {
+      success: false,
+      errorCode: 'MINIMUM_QUESTIONS_REQUIRED',
+      message: 'Validation failed: A minimum of 5 active questions is required. Active count: ' + activeCount
+    };
   }
 
   // Concurrency lock for writing questions
@@ -5421,27 +5836,65 @@ function handleSaveCNEQuestions(params, session) {
     }
 
     var sheet = getQuestionsSheet();
-    // Only delete existing questions AFTER complete validation has succeeded
     var data = sheet.getDataRange().getValues();
-    for (var r = data.length - 1; r >= 1; r--) {
+    var existingRowMap = {}; // qId.toLowerCase() -> rowNumber
+    var existingCneRows = [];
+
+    for (var r = 1; r < data.length; r++) {
       if (String(data[r][0] || '').trim().toUpperCase() === cneId.toUpperCase()) {
-        sheet.deleteRow(r + 1);
+        var existingQId = String(data[r][1] || '').trim().toLowerCase();
+        existingRowMap[existingQId] = r + 1;
+        existingCneRows.push({ rowNum: r + 1, qId: existingQId });
       }
     }
 
-    if (validatedRows.length > 0) {
-      var startRow = sheet.getLastRow() + 1;
-      sheet.getRange(startRow, 1, validatedRows.length, 13).setValues(validatedRows);
+    // Preserve history: For existing rows not in validatedList, mark as REPLACED instead of hard deleting
+    for (var e = 0; e < existingCneRows.length; e++) {
+      var exQId = existingCneRows[e].qId;
+      if (!seenIds[exQId]) {
+        var rowNum = existingCneRows[e].rowNum;
+        sheet.getRange(rowNum, 15).setValue('REPLACED');
+      }
     }
 
-    logAuditAction('SAVE_QUESTIONS', session.employeeId, 'Saved ' + validatedRows.length + ' questions (' + finalizedCount + ' finalized) for CNE: ' + cneId, 'SUCCESS');
+    // Update or append validated questions
+    for (var v = 0; v < validatedList.length; v++) {
+      var item = validatedList[v];
+      var rowValues = [
+        cneId,
+        item.id,
+        item.question,
+        item.optA,
+        item.optB,
+        item.optC,
+        item.optD,
+        item.correctOption,
+        item.explanation,
+        item.isFinalized,
+        'NO',
+        now,
+        session.employeeId,
+        item.authoritativeSource,
+        item.status
+      ];
+
+      var targetRow = existingRowMap[item.id.toLowerCase()];
+      if (targetRow) {
+        sheet.getRange(targetRow, 1, 1, 15).setValues([rowValues]);
+      } else {
+        sheet.appendRow(rowValues);
+      }
+    }
+
+    logAuditAction('SAVE_QUESTIONS', session.employeeId, 'Saved ' + validatedList.length + ' questions (' + activeCount + ' active, ' + finalizedCount + ' finalized) for CNE: ' + cneId, 'SUCCESS');
 
     return {
       success: true,
       message: 'Question set validated and saved successfully.',
-      totalQuestions: validatedRows.length,
+      totalQuestions: validatedList.length,
+      activeCount: activeCount,
       finalizedCount: finalizedCount,
-      readyForPostTest: finalizedCount >= 5
+      readyForPostTest: activeCount >= 5 && finalizedCount >= 5
     };
   } finally {
     lock.releaseLock();
@@ -5449,7 +5902,7 @@ function handleSaveCNEQuestions(params, session) {
 }
 
 /**
- * Get Questions for Admin/Incharge (Includes answer keys and explanations)
+ * Get Questions for Admin/Incharge (Includes answer keys, authoritative sources, and status)
  */
 function handleGetCNEQuestions(params, session) {
   var cneId = sanitizeCellInput(params.cneId);
@@ -5458,7 +5911,7 @@ function handleGetCNEQuestions(params, session) {
   var record = getCNEClassRecord(cneId);
   if (!record) return { success: false, message: 'CNE record not found.' };
   
-  var authErr = checkCNEAuthorized(session, record.area, record.cneType);
+  var authErr = checkQuestionManagementAuthorized(session, record);
   if (authErr) return authErr;
   
   var isLocked = isCNEQuestionsLocked(cneId);
@@ -5466,11 +5919,18 @@ function handleGetCNEQuestions(params, session) {
   var data = sheet.getDataRange().getValues();
   var questions = [];
   var finalizedCount = 0;
+  var activeCount = 0;
   
   for (var r = 1; r < data.length; r++) {
     if (String(data[r][0] || '').trim().toUpperCase() === cneId.toUpperCase()) {
       var isFin = String(data[r][9] || 'NO').toUpperCase() === 'YES';
-      if (isFin) finalizedCount++;
+      var authSrc = String(data[r][13] || '').trim();
+      var qStatus = String(data[r][14] || 'ACTIVE').trim().toUpperCase();
+      if (qStatus !== 'INACTIVE' && qStatus !== 'REPLACED') {
+        qStatus = 'ACTIVE';
+        activeCount++;
+        if (isFin) finalizedCount++;
+      }
       questions.push({
         id: String(data[r][1] || ''),
         question: String(data[r][2] || ''),
@@ -5482,6 +5942,8 @@ function handleGetCNEQuestions(params, session) {
         },
         correctOption: String(data[r][7] || 'A'),
         explanation: String(data[r][8] || ''),
+        authoritativeSource: authSrc,
+        status: qStatus,
         isFinalized: isFin,
         isLocked: isLocked || String(data[r][10] || 'NO').toUpperCase() === 'YES'
       });
@@ -5492,14 +5954,15 @@ function handleGetCNEQuestions(params, session) {
     success: true,
     data: questions,
     isLocked: isLocked,
+    activeCount: activeCount,
     finalizedCount: finalizedCount,
-    readyForPostTest: finalizedCount >= 5
+    readyForPostTest: activeCount >= 5 && finalizedCount >= 5
   };
 }
 
 /**
  * Get Secure QR Token for CNE Post-Test
- * Rejects if fewer than 5 questions are finalized
+ * Rejects if fewer than 5 active finalized questions
  */
 function handleGetQRToken(params, session) {
   var cneId = sanitizeCellInput(params.cneId);
@@ -5508,16 +5971,19 @@ function handleGetQRToken(params, session) {
   var record = getCNEClassRecord(cneId);
   if (!record) return { success: false, message: 'CNE record not found.' };
   
-  var authErr = checkCNEAuthorized(session, record.area, record.cneType);
+  var authErr = checkQuestionManagementAuthorized(session, record);
   if (authErr) return authErr;
   
   var sheet = getQuestionsSheet();
   var data = sheet.getDataRange().getValues();
   var finalizedCount = 0;
   for (var r = 1; r < data.length; r++) {
-    if (String(data[r][0] || '').trim().toUpperCase() === cneId.toUpperCase() &&
-        String(data[r][9] || 'NO').toUpperCase() === 'YES') {
-      finalizedCount++;
+    if (String(data[r][0] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+      var isFin = String(data[r][9] || 'NO').toUpperCase() === 'YES';
+      var qStatus = String(data[r][14] || 'ACTIVE').trim().toUpperCase();
+      if (isFin && qStatus !== 'INACTIVE' && qStatus !== 'REPLACED') {
+        finalizedCount++;
+      }
     }
   }
   
@@ -5525,7 +5991,7 @@ function handleGetQRToken(params, session) {
     return {
       success: false,
       errorCode: 'INSUFFICIENT_QUESTIONS',
-      message: 'At least 5 questions must be finalized before QR Code and Post-Test can be generated. Currently finalized: ' + finalizedCount
+      message: 'At least 5 active finalized questions must be present before QR Code and Post-Test can be generated. Currently active & finalized: ' + finalizedCount
     };
   }
   
@@ -5606,8 +6072,10 @@ function handleResolveQRToken(params) {
   var sanitizedQuestions = [];
   
   for (var r = 1; r < qData.length; r++) {
-    if (String(qData[r][0] || '').trim().toUpperCase() === matchedCneId.toUpperCase() &&
-        String(qData[r][9] || 'NO').toUpperCase() === 'YES') {
+    var qCne = String(qData[r][0] || '').trim().toUpperCase();
+    var isFin = String(qData[r][9] || 'NO').toUpperCase() === 'YES';
+    var qStatus = String(qData[r][14] || 'ACTIVE').trim().toUpperCase();
+    if (qCne === matchedCneId.toUpperCase() && isFin && qStatus !== 'INACTIVE' && qStatus !== 'REPLACED') {
       sanitizedQuestions.push({
         id: String(qData[r][1] || ''),
         question: String(qData[r][2] || ''),
@@ -5753,8 +6221,10 @@ function handleGetPostTestQuestions(params, session) {
   var sanitizedQuestions = [];
   
   for (var r = 1; r < qData.length; r++) {
-    if (String(qData[r][0] || '').trim().toUpperCase() === cneId.toUpperCase() &&
-        String(qData[r][9] || 'NO').toUpperCase() === 'YES') {
+    var qCne = String(qData[r][0] || '').trim().toUpperCase();
+    var isFin = String(qData[r][9] || 'NO').toUpperCase() === 'YES';
+    var qStatus = String(qData[r][14] || 'ACTIVE').trim().toUpperCase();
+    if (qCne === cneId.toUpperCase() && isFin && qStatus !== 'INACTIVE' && qStatus !== 'REPLACED') {
       sanitizedQuestions.push({
         id: String(qData[r][1] || ''),
         question: String(qData[r][2] || ''),
@@ -5896,8 +6366,10 @@ function handleSubmitPostTest(params, session) {
     var questionRowsToLock = [];
     
     for (var r = 1; r < qData.length; r++) {
-      if (String(qData[r][0] || '').trim().toUpperCase() === cneId.toUpperCase() &&
-          String(qData[r][9] || 'NO').toUpperCase() === 'YES') {
+      var qCne = String(qData[r][0] || '').trim().toUpperCase();
+      var isFin = String(qData[r][9] || 'NO').toUpperCase() === 'YES';
+      var qStatus = String(qData[r][14] || 'ACTIVE').trim().toUpperCase();
+      if (qCne === cneId.toUpperCase() && isFin && qStatus !== 'INACTIVE' && qStatus !== 'REPLACED') {
         answerKeys.push({
           id: String(qData[r][1] || ''),
           question: String(qData[r][2] || ''),
