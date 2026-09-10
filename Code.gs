@@ -1303,40 +1303,51 @@ function handleChangePassword(params, session) {
   var hashStr = computePasswordHash(newPassword, salt);
   var empId = normalizeEmpId(session.employeeId);
   
-  var ss = getCNESpreadsheet();
-  var authSheet = ss.getSheetByName('User Credentials');
-  if (!authSheet) {
-    return {
-      success: false,
-      message: 'System configuration error: "User Credentials" sheet not found in CNE database. Please contact system administrator.'
-    };
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { success: false, message: 'Server is busy. Please try again.' };
   }
-  var data = authSheet.getDataRange().getValues();
-  var updated = false;
-  var now = new Date().toISOString();
-  
-  for (var i = 1; i < data.length; i++) {
-    if (normalizeEmpId(data[i][0]) === empId) {
-      authSheet.getRange(i + 1, 2).setValue(hashStr);
-      authSheet.getRange(i + 1, 3).setValue(salt);
-      authSheet.getRange(i + 1, 4).setValue('NO');
-      authSheet.getRange(i + 1, 6).setValue(now);
-      authSheet.getRange(i + 1, 8).setValue('ACTIVE');
-      updated = true;
-      break;
-    }
-  }
-  
-  if (!updated) {
-    authSheet.appendRow([empId, hashStr, salt, 'NO', now, now, now, 'ACTIVE']);
-  }
-  
-  // Invalidate previous active sessions
-  CacheService.getScriptCache().put('pwd_change_' + empId, String(Date.now()), 7 * 24 * 60 * 60);
 
-  logAuditAction('PASSWORD_CHANGED', empId, 'User changed personal password', 'SUCCESS');
-  
-  return { success: true, message: 'Password updated successfully. You can now use your new password.' };
+  try {
+    var ss = getCNESpreadsheet();
+    var authSheet = ss.getSheetByName('User Credentials');
+    if (!authSheet) {
+      return {
+        success: false,
+        message: 'System configuration error: "User Credentials" sheet not found in CNE database. Please contact system administrator.'
+      };
+    }
+    var data = authSheet.getDataRange().getValues();
+    var updated = false;
+    var now = new Date().toISOString();
+    
+    for (var i = 1; i < data.length; i++) {
+      if (normalizeEmpId(data[i][0]) === empId) {
+        authSheet.getRange(i + 1, 2).setValue(hashStr);
+        authSheet.getRange(i + 1, 3).setValue(salt);
+        authSheet.getRange(i + 1, 4).setValue('NO');
+        authSheet.getRange(i + 1, 6).setValue(now);
+        authSheet.getRange(i + 1, 8).setValue('ACTIVE');
+        updated = true;
+        break;
+      }
+    }
+    
+    if (!updated) {
+      authSheet.appendRow([empId, hashStr, salt, 'NO', now, now, now, 'ACTIVE']);
+    }
+    
+    // Invalidate previous active sessions
+    CacheService.getScriptCache().put('pwd_change_' + empId, String(Date.now()), 7 * 24 * 60 * 60);
+
+    logAuditAction('PASSWORD_CHANGED', empId, 'User changed personal password', 'SUCCESS');
+    
+    return { success: true, message: 'Password updated successfully. You can now use your new password.' };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
@@ -1418,39 +1429,50 @@ function handleResetPassword(params) {
   var hashStr = computePasswordHash(newPassword, salt);
   var now = new Date().toISOString();
   
-  var ss = getCNESpreadsheet();
-  var authSheet = ss.getSheetByName('User Credentials');
-  if (!authSheet) {
-    return {
-      success: false,
-      message: 'System configuration error: "User Credentials" sheet not found in CNE database. Please contact system administrator.'
-    };
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { success: false, message: 'Server is busy. Please try again.' };
   }
-  var data = authSheet.getDataRange().getValues();
-  var updated = false;
-  
-  for (var i = 1; i < data.length; i++) {
-    if (normalizeEmpId(data[i][0]) === employeeId) {
-      authSheet.getRange(i + 1, 2).setValue(hashStr);
-      authSheet.getRange(i + 1, 3).setValue(salt);
-      authSheet.getRange(i + 1, 4).setValue('NO');
-      authSheet.getRange(i + 1, 6).setValue(now);
-      authSheet.getRange(i + 1, 8).setValue('ACTIVE');
-      updated = true;
-      break;
-    }
-  }
-  
-  if (!updated) {
-    authSheet.appendRow([employeeId, hashStr, salt, 'NO', now, now, now, 'ACTIVE']);
-  }
-  
-  // Invalidate previous active sessions
-  CacheService.getScriptCache().put('pwd_change_' + employeeId, String(Date.now()), 7 * 24 * 60 * 60);
 
-  logAuditAction('PASSWORD_RESET_SUCCESS', employeeId, 'Password reset via DOJ verification', 'SUCCESS');
-  
-  return { success: true, message: 'Password reset successfully. You can now log in with your new password.' };
+  try {
+    var ss = getCNESpreadsheet();
+    var authSheet = ss.getSheetByName('User Credentials');
+    if (!authSheet) {
+      return {
+        success: false,
+        message: 'System configuration error: "User Credentials" sheet not found in CNE database. Please contact system administrator.'
+      };
+    }
+    var data = authSheet.getDataRange().getValues();
+    var updated = false;
+    
+    for (var i = 1; i < data.length; i++) {
+      if (normalizeEmpId(data[i][0]) === employeeId) {
+        authSheet.getRange(i + 1, 2).setValue(hashStr);
+        authSheet.getRange(i + 1, 3).setValue(salt);
+        authSheet.getRange(i + 1, 4).setValue('NO');
+        authSheet.getRange(i + 1, 6).setValue(now);
+        authSheet.getRange(i + 1, 8).setValue('ACTIVE');
+        updated = true;
+        break;
+      }
+    }
+    
+    if (!updated) {
+      authSheet.appendRow([employeeId, hashStr, salt, 'NO', now, now, now, 'ACTIVE']);
+    }
+    
+    // Invalidate previous active sessions
+    CacheService.getScriptCache().put('pwd_change_' + employeeId, String(Date.now()), 7 * 24 * 60 * 60);
+
+    logAuditAction('PASSWORD_RESET_SUCCESS', employeeId, 'Password reset via DOJ verification', 'SUCCESS');
+    
+    return { success: true, message: 'Password reset successfully. You can now log in with your new password.' };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
@@ -1474,42 +1496,53 @@ function handleAdminResetPassword(params, session) {
   var defaultHash = computePasswordHash('pass1234', salt);
   var now = new Date().toISOString();
   
-  var ss = getCNESpreadsheet();
-  var authSheet = ss.getSheetByName('User Credentials');
-  if (!authSheet) {
-    return {
-      success: false,
-      message: 'System configuration error: "User Credentials" sheet not found in CNE database. Please contact system administrator.'
-    };
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { success: false, message: 'Server is busy. Please try again.' };
   }
-  var data = authSheet.getDataRange().getValues();
-  var updated = false;
-  
-  for (var i = 1; i < data.length; i++) {
-    if (normalizeEmpId(data[i][0]) === targetEmpId) {
-      authSheet.getRange(i + 1, 2).setValue(defaultHash);
-      authSheet.getRange(i + 1, 3).setValue(salt);
-      authSheet.getRange(i + 1, 4).setValue('YES');
-      authSheet.getRange(i + 1, 6).setValue(now);
-      authSheet.getRange(i + 1, 8).setValue('ACTIVE');
-      updated = true;
-      break;
-    }
-  }
-  
-  if (!updated) {
-    authSheet.appendRow([targetEmpId, defaultHash, salt, 'YES', now, now, now, 'ACTIVE']);
-  }
-  
-  // Invalidate previous active sessions
-  CacheService.getScriptCache().put('pwd_change_' + targetEmpId, String(Date.now()), 7 * 24 * 60 * 60);
 
-  logAuditAction('ADMIN_PASSWORD_RESET', session.employeeId, 'Target Employee ID: ' + targetEmpId + ', Timestamp: ' + now + ', Status: SUCCESS', 'SUCCESS');
-  
-  return {
-    success: true,
-    message: 'Password for ' + targetOfficer.name + ' (' + targetEmpId + ') has been reset to default password.'
-  };
+  try {
+    var ss = getCNESpreadsheet();
+    var authSheet = ss.getSheetByName('User Credentials');
+    if (!authSheet) {
+      return {
+        success: false,
+        message: 'System configuration error: "User Credentials" sheet not found in CNE database. Please contact system administrator.'
+      };
+    }
+    var data = authSheet.getDataRange().getValues();
+    var updated = false;
+    
+    for (var i = 1; i < data.length; i++) {
+      if (normalizeEmpId(data[i][0]) === targetEmpId) {
+        authSheet.getRange(i + 1, 2).setValue(defaultHash);
+        authSheet.getRange(i + 1, 3).setValue(salt);
+        authSheet.getRange(i + 1, 4).setValue('YES');
+        authSheet.getRange(i + 1, 6).setValue(now);
+        authSheet.getRange(i + 1, 8).setValue('ACTIVE');
+        updated = true;
+        break;
+      }
+    }
+    
+    if (!updated) {
+      authSheet.appendRow([targetEmpId, defaultHash, salt, 'YES', now, now, now, 'ACTIVE']);
+    }
+    
+    // Invalidate previous active sessions
+    CacheService.getScriptCache().put('pwd_change_' + targetEmpId, String(Date.now()), 7 * 24 * 60 * 60);
+
+    logAuditAction('ADMIN_PASSWORD_RESET', session.employeeId, 'Target Employee ID: ' + targetEmpId + ', Timestamp: ' + now + ', Status: SUCCESS', 'SUCCESS');
+    
+    return {
+      success: true,
+      message: 'Password for ' + targetOfficer.name + ' (' + targetEmpId + ') has been reset to default password.'
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
@@ -3875,25 +3908,36 @@ function handleAddQuickLink(params, session) {
   var title = sanitizeCellInput(params.title || '');
   if (!title) return { success: false, message: 'Link title is required.' };
 
-  var currentLinksRes = handleGetQuickLinks({});
-  var links = currentLinksRes.data || [];
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { success: false, message: 'Server is busy. Please try again.' };
+  }
 
-  var newId = 'ql-' + Date.now();
-  var newLink = {
-    id: newId,
-    title: title,
-    description: sanitizeCellInput(params.description || ''),
-    iconName: sanitizeCellInput(params.iconName || 'Link'),
-    target: sanitizeCellInput(params.target || params.url || ''),
-    badge: sanitizeCellInput(params.badge || ''),
-    actionType: params.actionType || (params.target && params.target.startsWith('http') ? 'external' : 'navigate'),
-    url: sanitizeCellInput(params.url || (params.target && params.target.startsWith('http') ? params.target : ''))
-  };
+  try {
+    var currentLinksRes = handleGetQuickLinks({});
+    var links = currentLinksRes.data || [];
 
-  links.push(newLink);
-  PropertiesService.getScriptProperties().setProperty('QUICK_LINKS_CUSTOM', JSON.stringify(links));
-  logAuditAction('ADD_QUICK_LINK', session.employeeId, 'Added Quick Link: ' + title, 'SUCCESS');
-  return { success: true, message: 'Quick Link added successfully.', data: { id: newId } };
+    var newId = 'ql-' + Date.now();
+    var newLink = {
+      id: newId,
+      title: title,
+      description: sanitizeCellInput(params.description || ''),
+      iconName: sanitizeCellInput(params.iconName || 'Link'),
+      target: sanitizeCellInput(params.target || params.url || ''),
+      badge: sanitizeCellInput(params.badge || ''),
+      actionType: params.actionType || (params.target && params.target.startsWith('http') ? 'external' : 'navigate'),
+      url: sanitizeCellInput(params.url || (params.target && params.target.startsWith('http') ? params.target : ''))
+    };
+
+    links.push(newLink);
+    PropertiesService.getScriptProperties().setProperty('QUICK_LINKS_CUSTOM', JSON.stringify(links));
+    logAuditAction('ADD_QUICK_LINK', session.employeeId, 'Added Quick Link: ' + title, 'SUCCESS');
+    return { success: true, message: 'Quick Link added successfully.', data: { id: newId } };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function handleUpdateQuickLink(params, session) {
@@ -3903,29 +3947,40 @@ function handleUpdateQuickLink(params, session) {
   var id = (params.id || '').trim();
   if (!id) return { success: false, message: 'Link ID is required.' };
 
-  var currentLinksRes = handleGetQuickLinks({});
-  var links = currentLinksRes.data || [];
-  var found = false;
-
-  for (var i = 0; i < links.length; i++) {
-    if (links[i].id === id) {
-      if (params.title !== undefined) links[i].title = sanitizeCellInput(params.title);
-      if (params.description !== undefined) links[i].description = sanitizeCellInput(params.description);
-      if (params.iconName !== undefined) links[i].iconName = sanitizeCellInput(params.iconName);
-      if (params.target !== undefined) links[i].target = sanitizeCellInput(params.target);
-      if (params.badge !== undefined) links[i].badge = sanitizeCellInput(params.badge);
-      if (params.actionType !== undefined) links[i].actionType = params.actionType;
-      if (params.url !== undefined) links[i].url = sanitizeCellInput(params.url);
-      found = true;
-      break;
-    }
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { success: false, message: 'Server is busy. Please try again.' };
   }
 
-  if (!found) return { success: false, message: 'Quick link not found.' };
+  try {
+    var currentLinksRes = handleGetQuickLinks({});
+    var links = currentLinksRes.data || [];
+    var found = false;
 
-  PropertiesService.getScriptProperties().setProperty('QUICK_LINKS_CUSTOM', JSON.stringify(links));
-  logAuditAction('UPDATE_QUICK_LINK', session.employeeId, 'Updated Quick Link ID: ' + id, 'SUCCESS');
-  return { success: true, message: 'Quick link updated successfully.' };
+    for (var i = 0; i < links.length; i++) {
+      if (links[i].id === id) {
+        if (params.title !== undefined) links[i].title = sanitizeCellInput(params.title);
+        if (params.description !== undefined) links[i].description = sanitizeCellInput(params.description);
+        if (params.iconName !== undefined) links[i].iconName = sanitizeCellInput(params.iconName);
+        if (params.target !== undefined) links[i].target = sanitizeCellInput(params.target);
+        if (params.badge !== undefined) links[i].badge = sanitizeCellInput(params.badge);
+        if (params.actionType !== undefined) links[i].actionType = params.actionType;
+        if (params.url !== undefined) links[i].url = sanitizeCellInput(params.url);
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) return { success: false, message: 'Quick link not found.' };
+
+    PropertiesService.getScriptProperties().setProperty('QUICK_LINKS_CUSTOM', JSON.stringify(links));
+    logAuditAction('UPDATE_QUICK_LINK', session.employeeId, 'Updated Quick Link ID: ' + id, 'SUCCESS');
+    return { success: true, message: 'Quick link updated successfully.' };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function handleDeleteQuickLink(params, session) {
@@ -3935,16 +3990,27 @@ function handleDeleteQuickLink(params, session) {
   var id = (params.id || '').trim();
   if (!id) return { success: false, message: 'Link ID is required.' };
 
-  var currentLinksRes = handleGetQuickLinks({});
-  var links = currentLinksRes.data || [];
-  var initialLen = links.length;
-  links = links.filter(function(l) { return l.id !== id; });
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { success: false, message: 'Server is busy. Please try again.' };
+  }
 
-  if (links.length === initialLen) return { success: false, message: 'Quick link not found.' };
+  try {
+    var currentLinksRes = handleGetQuickLinks({});
+    var links = currentLinksRes.data || [];
+    var initialLen = links.length;
+    links = links.filter(function(l) { return l.id !== id; });
 
-  PropertiesService.getScriptProperties().setProperty('QUICK_LINKS_CUSTOM', JSON.stringify(links));
-  logAuditAction('DELETE_QUICK_LINK', session.employeeId, 'Deleted Quick Link ID: ' + id, 'SUCCESS');
-  return { success: true, message: 'Quick link removed successfully.' };
+    if (links.length === initialLen) return { success: false, message: 'Quick link not found.' };
+
+    PropertiesService.getScriptProperties().setProperty('QUICK_LINKS_CUSTOM', JSON.stringify(links));
+    logAuditAction('DELETE_QUICK_LINK', session.employeeId, 'Deleted Quick Link ID: ' + id, 'SUCCESS');
+    return { success: true, message: 'Quick link removed successfully.' };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
@@ -4391,145 +4457,156 @@ function getOrCreateSheet(sheetName, defaultHeaders) {
  * Never deletes or clears existing sheets or rows. Appends missing headers if needed.
  */
 function setupAndVerifyCNESheets(executorEmpId) {
-  var tabNames = [
-    'Data',
-    'Area',
-    'Role',
-    'Upcoming Classes',
-    'CNE Applications',
-    'Gallery',
-    'News and Events',
-    'User Credentials',
-    'Audit Log',
-    'CNE Post Test Questions',
-    'CNE Post Test Responses',
-    'CNE_Reference',
-    'CNE_QR_Tokens',
-    'CNE_AI_Quota'
-  ];
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(20000);
+  } catch (e) {
+    return { success: false, message: 'Server is busy verifying sheets. Please try again.' };
+  }
 
-  var auditReport = [];
-  var ss = getSpreadsheet('CNE');
+  try {
+    var tabNames = [
+      'Data',
+      'Area',
+      'Role',
+      'Upcoming Classes',
+      'CNE Applications',
+      'Gallery',
+      'News and Events',
+      'User Credentials',
+      'Audit Log',
+      'CNE Post Test Questions',
+      'CNE Post Test Responses',
+      'CNE_Reference',
+      'CNE_QR_Tokens',
+      'CNE_AI_Quota'
+    ];
 
-  for (var i = 0; i < tabNames.length; i++) {
-    var tabName = tabNames[i];
-    var expectedHeaders = CNE_SHEET_HEADERS[tabName] || [];
-    var existingSheet = ss.getSheetByName(tabName);
-    var isNew = !existingSheet;
+    var auditReport = [];
+    var ss = getSpreadsheet('CNE');
 
-    // Use the single generic helper getOrCreateSheet
-    var sheet = getOrCreateSheet(tabName);
+    for (var i = 0; i < tabNames.length; i++) {
+      var tabName = tabNames[i];
+      var expectedHeaders = CNE_SHEET_HEADERS[tabName] || [];
+      var existingSheet = ss.getSheetByName(tabName);
+      var isNew = !existingSheet;
 
-    if (isNew) {
-      auditReport.push({ tab: tabName, status: 'Created new sheet with headers', rowCount: 1 });
-    } else {
-      var lastRow = sheet.getLastRow();
-      if (lastRow === 0 && expectedHeaders.length > 0) {
-        auditReport.push({ tab: tabName, status: 'Existing (Headers added to empty tab)', rowCount: 1 });
+      // Use the single generic helper getOrCreateSheet
+      var sheet = getOrCreateSheet(tabName);
+
+      if (isNew) {
+        auditReport.push({ tab: tabName, status: 'Created new sheet with headers', rowCount: 1 });
       } else {
-        var lastCol = sheet.getLastColumn() || 1;
-        var existingHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-        var existingKeys = existingHeaders.map(function(h) {
-          return String(h || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-        });
+        var lastRow = sheet.getLastRow();
+        if (lastRow === 0 && expectedHeaders.length > 0) {
+          auditReport.push({ tab: tabName, status: 'Existing (Headers added to empty tab)', rowCount: 1 });
+        } else {
+          var lastCol = sheet.getLastColumn() || 1;
+          var existingHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+          var existingKeys = existingHeaders.map(function(h) {
+            return String(h || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+          });
 
-        // Non-destructive standardization: rename header 'Class ID' to 'CNE ID' in-place if present
-        if (tabName === 'Upcoming Classes' || tabName === 'CNE Applications') {
-          for (var c = 0; c < existingHeaders.length; c++) {
-            var rawH = String(existingHeaders[c] || '').trim();
-            if (rawH.toLowerCase().replace(/[^a-z0-9]/g, '') === 'classid') {
-              sheet.getRange(1, c + 1).setValue('CNE ID');
-              existingHeaders[c] = 'CNE ID';
-              existingKeys[c] = 'cneid';
-              auditReport.push({ tab: tabName, status: 'Migrated header "Class ID" to "CNE ID" (in-place)', rowCount: lastRow });
-              break;
-            }
-          }
-        }
-
-        // Targeted surgical cleanup: ONLY for CNE_Reference sheet, physically delete legacy columns "Syllabus" and "Reference Links"
-        if (tabName === 'CNE_Reference') {
-          var deletedCols = [];
-          // Scan from right to left (descending index) so earlier column indices remain stable during deletion
-          for (var c = existingHeaders.length - 1; c >= 0; c--) {
-            var rawH = String(existingHeaders[c] || '').trim();
-            var normH = rawH.toLowerCase().replace(/[^a-z0-9]/g, '');
-            // Detect headers named exactly "Syllabus" and "Reference Links" (case-insensitive / normalized)
-            if (normH === 'syllabus' || normH === 'referencelinks' || normH === 'referencelink') {
-              sheet.deleteColumn(c + 1);
-              deletedCols.push(rawH);
-            }
-          }
-          if (deletedCols.length > 0) {
-            auditReport.push({
-              tab: tabName,
-              status: 'Surgically deleted legacy column(s): ' + deletedCols.reverse().join(', '),
-              rowCount: sheet.getLastRow()
-            });
-            // Re-fetch headers and column count after physical column deletion
-            lastCol = sheet.getLastColumn() || 1;
-            existingHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-            existingKeys = existingHeaders.map(function(h) {
-              return String(h || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-            });
-          }
-        }
-
-        var missingHeaders = [];
-        for (var h = 0; h < expectedHeaders.length; h++) {
-          var reqH = expectedHeaders[h];
-          var reqKey = String(reqH).trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-          var matched = false;
-
-          if (existingKeys.indexOf(reqKey) !== -1) {
-            matched = true;
-          } else if (CNE_HEADER_ALIASES && CNE_HEADER_ALIASES[reqKey]) {
-            for (var a = 0; a < CNE_HEADER_ALIASES[reqKey].length; a++) {
-              if (existingKeys.indexOf(CNE_HEADER_ALIASES[reqKey][a]) !== -1) {
-                matched = true;
+          // Non-destructive standardization: rename header 'Class ID' to 'CNE ID' in-place if present
+          if (tabName === 'Upcoming Classes' || tabName === 'CNE Applications') {
+            for (var c = 0; c < existingHeaders.length; c++) {
+              var rawH = String(existingHeaders[c] || '').trim();
+              if (rawH.toLowerCase().replace(/[^a-z0-9]/g, '') === 'classid') {
+                sheet.getRange(1, c + 1).setValue('CNE ID');
+                existingHeaders[c] = 'CNE ID';
+                existingKeys[c] = 'cneid';
+                auditReport.push({ tab: tabName, status: 'Migrated header "Class ID" to "CNE ID" (in-place)', rowCount: lastRow });
                 break;
               }
             }
           }
 
-          if (!matched) {
-            missingHeaders.push(reqH);
+          // Targeted surgical cleanup: ONLY for CNE_Reference sheet, physically delete legacy columns "Syllabus" and "Reference Links"
+          if (tabName === 'CNE_Reference') {
+            var deletedCols = [];
+            // Scan from right to left (descending index) so earlier column indices remain stable during deletion
+            for (var c = existingHeaders.length - 1; c >= 0; c--) {
+              var rawH = String(existingHeaders[c] || '').trim();
+              var normH = rawH.toLowerCase().replace(/[^a-z0-9]/g, '');
+              // Detect headers named exactly "Syllabus" and "Reference Links" (case-insensitive / normalized)
+              if (normH === 'syllabus' || normH === 'referencelinks' || normH === 'referencelink') {
+                sheet.deleteColumn(c + 1);
+                deletedCols.push(rawH);
+              }
+            }
+            if (deletedCols.length > 0) {
+              auditReport.push({
+                tab: tabName,
+                status: 'Surgically deleted legacy column(s): ' + deletedCols.reverse().join(', '),
+                rowCount: sheet.getLastRow()
+              });
+              // Re-fetch headers and column count after physical column deletion
+              lastCol = sheet.getLastColumn() || 1;
+              existingHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+              existingKeys = existingHeaders.map(function(h) {
+                return String(h || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+              });
+            }
           }
-        }
 
-        if (missingHeaders.length > 0) {
-          sheet.getRange(1, lastCol + 1, 1, missingHeaders.length).setValues([missingHeaders]);
-          sheet.getRange(1, lastCol + 1, 1, missingHeaders.length).setFontWeight('bold');
-          auditReport.push({
-            tab: tabName,
-            status: 'Appended ' + missingHeaders.length + ' missing header(s): ' + missingHeaders.join(', '),
-            rowCount: lastRow
-          });
-        } else {
-          auditReport.push({ tab: tabName, status: 'Verified (All required headers present)', rowCount: lastRow });
+          var missingHeaders = [];
+          for (var h = 0; h < expectedHeaders.length; h++) {
+            var reqH = expectedHeaders[h];
+            var reqKey = String(reqH).trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+            var matched = false;
+
+            if (existingKeys.indexOf(reqKey) !== -1) {
+              matched = true;
+            } else if (CNE_HEADER_ALIASES && CNE_HEADER_ALIASES[reqKey]) {
+              for (var a = 0; a < CNE_HEADER_ALIASES[reqKey].length; a++) {
+                if (existingKeys.indexOf(CNE_HEADER_ALIASES[reqKey][a]) !== -1) {
+                  matched = true;
+                  break;
+                }
+              }
+            }
+
+            if (!matched) {
+              missingHeaders.push(reqH);
+            }
+          }
+
+          if (missingHeaders.length > 0) {
+            sheet.getRange(1, lastCol + 1, 1, missingHeaders.length).setValues([missingHeaders]);
+            sheet.getRange(1, lastCol + 1, 1, missingHeaders.length).setFontWeight('bold');
+            auditReport.push({
+              tab: tabName,
+              status: 'Appended ' + missingHeaders.length + ' missing header(s): ' + missingHeaders.join(', '),
+              rowCount: lastRow
+            });
+          } else {
+            auditReport.push({ tab: tabName, status: 'Verified (All required headers present)', rowCount: lastRow });
+          }
         }
       }
     }
-  }
 
-  // Check Employee Master
-  try {
-    var offSS = getSpreadsheet('OFFICERS');
-    var offSheet = offSS.getSheetByName('Rosters Master Data');
-    if (offSheet) {
-      auditReport.push({ tab: offSheet.getName(), status: 'Existing, verified (Master Roster)', rowCount: offSheet.getLastRow() });
+    // Check Employee Master
+    try {
+      var offSS = getSpreadsheet('OFFICERS');
+      var offSheet = offSS.getSheetByName('Rosters Master Data');
+      if (offSheet) {
+        auditReport.push({ tab: offSheet.getName(), status: 'Existing, verified (Master Roster)', rowCount: offSheet.getLastRow() });
+      }
+    } catch (e) {
+      auditReport.push({ tab: 'Rosters Master Data', status: 'Separate Sheet / Unconfigured', error: e.message });
     }
-  } catch (e) {
-    auditReport.push({ tab: 'Rosters Master Data', status: 'Separate Sheet / Unconfigured', error: e.message });
+
+    logAuditAction('SETUP_AND_VERIFY_SHEETS', executorEmpId || 'SYSTEM', 'Sheet verification executed', 'SUCCESS');
+
+    return {
+      success: true,
+      message: 'Sheet initialization and verification completed safely. All existing data remained completely untouched.',
+      auditReport: auditReport
+    };
+  } finally {
+    lock.releaseLock();
   }
-
-  logAuditAction('SETUP_AND_VERIFY_SHEETS', executorEmpId || 'SYSTEM', 'Sheet verification executed', 'SUCCESS');
-
-  return {
-    success: true,
-    message: 'Sheet initialization and verification completed safely. All existing data remained completely untouched.',
-    auditReport: auditReport
-  };
 }
 
 /**
@@ -4624,55 +4701,66 @@ function handleSaveReferenceMaterial(params, session) {
   // Unified educational content entered through the single large content box
   var unifiedContent = sanitizeCellInput(params.unifiedContent || params.referenceText || params.material || '');
   
-  var sheet = getOrCreateSheet('CNE_Reference');
-  var data = sheet.getDataRange().getValues();
-  var colMap = getHeaderMap(sheet);
-  var idCol = colMap['cneid'] !== undefined ? colMap['cneid'] : 0;
-  var existingRow = -1;
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { success: false, message: 'Server is busy. Please try again.' };
+  }
   
-  for (var r = 1; r < data.length; r++) {
-    if (String(data[r][idCol] || '').trim().toUpperCase() === cneId.toUpperCase()) {
-      existingRow = r + 1;
-      break;
+  try {
+    var sheet = getOrCreateSheet('CNE_Reference');
+    var data = sheet.getDataRange().getValues();
+    var colMap = getHeaderMap(sheet);
+    var idCol = colMap['cneid'] !== undefined ? colMap['cneid'] : 0;
+    var existingRow = -1;
+    
+    for (var r = 1; r < data.length; r++) {
+      if (String(data[r][idCol] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+        existingRow = r + 1;
+        break;
+      }
     }
-  }
-  
-  var updatedAt = new Date().toISOString();
-  var updatedBy = session.employeeId;
-  
-  // Exactly 5 columns: CNE ID, Topic, Reference Text / Clinical Guides, Updated At, Updated By
-  var rowValues = [cneId, record.topic, unifiedContent, updatedAt, updatedBy];
-  
-  if (existingRow > 0) {
-    sheet.getRange(existingRow, 1, 1, 5).setValues([rowValues]);
-  } else {
-    sheet.appendRow(rowValues);
-  }
+    
+    var updatedAt = new Date().toISOString();
+    var updatedBy = session.employeeId;
+    
+    // Exactly 5 columns: CNE ID, Topic, Reference Text / Clinical Guides, Updated At, Updated By
+    var rowValues = [cneId, record.topic, unifiedContent, updatedAt, updatedBy];
+    
+    if (existingRow > 0) {
+      sheet.getRange(existingRow, 1, 1, 5).setValues([rowValues]);
+    } else {
+      sheet.appendRow(rowValues);
+    }
 
-  // Resolve employee name for frontend display response - never expose employee ID
-  var officerMap = getOfficerNameMap();
-  var officerName = 'Coordinator';
-  if (session && session.employeeId) {
-    var normEmpId = normalizeEmpId(session.employeeId);
-    if (officerMap && officerMap[normEmpId]) {
-      officerName = officerMap[normEmpId];
-    } else if (session.name && String(session.name).trim() && String(session.name).trim().toUpperCase() !== String(session.employeeId).toUpperCase()) {
-      officerName = String(session.name).trim();
+    // Resolve employee name for frontend display response - never expose employee ID
+    var officerMap = getOfficerNameMap();
+    var officerName = 'Coordinator';
+    if (session && session.employeeId) {
+      var normEmpId = normalizeEmpId(session.employeeId);
+      if (officerMap && officerMap[normEmpId]) {
+        officerName = officerMap[normEmpId];
+      } else if (session.name && String(session.name).trim() && String(session.name).trim().toUpperCase() !== String(session.employeeId).toUpperCase()) {
+        officerName = String(session.name).trim();
+      }
     }
+    
+    logAuditAction('SAVE_REFERENCE_MATERIAL', session.employeeId, 'Saved reference material for CNE: ' + cneId, 'SUCCESS');
+    return {
+      success: true,
+      message: 'CNE learning material saved successfully.',
+      data: {
+        cneId: cneId,
+        unifiedContent: unifiedContent,
+        referenceText: unifiedContent,
+        updatedAt: updatedAt,
+        updatedBy: officerName
+      }
+    };
+  } finally {
+    lock.releaseLock();
   }
-  
-  logAuditAction('SAVE_REFERENCE_MATERIAL', session.employeeId, 'Saved reference material for CNE: ' + cneId, 'SUCCESS');
-  return {
-    success: true,
-    message: 'CNE learning material saved successfully.',
-    data: {
-      cneId: cneId,
-      unifiedContent: unifiedContent,
-      referenceText: unifiedContent,
-      updatedAt: updatedAt,
-      updatedBy: officerName
-    }
-  };
 }
 
 /**
@@ -5441,36 +5529,47 @@ function handleGetQRToken(params, session) {
     };
   }
   
-  var qrSheet = getQRTokensSheet();
-  var qrData = qrSheet.getDataRange().getValues();
-  var existingToken = null;
-  
-  for (var q = 1; q < qrData.length; q++) {
-    if (String(qrData[q][1] || '').trim().toUpperCase() === cneId.toUpperCase() &&
-        String(qrData[q][4] || 'ACTIVE').toUpperCase() === 'ACTIVE') {
-      existingToken = String(qrData[q][0] || '');
-      break;
-    }
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { success: false, message: 'Server is busy. Please try again.' };
   }
-  
-  var qrToken = existingToken;
-  if (!qrToken) {
-    qrToken = Utilities.getUuid().replace(/-/g, '');
-    qrSheet.appendRow([qrToken, cneId, new Date().toISOString(), session.employeeId, 'ACTIVE']);
-  }
-  
-  logAuditAction('GENERATE_QR', session.employeeId, 'Generated secure QR token for CNE: ' + cneId, 'SUCCESS');
-  
-  return {
-    success: true,
-    data: {
-      qrToken: qrToken,
-      cneId: cneId,
-      topic: record.topic,
-      area: record.area,
-      finalizedCount: finalizedCount
+
+  try {
+    var qrSheet = getQRTokensSheet();
+    var qrData = qrSheet.getDataRange().getValues();
+    var existingToken = null;
+    
+    for (var q = 1; q < qrData.length; q++) {
+      if (String(qrData[q][1] || '').trim().toUpperCase() === cneId.toUpperCase() &&
+          String(qrData[q][4] || 'ACTIVE').toUpperCase() === 'ACTIVE') {
+        existingToken = String(qrData[q][0] || '');
+        break;
+      }
     }
-  };
+    
+    var qrToken = existingToken;
+    if (!qrToken) {
+      qrToken = Utilities.getUuid().replace(/-/g, '');
+      qrSheet.appendRow([qrToken, cneId, new Date().toISOString(), session.employeeId, 'ACTIVE']);
+    }
+    
+    logAuditAction('GENERATE_QR', session.employeeId, 'Generated secure QR token for CNE: ' + cneId, 'SUCCESS');
+    
+    return {
+      success: true,
+      data: {
+        qrToken: qrToken,
+        cneId: cneId,
+        topic: record.topic,
+        area: record.area,
+        finalizedCount: finalizedCount
+      }
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
@@ -5920,42 +6019,52 @@ function handleAddManualParticipant(params, session) {
     }
   }
   
-  var partSheet = getResponsesSheet();
-  
-  var pData = partSheet.getDataRange().getValues();
-  for (var p = 1; p < pData.length; p++) {
-    if (String(pData[p][1] || '').trim().toUpperCase() === cneId.toUpperCase()) {
-      if (empId && normalizeEmpId(pData[p][2]) === empId) {
-        return { success: false, errorCode: 'DUPLICATE_PARTICIPANT', message: 'Employee ID ' + empId + ' is already recorded as a participant for this CNE.' };
-      }
-      if (!empId && String(pData[p][3] || '').trim().toLowerCase() === manualName.toLowerCase()) {
-        return { success: false, errorCode: 'DUPLICATE_PARTICIPANT', message: 'Participant ' + manualName + ' is already recorded for this CNE.' };
-      }
-    }
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { success: false, message: 'Server is busy. Please try again.' };
   }
   
-  var participantId = 'MAN-' + Date.now();
-  var now = new Date().toISOString();
-  
-  partSheet.appendRow([
-    participantId,
-    cneId,
-    empId,
-    manualName,
-    designation,
-    department,
-    '',
-    '',
-    '',
-    'MANUAL',
-    now,
-    '',
-    'ATTENDED',
-    remarks
-  ]);
-  
-  logAuditAction('ADD_MANUAL_PARTICIPANT', session.employeeId, 'Added participant ' + (empId || manualName) + ' to CNE: ' + cneId, 'SUCCESS');
-  return { success: true, message: 'Participant added successfully.' };
+  try {
+    var partSheet = getResponsesSheet();
+    var pData = partSheet.getDataRange().getValues();
+    for (var p = 1; p < pData.length; p++) {
+      if (String(pData[p][1] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+        if (empId && normalizeEmpId(pData[p][2]) === empId) {
+          return { success: false, errorCode: 'DUPLICATE_PARTICIPANT', message: 'Employee ID ' + empId + ' is already recorded as a participant for this CNE.' };
+        }
+        if (!empId && String(pData[p][3] || '').trim().toLowerCase() === manualName.toLowerCase()) {
+          return { success: false, errorCode: 'DUPLICATE_PARTICIPANT', message: 'Participant ' + manualName + ' is already recorded for this CNE.' };
+        }
+      }
+    }
+    
+    var participantId = 'MAN-' + Date.now();
+    var now = new Date().toISOString();
+    
+    partSheet.appendRow([
+      participantId,
+      cneId,
+      empId,
+      manualName,
+      designation,
+      department,
+      '',
+      '',
+      '',
+      'MANUAL',
+      now,
+      '',
+      'ATTENDED',
+      remarks
+    ]);
+    
+    logAuditAction('ADD_MANUAL_PARTICIPANT', session.employeeId, 'Added participant ' + (empId || manualName) + ' to CNE: ' + cneId, 'SUCCESS');
+    return { success: true, message: 'Participant added successfully.' };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
@@ -6316,52 +6425,36 @@ function handleCancelCNE(params, session) {
   var authErr = checkCNEAuthorized(session, record.area, record.cneType);
   if (authErr) return authErr;
   
-  var reason = sanitizeCellInput(params.remarks || 'Cancelled by coordinator');
-  var ss = getSpreadsheet('CNE');
-  var upcomingSheet = ss.getSheetByName('Upcoming Classes');
-  if (upcomingSheet) {
-    var upColMap = getHeaderMap(upcomingSheet);
-    var statusCol = upColMap['status'] !== undefined ? (upColMap['status'] + 1) : 11;
-    var remarksCol = upColMap['adminremarks'] !== undefined ? (upColMap['adminremarks'] + 1) : 15;
-    upcomingSheet.getRange(record.rowIndex, statusCol).setValue('Canceled');
-    upcomingSheet.getRange(record.rowIndex, remarksCol).setValue(reason);
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { success: false, message: 'Server is busy. Please try again.' };
   }
   
-  logAuditAction('CANCEL_CNE', session.employeeId, 'Cancelled CNE: ' + cneId + '. Reason: ' + reason, 'SUCCESS');
-  return { success: true, message: 'CNE cancelled successfully.' };
-}
-
-/**
- * Standalone Migration Utility: Rename 'Class ID' header to 'CNE ID' in 'Upcoming Classes'.
- * Strictly non-destructive: updates row 1 column header only, preserves all data rows and IDs.
- */
-function migrateUpcomingClassesHeaderToCNEId() {
-  var ss = getSpreadsheet('CNE');
-  var sheet = ss.getSheetByName('Upcoming Classes');
-  if (!sheet) {
-    Logger.log('Upcoming Classes sheet not found.');
-    return { success: false, message: 'Upcoming Classes sheet not found.' };
-  }
-  var lastCol = sheet.getLastColumn();
-  if (lastCol < 1) {
-    return { success: false, message: 'Upcoming Classes sheet has no columns.' };
-  }
-  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-  var migrated = false;
-  for (var c = 0; c < headers.length; c++) {
-    var key = String(headers[c] || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (key === 'classid') {
-      sheet.getRange(1, c + 1).setValue('CNE ID');
-      migrated = true;
-      Logger.log('Successfully renamed column ' + (c + 1) + ' from "Class ID" to "CNE ID".');
-      break;
+  try {
+    var liveRecord = getCNEClassRecord(cneId);
+    if (!liveRecord) return { success: false, message: 'CNE record not found.' };
+    if (normalizeCNEStatus(liveRecord.status) === 'Completed') {
+      return { success: false, message: 'Cannot cancel a CNE that has already been finalized/completed.' };
     }
+    
+    var reason = sanitizeCellInput(params.remarks || 'Cancelled by coordinator');
+    var ss = getSpreadsheet('CNE');
+    var upcomingSheet = ss.getSheetByName('Upcoming Classes');
+    if (upcomingSheet) {
+      var upColMap = getHeaderMap(upcomingSheet);
+      var statusCol = upColMap['status'] !== undefined ? (upColMap['status'] + 1) : 11;
+      var remarksCol = upColMap['adminremarks'] !== undefined ? (upColMap['adminremarks'] + 1) : 15;
+      upcomingSheet.getRange(liveRecord.rowIndex, statusCol).setValue('Canceled');
+      upcomingSheet.getRange(liveRecord.rowIndex, remarksCol).setValue(reason);
+    }
+    
+    logAuditAction('CANCEL_CNE', session.employeeId, 'Cancelled CNE: ' + cneId + '. Reason: ' + reason, 'SUCCESS');
+    return { success: true, message: 'CNE cancelled successfully.' };
+  } finally {
+    lock.releaseLock();
   }
-  return {
-    success: true,
-    migrated: migrated,
-    message: migrated ? 'Successfully renamed "Class ID" header to "CNE ID".' : 'Header is already "CNE ID" or "Class ID" was not found.'
-  };
 }
 
 /**

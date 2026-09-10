@@ -40,6 +40,7 @@ import { CNEParticipantsModal } from './cne/CNEParticipantsModal';
 import { CNEPostTestModal } from './cne/CNEPostTestModal';
 import { CNEFinalizeModal } from './cne/CNEFinalizeModal';
 import { DepartmentalScheduleModal } from './cne/DepartmentalScheduleModal';
+import { ConfirmDatePicker } from './cne/ConfirmDatePicker';
 
 interface UpcomingClassesProps {
   user: SessionUser | null;
@@ -62,6 +63,10 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   const [newArea, setNewArea] = useState('');
   const [newDate, setNewDate] = useState('');
   const [newToDate, setNewToDate] = useState('');
+  const [scheduleFromDate, setScheduleFromDate] = useState('');
+  const [scheduleFromTime, setScheduleFromTime] = useState('09:00');
+  const [scheduleToDate, setScheduleToDate] = useState('');
+  const [scheduleToTime, setScheduleToTime] = useState('10:30');
   const [newDuration, setNewDuration] = useState('01:30:00');
   const [selectedRpEmpIds, setSelectedRpEmpIds] = useState<string[]>([]);
   const [rpSearchQuery, setRpSearchQuery] = useState('');
@@ -106,6 +111,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   const isAreaIncharge = user?.role === 'AREA_INCHARGE';
   const canScheduleCne = isAdmin || isAreaIncharge;
   const todayStr = new Date().toISOString().split('T')[0];
+  const isFromComplete = Boolean(scheduleFromDate && scheduleFromTime);
 
   useEffect(() => {
     // Check for QR postTest URL query parameter
@@ -170,28 +176,79 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
     );
   });
 
-  const handleNewFromDateChange = (val: string) => {
-    setNewDate(val);
-    if (val && newToDate) {
-      const dFrom = new Date(val);
-      const dTo = new Date(newToDate);
+  const syncNewDatesAndDuration = (fromDate: string, fromTime: string, toDate: string, toTime: string) => {
+    const fullFrom = fromDate && fromTime ? `${fromDate}T${fromTime}` : '';
+    const fullTo = toDate && toTime ? `${toDate}T${toTime}` : '';
+    setNewDate(fullFrom);
+    setNewToDate(fullTo);
+    if (fullFrom && fullTo) {
+      const dFrom = new Date(fullFrom);
+      const dTo = new Date(fullTo);
       if (!isNaN(dFrom.getTime()) && !isNaN(dTo.getTime()) && dTo >= dFrom) {
-        const autoDur = calculateCneDuration(val, newToDate);
+        const autoDur = calculateCneDuration(fullFrom, fullTo);
         if (autoDur) setNewDuration(autoDur);
       }
     }
   };
 
-  const handleNewToDateChange = (val: string) => {
-    setNewToDate(val);
-    if (newDate && val) {
-      const dFrom = new Date(newDate);
-      const dTo = new Date(val);
-      if (!isNaN(dFrom.getTime()) && !isNaN(dTo.getTime()) && dTo >= dFrom) {
-        const autoDur = calculateCneDuration(newDate, val);
-        if (autoDur) setNewDuration(autoDur);
+  const handleConfirmFromDate = (val: string) => {
+    setScheduleFromDate(val);
+    let updatedToDate = scheduleToDate;
+    let updatedToTime = scheduleToTime;
+
+    // If To Date was already selected but is earlier than the new From Date, bump or sync to new From Date
+    if (updatedToDate && updatedToDate < val) {
+      updatedToDate = val;
+      setScheduleToDate(val);
+      if (updatedToTime < scheduleFromTime) {
+        updatedToTime = scheduleFromTime;
+        setScheduleToTime(scheduleFromTime);
       }
+    } else if (updatedToDate === val && updatedToTime < scheduleFromTime) {
+      updatedToTime = scheduleFromTime;
+      setScheduleToTime(scheduleFromTime);
     }
+
+    syncNewDatesAndDuration(val, scheduleFromTime, updatedToDate, updatedToTime);
+  };
+
+  const handleFromTimeChange = (val: string) => {
+    setScheduleFromTime(val);
+    let updatedToTime = scheduleToTime;
+
+    // If scheduled on same day, To Time must not be earlier than From Time
+    if (scheduleToDate === scheduleFromDate && updatedToTime && updatedToTime < val) {
+      updatedToTime = val;
+      setScheduleToTime(val);
+    }
+
+    syncNewDatesAndDuration(scheduleFromDate, val, scheduleToDate, updatedToTime);
+  };
+
+  const handleConfirmToDate = (val: string) => {
+    setScheduleToDate(val);
+    let updatedToTime = scheduleToTime;
+
+    // If To Date equals From Date, ensure To Time is not earlier than From Time
+    if (val === scheduleFromDate && updatedToTime && updatedToTime < scheduleFromTime) {
+      updatedToTime = scheduleFromTime;
+      setScheduleToTime(scheduleFromTime);
+    }
+
+    syncNewDatesAndDuration(scheduleFromDate, scheduleFromTime, val, updatedToTime);
+  };
+
+  const handleToTimeChange = (val: string) => {
+    // If To Date equals From Date, prevent To Time earlier than From Time
+    if (scheduleToDate === scheduleFromDate && scheduleFromTime && val && val < scheduleFromTime) {
+      error(`To Time cannot be earlier than From Time (${scheduleFromTime}).`);
+      setScheduleToTime(scheduleFromTime);
+      syncNewDatesAndDuration(scheduleFromDate, scheduleFromTime, scheduleToDate, scheduleFromTime);
+      return;
+    }
+
+    setScheduleToTime(val);
+    syncNewDatesAndDuration(scheduleFromDate, scheduleFromTime, scheduleToDate, val);
   };
 
   const handleCreateUpcomingClass = async (e: React.FormEvent) => {
@@ -275,6 +332,10 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
         // Reset form
         setNewTopic('');
         setNewDescription('');
+        setScheduleFromDate('');
+        setScheduleFromTime('09:00');
+        setScheduleToDate('');
+        setScheduleToTime('10:30');
         setNewDate('');
         setNewToDate('');
         setNewDuration('01:30:00');
@@ -797,25 +858,6 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                       <span>1. Category & Curriculum</span>
                     </h4>
 
-                    {/* CNE Type: Always Central for Schedule New CNE */}
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                        CNE Category / Type
-                      </label>
-                      <div className="p-2.5 rounded-xl border border-blue-200 bg-blue-50/70 text-blue-900 flex items-center justify-between">
-                        <div>
-                          <div className="text-xs font-bold flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-blue-600 inline-block"></span>
-                            Central CNE
-                          </div>
-                          <div className="text-[10px] text-blue-700 font-normal">Hospital-wide clinical seminar (Admin Authoritative)</div>
-                        </div>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200 uppercase tracking-wider">
-                          Central
-                        </span>
-                      </div>
-                    </div>
-
                     <div>
                       <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
                         Topic / Skills Training Subject *
@@ -867,32 +909,82 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                       <span>2. Date & Schedule</span>
                     </h4>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-3">
+                      {/* From Date & Time */}
                       <div>
-                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                          From Date &amp; Time *
-                        </label>
-                        <input
-                          type="datetime-local"
-                          required
-                          value={newDate}
-                          onChange={(e) => handleNewFromDateChange(e.target.value)}
-                          className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                        />
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                            From Date &amp; Time *
+                          </label>
+                          <span className="text-[10px] text-indigo-600 font-medium">Calendar + Time</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                          <div className="sm:col-span-3">
+                            <ConfirmDatePicker
+                              id="central-cne-from-date"
+                              value={scheduleFromDate}
+                              onChange={handleConfirmFromDate}
+                              minDate={todayStr}
+                              placeholder="Select From Date..."
+                            />
+                          </div>
+                          <div className="sm:col-span-2">
+                            <input
+                              type="time"
+                              required
+                              id="central-cne-from-time"
+                              value={scheduleFromTime}
+                              onChange={(e) => handleFromTimeChange(e.target.value)}
+                              className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                              title="From Time"
+                            />
+                          </div>
+                        </div>
                       </div>
 
+                      {/* To Date & Time */}
                       <div>
-                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                          To Date &amp; Time *
-                        </label>
-                        <input
-                          type="datetime-local"
-                          required
-                          min={newDate}
-                          value={newToDate}
-                          onChange={(e) => handleNewToDateChange(e.target.value)}
-                          className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                        />
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                            To Date &amp; Time *
+                          </label>
+                          {!isFromComplete ? (
+                            <span className="text-[10px] text-amber-600 font-medium">Select From Date &amp; Time first</span>
+                          ) : scheduleToDate === scheduleFromDate ? (
+                            <span className="text-[10px] text-indigo-600 font-medium">Same day (Min time: {scheduleFromTime})</span>
+                          ) : (
+                            <span className="text-[10px] text-emerald-600 font-medium">Multi-day workshop</span>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                          <div className="sm:col-span-3">
+                            <ConfirmDatePicker
+                              id="central-cne-to-date"
+                              value={scheduleToDate}
+                              onChange={handleConfirmToDate}
+                              minDate={scheduleFromDate || todayStr}
+                              disabled={!isFromComplete}
+                              placeholder={isFromComplete ? 'Select To Date...' : 'Select From Date first'}
+                            />
+                          </div>
+                          <div className="sm:col-span-2">
+                            <input
+                              type="time"
+                              required
+                              id="central-cne-to-time"
+                              disabled={!isFromComplete || !scheduleToDate}
+                              min={scheduleToDate === scheduleFromDate ? scheduleFromTime : undefined}
+                              value={scheduleToTime}
+                              onChange={(e) => handleToTimeChange(e.target.value)}
+                              className={`w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none ${
+                                !isFromComplete || !scheduleToDate
+                                  ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200'
+                                  : ''
+                              }`}
+                              title={scheduleToDate === scheduleFromDate ? `To Time (Min: ${scheduleFromTime})` : 'To Time'}
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
 
