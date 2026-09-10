@@ -5173,7 +5173,6 @@ function handleCommitAiQuota(params, session) {
     var allExistingSheetQIds = {};
     var matchingTagRows = []; // 1-based row numbers
     var matchingTagQIds = [];
-    var existingActiveCneQIds = {};
 
     for (var rIdx = 1; rIdx < qSheetData.length; rIdx++) {
       var rQId = String(qSheetData[rIdx][1] || '').trim();
@@ -5187,9 +5186,6 @@ function handleCommitAiQuota(params, session) {
         var rCreatedBy = String(qSheetData[rIdx][12] || '').trim();
 
         if (rStatus === 'ACTIVE') {
-          if (rQId) {
-            existingActiveCneQIds[rQId.toLowerCase()] = true;
-          }
           if (rCreatedBy.indexOf(aiBatchTag) !== -1) {
             matchingTagRows.push(rIdx + 1);
             if (rQId) {
@@ -5200,26 +5196,10 @@ function handleCommitAiQuota(params, session) {
       }
     }
 
-    // Check how many of the incoming raw questions IDs exist as ACTIVE for this CNE
-    var incomingIds = [];
-    var incomingActiveMatchCount = 0;
-    for (var qCheckIdx = 0; qCheckIdx < rawQuestions.length; qCheckIdx++) {
-      var checkQId = sanitizeCellInput(rawQuestions[qCheckIdx].id || '').trim();
-      if (checkQId) {
-        incomingIds.push(checkQId);
-        if (existingActiveCneQIds[checkQId.toLowerCase()]) {
-          incomingActiveMatchCount++;
-        }
-      }
-    }
-
     // Idempotency/Recovery check: Has this AI batch ALREADY been persisted in the sheet?
-    // A batch may be considered already persisted ONLY when it can be positively tied to the CURRENT reservation:
-    // 1. Exactly 5 active questions matching the current reservationToken batch tag [AI:<reservationToken>] exist, OR
-    // 2. All 5 question IDs supplied/generated for this current reservation already exist as ACTIVE in the sheet.
-    var isMatchingBatchByTag = (matchingTagRows.length === 5);
-    var isMatchingBatchByIds = (incomingIds.length === 5 && incomingActiveMatchCount === 5);
-    var batchAlreadyPersisted = isMatchingBatchByTag || isMatchingBatchByIds;
+    // A batch is considered already persisted ONLY when:
+    // exactly 5 ACTIVE questions for the current CNE contain: [AI:<current reservationToken>]
+    var batchAlreadyPersisted = (matchingTagRows.length === 5);
 
     // Handle incomplete state safely under ScriptLock:
     // If only some of the current batch exists (1 to 4 questions matching this reservation token),
@@ -5258,7 +5238,7 @@ function handleCommitAiQuota(params, session) {
 
     if (batchAlreadyPersisted) {
       // Use the verified IDs already in the sheet for this reservation
-      validatedQuestionIds = isMatchingBatchByTag ? matchingTagQIds : incomingIds;
+      validatedQuestionIds = matchingTagQIds;
     } else {
       for (var qIdx = 0; qIdx < rawQuestions.length; qIdx++) {
         var qObj = rawQuestions[qIdx];
@@ -5346,30 +5326,21 @@ function handleCommitAiQuota(params, session) {
 
     // 4. VERIFY THAT THE EXACT 5 QUESTIONS TIED TO CURRENT RESERVATION WERE PERSISTED
     var verifyData = questionsSheet.getDataRange().getValues();
-    var targetIdMap = {};
-    for (var v = 0; v < validatedQuestionIds.length; v++) {
-      targetIdMap[validatedQuestionIds[v].toLowerCase()] = true;
-    }
-    var verifiedTargetIdCount = 0;
     var verifiedTagCount = 0;
 
     for (var vRow = 1; vRow < verifyData.length; vRow++) {
       var rowCne = String(verifyData[vRow][0] || '').trim().toUpperCase();
       var rowStatus = String(verifyData[vRow][14] || 'ACTIVE').trim().toUpperCase();
-      var rowQId = String(verifyData[vRow][1] || '').trim();
       var rowCreatedBy = String(verifyData[vRow][12] || '').trim();
 
       if (rowCne === cneId.toUpperCase() && rowStatus === 'ACTIVE') {
-        if (targetIdMap[rowQId.toLowerCase()]) {
-          verifiedTargetIdCount++;
-        }
         if (rowCreatedBy.indexOf(aiBatchTag) !== -1) {
           verifiedTagCount++;
         }
       }
     }
 
-    var isVerified = (verifiedTagCount === 5) || (verifiedTargetIdCount === 5);
+    var isVerified = (verifiedTagCount === 5);
 
     if (!isVerified) {
       return {
