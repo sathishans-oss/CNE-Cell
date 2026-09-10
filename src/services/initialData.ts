@@ -293,6 +293,7 @@ export const INITIAL_CNE_RECORDS: CNERecord[] = [
 
 export const INITIAL_UPCOMING_CLASSES: UpcomingClass[] = [
   {
+    cneId: "CLS-2026-001",
     classId: "CLS-2026-001",
     topic: "Comprehensive Ventilator Care & Weaning Protocols in Intensive Care",
     area: "266(CCU)",
@@ -308,6 +309,7 @@ export const INITIAL_UPCOMING_CLASSES: UpcomingClass[] = [
     status: "Scheduled"
   },
   {
+    cneId: "CLS-2026-002",
     classId: "CLS-2026-002",
     topic: "Medication Administration Safety: High-Alert Drugs & Double-Check Standards",
     area: "CNE Open Forum",
@@ -323,6 +325,7 @@ export const INITIAL_UPCOMING_CLASSES: UpcomingClass[] = [
     status: "Scheduled"
   },
   {
+    cneId: "CLS-2026-003",
     classId: "CLS-2026-003",
     topic: "Neonatal Resuscitation Program (NRP) Skills Refresher",
     area: "231A(NICU)-(Inborn)",
@@ -338,6 +341,7 @@ export const INITIAL_UPCOMING_CLASSES: UpcomingClass[] = [
     status: "Scheduled"
   },
   {
+    cneId: "CLS-2026-004",
     classId: "CLS-2026-004",
     topic: "Chemotherapy Safe Handling, Extravasation Management & PPE Protocols",
     area: "245(IPD)-(Med-Onco & Hemat)",
@@ -357,6 +361,7 @@ export const INITIAL_UPCOMING_CLASSES: UpcomingClass[] = [
 export const INITIAL_APPLICATIONS: CNEApplication[] = [
   {
     applicationId: "APP-2026-0001",
+    cneId: "CLS-2026-001",
     classId: "CLS-2026-001",
     classTopic: "Comprehensive Ventilator Care & Weaning Protocols in Intensive Care",
     classDate: "2026-09-08",
@@ -369,6 +374,7 @@ export const INITIAL_APPLICATIONS: CNEApplication[] = [
   },
   {
     applicationId: "APP-2026-0002",
+    cneId: "CLS-2026-002",
     classId: "CLS-2026-002",
     classTopic: "Medication Administration Safety: High-Alert Drugs & Double-Check Standards",
     classDate: "2026-09-15",
@@ -381,6 +387,7 @@ export const INITIAL_APPLICATIONS: CNEApplication[] = [
   },
   {
     applicationId: "APP-2026-0003",
+    cneId: "CLS-2026-001",
     classId: "CLS-2026-001",
     classTopic: "Comprehensive Ventilator Care & Weaning Protocols in Intensive Care",
     classDate: "2026-09-08",

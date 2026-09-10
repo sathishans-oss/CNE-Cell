@@ -307,7 +307,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="space-y-3">
                 {upcomingClasses.slice(0, 3).map((cls) => (
                   <div
-                    key={cls.classId}
+                    key={cls.cneId || cls.classId}
                     className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-emerald-300 transition-all"
                   >
                     <div className="flex items-center justify-between text-xs text-slate-500 mb-1">

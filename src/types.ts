@@ -107,7 +107,8 @@ export interface CNERecord {
 }
 
 export interface UpcomingClass {
-  classId: string;
+  cneId: string;
+  classId?: string; // Optional backward-compatibility alias
   dataId?: string;
   topic: string;
   area: string;
@@ -170,11 +171,11 @@ export interface CNEReferenceMaterial {
   cneId: string;
   topic: string;
   referenceText: string;
-  linkUrl: string;
-  syllabus: string;
   unifiedContent?: string;
   updatedBy?: string;
   updatedAt?: string;
+  linkUrl?: string;
+  syllabus?: string;
 }
 
 export interface CNEAiQuotaInfo {
@@ -239,7 +240,8 @@ export type ApplicationStatus = 'Pending' | 'Applied' | 'Approved' | 'Rejected' 
 
 export interface CNEApplication {
   applicationId: string;
-  classId: string;
+  cneId: string;
+  classId?: string; // Optional backward-compatibility alias
   classTopic?: string;
   classDate?: string;
   classArea?: string;

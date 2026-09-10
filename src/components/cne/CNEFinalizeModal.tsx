@@ -18,6 +18,7 @@ export const CNEFinalizeModal: React.FC<CNEFinalizeModalProps> = ({
   onClose,
   onCompleted
 }) => {
+  const cneId = cne.cneId || cne.classId || '';
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<CNEParticipantsSummary | null>(null);
   const [actionType, setActionType] = useState<'FINALIZE' | 'CANCEL'>('FINALIZE');
@@ -28,12 +29,12 @@ export const CNEFinalizeModal: React.FC<CNEFinalizeModalProps> = ({
 
   useEffect(() => {
     loadSummary();
-  }, [cne.classId]);
+  }, [cneId]);
 
   const loadSummary = async () => {
     setLoading(true);
     try {
-      const res = await ApiService.getCNEParticipants(cne.classId);
+      const res = await ApiService.getCNEParticipants(cneId);
       if (res.success && res.data) {
         setSummary(res.data);
       }
@@ -49,7 +50,7 @@ export const CNEFinalizeModal: React.FC<CNEFinalizeModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      const res = await ApiService.finalizeCNE(cne.classId, remarks.trim());
+      const res = await ApiService.finalizeCNE(cneId, remarks.trim());
       if (res.success) {
         success(`CNE successfully finalized! Master record created with ID: ${res.data?.dataId || 'Data Master'}`);
         onCompleted();
@@ -74,7 +75,7 @@ export const CNEFinalizeModal: React.FC<CNEFinalizeModalProps> = ({
 
     setIsSubmitting(true);
     try {
-      const res = await ApiService.cancelCNE(cne.classId, remarks.trim());
+      const res = await ApiService.cancelCNE(cneId, remarks.trim());
       if (res.success) {
         success('CNE session marked as Cancelled.');
         onCompleted();
@@ -123,7 +124,7 @@ export const CNEFinalizeModal: React.FC<CNEFinalizeModalProps> = ({
               </button>
             </div>
             <span className="text-[11px] font-mono text-slate-400">
-              ({cne.classId})
+              ({cneId})
             </span>
           </div>
 

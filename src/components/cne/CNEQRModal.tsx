@@ -17,6 +17,7 @@ export const CNEQRModal: React.FC<CNEQRModalProps> = ({
   onClose,
   onOpenPostTest
 }) => {
+  const cneId = cne.cneId || cne.classId || '';
   const [loading, setLoading] = useState(true);
   const [qrToken, setQrToken] = useState<string>('');
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
@@ -28,12 +29,12 @@ export const CNEQRModal: React.FC<CNEQRModalProps> = ({
 
   useEffect(() => {
     loadQR();
-  }, [cne.classId]);
+  }, [cneId]);
 
   const loadQR = async () => {
     setLoading(true);
     try {
-      const res = await ApiService.getQRToken(cne.classId);
+      const res = await ApiService.getQRToken(cneId);
       if (res.success && res.data) {
         const token = res.data.qrToken;
         setQrToken(token);
@@ -90,7 +91,7 @@ export const CNEQRModal: React.FC<CNEQRModalProps> = ({
                   QR Evaluation Access
                 </span>
                 <span className="text-[11px] font-mono text-slate-400">
-                  ({cne.classId})
+                  ({cneId})
                 </span>
               </div>
               <h3 className="text-sm sm:text-base font-bold text-slate-900 mt-0.5 truncate max-w-xl">

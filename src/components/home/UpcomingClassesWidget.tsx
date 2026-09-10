@@ -101,7 +101,7 @@ export const UpcomingClassesWidget: React.FC<UpcomingClassesWidgetProps> = ({
             const dayNum = isNaN(dateObj.getTime()) ? '01' : dateObj.getDate();
 
             return (
-              <div key={item.classId} className="py-3 first:pt-1 last:pb-1 space-y-2 group">
+              <div key={item.cneId || item.classId} className="py-3 first:pt-1 last:pb-1 space-y-2 group">
                 <div className="flex items-start gap-3">
                   {/* Compact Date Badge */}
                   <div className={`w-11 h-12 rounded-xl border flex flex-col items-center justify-center shrink-0 transition-colors ${dateBadgeBg}`}>

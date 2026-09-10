@@ -445,8 +445,8 @@ export class ApiService {
     return this.executeAction<UpcomingClass[]>('getUpcomingClasses');
   }
 
-  static async addUpcomingClass(classData: Partial<UpcomingClass>): Promise<ApiResponse<{ classId: string }>> {
-    return this.executeAction<{ classId: string }>('addUpcomingClass', classData);
+  static async addUpcomingClass(classData: Partial<UpcomingClass>): Promise<ApiResponse<{ cneId?: string; classId?: string }>> {
+    return this.executeAction<{ cneId?: string; classId?: string }>('addUpcomingClass', classData);
   }
 
   static async addDepartmentalSchedule(
@@ -461,20 +461,20 @@ export class ApiService {
     return this.executeAction('setupAndVerifyCNESheets');
   }
 
-  static async updateUpcomingClass(classId: string, classData: Partial<UpcomingClass>): Promise<ApiResponse> {
-    return this.executeAction('updateUpcomingClass', { classId, ...classData });
+  static async updateUpcomingClass(cneId: string, classData: Partial<UpcomingClass>): Promise<ApiResponse> {
+    return this.executeAction('updateUpcomingClass', { cneId, classId: cneId, ...classData });
   }
 
   static async reviewUpcomingClass(
-    classId: string,
+    cneId: string,
     status: 'Scheduled' | 'Completed' | 'Canceled',
     adminRemarks?: string
   ): Promise<ApiResponse> {
-    return this.executeAction('reviewUpcomingClass', { classId, status, adminRemarks });
+    return this.executeAction('reviewUpcomingClass', { cneId, classId: cneId, status, adminRemarks });
   }
 
-  static async applyForClass(classId: string, remarks?: string): Promise<ApiResponse<CNEApplication>> {
-    return this.executeAction<CNEApplication>('applyForClass', { classId, remarks });
+  static async applyForClass(cneId: string, remarks?: string): Promise<ApiResponse<CNEApplication>> {
+    return this.executeAction<CNEApplication>('applyForClass', { cneId, classId: cneId, remarks });
   }
 
   static async getMyApplications(): Promise<ApiResponse<CNEApplication[]>> {

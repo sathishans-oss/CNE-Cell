@@ -271,7 +271,7 @@ export function generateCNESessionPdf(
 
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(15, 23, 42);
-  doc.text(cne.classId || '—', 48, 48);
+  doc.text(cne.cneId || cne.classId || '—', 48, 48);
   doc.text((cne.cneType || 'DEPARTMENTAL') === 'CENTRAL' ? 'Central CNE (Hospital-Wide)' : 'Departmental CNE', 48, 54);
   
   // Topic with truncation safeguard
@@ -406,6 +406,6 @@ export function generateCNESessionPdf(
   doc.setTextColor(148, 163, 184);
   doc.text('Verified Institutional Post-Test Record • Clinical Nursing Education (CNE) Portal • AIIMS Rishikesh', 105, pageHeight - 8, { align: 'center' });
 
-  const cleanCneId = (cne.classId || 'CNE').replace(/[^a-zA-Z0-9-]/g, '_');
+  const cleanCneId = (cne.cneId || cne.classId || 'CNE').replace(/[^a-zA-Z0-9-]/g, '_');
   doc.save(`CNE_Report_${cleanCneId}.pdf`);
 }

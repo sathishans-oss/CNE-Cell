@@ -32,6 +32,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
   onClose,
   onUpdated
 }) => {
+  const cneId = cne.cneId || cne.classId || '';
   const [questions, setQuestions] = useState<CNEQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -49,12 +50,12 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
   useEffect(() => {
     loadQuestions();
     loadQuotaAndMaterial();
-  }, [cne.classId]);
+  }, [cneId]);
 
   const loadQuestions = async () => {
     setLoading(true);
     try {
-      const res = await ApiService.getCNEQuestions(cne.classId);
+      const res = await ApiService.getCNEQuestions(cneId);
       if (res.success && res.data) {
         setQuestions(res.data);
         const locked = res.data.some((q) => q.isLocked);
@@ -71,8 +72,8 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
     setLoadingQuota(true);
     try {
       const [quotaRes, refRes] = await Promise.all([
-        ApiService.getAiQuota(cne.classId),
-        ApiService.getReferenceMaterial(cne.classId)
+        ApiService.getAiQuota(cneId),
+        ApiService.getReferenceMaterial(cneId)
       ]);
 
       if (quotaRes.success && quotaRes.data) {
@@ -100,7 +101,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
     setIsGenerating(true);
     try {
       // 2. Material Grounding Check (Authoritative backend reference check)
-      const refRes = await ApiService.getReferenceMaterial(cne.classId);
+      const refRes = await ApiService.getReferenceMaterial(cneId);
       const materialText = (refRes.data?.unifiedContent || refRes.data?.referenceText || '').trim();
 
       if (!materialText || materialText.length < 15) {
@@ -111,12 +112,12 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
       setHasMaterial(true);
 
       // 3. Atomically Reserve Quota attempt with Apps Script LockService
-      const reserveRes = await ApiService.reserveAiQuota(cne.classId);
+      const reserveRes = await ApiService.reserveAiQuota(cneId);
       if (!reserveRes.success || !reserveRes.data?.reservationToken) {
         error(reserveRes.message || 'Failed to reserve AI generation quota.');
         if (reserveRes.data) {
           setQuotaInfo({
-            cneId: cne.classId,
+            cneId: cneId,
             attemptsUsed: reserveRes.data.attemptsUsed,
             maxQuota: reserveRes.data.maxQuota,
             remaining: reserveRes.data.remaining,
@@ -132,7 +133,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
       let aiRes: any;
       try {
         aiRes = await ApiService.generateAiQuestions({
-          cneId: cne.classId,
+          cneId: cneId,
           topic: cne.topic,
           cneMaterial: materialText,
           reservationToken: reservationToken
@@ -140,7 +141,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
       } catch (genErr: any) {
         // Exception during Gemini generation: release reservation so quota is not consumed
         try {
-          await ApiService.releaseAiQuota(cne.classId, reservationToken);
+          await ApiService.releaseAiQuota(cneId, reservationToken);
         } catch (rErr) {}
         error('AI question generation failed. No successful AI generation attempt was consumed.');
         return;
@@ -149,7 +150,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
       if (!aiRes || !aiRes.success || !aiRes.data || aiRes.data.length !== 10) {
         // Release reserved quota on AI generation failure
         try {
-          await ApiService.releaseAiQuota(cne.classId, reservationToken);
+          await ApiService.releaseAiQuota(cneId, reservationToken);
         } catch (rErr) {}
         error(aiRes?.message || 'AI question generation failed. No successful AI generation attempt was consumed.');
         return;
@@ -158,13 +159,13 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
       // 5. Gemini succeeded and validated exactly 10 questions.
       // IMPORTANT: Do NOT call releaseAiQuota after successful Gemini generation.
       // Commit Quota with safe idempotent retry on temporary failure
-      let commitRes = await ApiService.commitAiQuota(cne.classId, reservationToken);
+      let commitRes = await ApiService.commitAiQuota(cneId, reservationToken);
 
       if (!commitRes || !commitRes.success) {
         // Attempt safe idempotent recovery retry after 1.5s
         try {
           await new Promise((resolve) => setTimeout(resolve, 1500));
-          commitRes = await ApiService.commitAiQuota(cne.classId, reservationToken);
+          commitRes = await ApiService.commitAiQuota(cneId, reservationToken);
         } catch (retryErr) {
           console.warn('Commit retry error:', retryErr);
         }
@@ -197,7 +198,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
 
         // Refresh quota from server to reflect latest accurate state
         try {
-          const freshQuota = await ApiService.getAiQuota(cne.classId);
+          const freshQuota = await ApiService.getAiQuota(cneId);
           if (freshQuota.success && freshQuota.data) {
             setQuotaInfo(freshQuota.data);
           }
@@ -298,7 +299,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
     setIsSaving(true);
     try {
       const res = await ApiService.saveCNEQuestions({
-        cneId: cne.classId,
+        cneId: cneId,
         questions
       });
 
@@ -359,7 +360,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                 )}
 
                 <span className="text-[11px] font-mono text-slate-400">
-                  ({cne.classId})
+                  ({cneId})
                 </span>
               </div>
               <h3 className="text-sm sm:text-base font-bold text-slate-900 mt-0.5 truncate max-w-2xl">

@@ -67,7 +67,7 @@ export const CNECalendar: React.FC = () => {
 
     upcomingClasses.forEach((c) => {
       list.push({
-        id: `cls-${c.classId}`,
+        id: `cls-${c.cneId || c.classId}`,
         title: c.topic,
         area: c.area,
         date: c.date,

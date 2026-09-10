@@ -68,6 +68,7 @@ async function startServer() {
       status: 'ok',
       service: 'CNE Management System API',
       aiAvailable: !!process.env.GEMINI_API_KEY,
+      model: (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim(),
       timestamp: new Date().toISOString()
     });
   });

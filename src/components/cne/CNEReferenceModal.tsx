@@ -17,6 +17,7 @@ export const CNEReferenceModal: React.FC<CNEReferenceModalProps> = ({
   onClose,
   onUpdated
 }) => {
+  const cneId = cne.cneId || cne.classId || '';
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [unifiedContent, setUnifiedContent] = useState('');
@@ -27,27 +28,14 @@ export const CNEReferenceModal: React.FC<CNEReferenceModalProps> = ({
 
   useEffect(() => {
     loadReference();
-  }, [cne.classId]);
+  }, [cneId]);
 
   const loadReference = async () => {
     setLoading(true);
     try {
-      const res = await ApiService.getReferenceMaterial(cne.classId);
+      const res = await ApiService.getReferenceMaterial(cneId);
       if (res.success && res.data) {
         let content = res.data.unifiedContent || res.data.referenceText || '';
-
-        // Backward compatibility: seamlessly merge legacy syllabus or reference links if not already present
-        const legacyAdditions: string[] = [];
-        if (res.data.syllabus && res.data.syllabus.trim() && !content.includes(res.data.syllabus.trim())) {
-          legacyAdditions.push(`### Curriculum Coverage & Syllabus:\n${res.data.syllabus.trim()}`);
-        }
-        if (res.data.linkUrl && res.data.linkUrl.trim() && !content.includes(res.data.linkUrl.trim())) {
-          legacyAdditions.push(`### Reference Links & Document URLs:\n${res.data.linkUrl.trim()}`);
-        }
-
-        if (legacyAdditions.length > 0) {
-          content = content ? `${content}\n\n${legacyAdditions.join('\n\n')}` : legacyAdditions.join('\n\n');
-        }
 
         if (!content && cne.description) {
           content = cne.description;
@@ -78,7 +66,7 @@ export const CNEReferenceModal: React.FC<CNEReferenceModalProps> = ({
     setIsSaving(true);
     try {
       const res = await ApiService.saveReferenceMaterial({
-        cneId: cne.classId,
+        cneId: cneId,
         unifiedContent: unifiedContent.trim(),
         referenceText: unifiedContent.trim()
       });
@@ -100,6 +88,14 @@ export const CNEReferenceModal: React.FC<CNEReferenceModalProps> = ({
   const charCount = unifiedContent.length;
   const wordCount = unifiedContent.trim() ? unifiedContent.trim().split(/\s+/).length : 0;
 
+  // Ensure employee ID is never displayed; fallback to Coordinator
+  const isEmployeeId = (val?: string) => {
+    if (!val) return false;
+    const clean = val.trim();
+    return /^RSN/i.test(clean) || /^[A-Z]{2,}\d{3,}$/i.test(clean);
+  };
+  const displayUpdatedBy = (updatedBy && !isEmployeeId(updatedBy)) ? updatedBy : 'Coordinator';
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
       <div className="bg-white rounded-2xl w-[92vw] max-w-[1300px] max-h-[88vh] shadow-2xl border border-slate-200 flex flex-col overflow-hidden">
@@ -118,7 +114,7 @@ export const CNEReferenceModal: React.FC<CNEReferenceModalProps> = ({
                   {cne.area}
                 </span>
                 <span className="text-[11px] font-mono text-slate-400">
-                  ({cne.classId})
+                  ({cneId})
                 </span>
               </div>
               <h3 className="text-sm sm:text-base font-bold text-slate-900 mt-0.5 leading-snug line-clamp-1">
@@ -182,7 +178,7 @@ export const CNEReferenceModal: React.FC<CNEReferenceModalProps> = ({
 
               {(updatedBy || updatedAt) && (
                 <div className="px-3 py-2 bg-white rounded-xl border border-slate-200 text-[11px] text-slate-500 flex items-center justify-between shadow-2xs mt-1">
-                  <span>Last updated by: <strong className="text-slate-700">{updatedBy || 'Coordinator'}</strong></span>
+                  <span>Last updated by: <strong className="text-slate-700">{displayUpdatedBy}</strong></span>
                   <span>{updatedAt ? new Date(updatedAt).toLocaleString() : ''}</span>
                 </div>
               )}

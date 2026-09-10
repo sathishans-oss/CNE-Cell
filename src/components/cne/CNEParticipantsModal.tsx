@@ -33,6 +33,7 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
   onClose,
   onUpdated
 }) => {
+  const cneId = cne.cneId || cne.classId || '';
   const [summary, setSummary] = useState<CNEParticipantsSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -50,12 +51,12 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
 
   useEffect(() => {
     loadParticipants();
-  }, [cne.classId]);
+  }, [cneId]);
 
   const loadParticipants = async () => {
     setLoading(true);
     try {
-      const res = await ApiService.getCNEParticipants(cne.classId);
+      const res = await ApiService.getCNEParticipants(cneId);
       if (res.success && res.data) {
         setSummary(res.data);
       }
@@ -87,7 +88,7 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
     setIsSubmitting(true);
     try {
       const res = await ApiService.addManualParticipant({
-        cneId: cne.classId,
+        cneId: cneId,
         employeeId: selectedEmpId.trim(),
         name: empName.trim(),
         designation: empDesignation.trim(),
@@ -151,7 +152,7 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
                   {cne.area}
                 </span>
                 <span className="text-[11px] font-mono text-slate-400">
-                  ({cne.classId})
+                  ({cneId})
                 </span>
               </div>
               <h3 className="text-sm sm:text-base font-bold text-slate-900 mt-0.5 truncate max-w-2xl">
