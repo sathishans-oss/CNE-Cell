@@ -11,9 +11,11 @@ import {
   HelpCircle,
   AlertTriangle,
   RefreshCw,
-  Edit3
+  Edit3,
+  FileWarning,
+  CheckCheck
 } from 'lucide-react';
-import { UpcomingClass, CNEQuestion } from '../../types';
+import { UpcomingClass, CNEQuestion, CNEAiQuotaInfo } from '../../types';
 import { ApiService } from '../../services/api';
 import { useToast } from '../Toast';
 
@@ -35,13 +37,18 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
-  const [aiQuestionCount, setAiQuestionCount] = useState(10);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+
+  // Authoritative AI Quota & Material State
+  const [quotaInfo, setQuotaInfo] = useState<CNEAiQuotaInfo | null>(null);
+  const [loadingQuota, setLoadingQuota] = useState(false);
+  const [hasMaterial, setHasMaterial] = useState<boolean | null>(null);
 
   const { success, error, warning } = useToast();
 
   useEffect(() => {
     loadQuestions();
+    loadQuotaAndMaterial();
   }, [cne.classId]);
 
   const loadQuestions = async () => {
@@ -60,48 +67,153 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
     }
   };
 
+  const loadQuotaAndMaterial = async () => {
+    setLoadingQuota(true);
+    try {
+      const [quotaRes, refRes] = await Promise.all([
+        ApiService.getAiQuota(cne.classId),
+        ApiService.getReferenceMaterial(cne.classId)
+      ]);
+
+      if (quotaRes.success && quotaRes.data) {
+        setQuotaInfo(quotaRes.data);
+      }
+
+      const materialText = (refRes.data?.unifiedContent || refRes.data?.referenceText || '').trim();
+      setHasMaterial(materialText.length >= 15);
+    } catch (e) {
+      console.warn('Failed to load AI quota or reference material:', e);
+    } finally {
+      setLoadingQuota(false);
+    }
+  };
+
   const handleGenerateAi = async () => {
     if (isGenerating || isLocked || !isAuthorized) return;
 
+    // 1. Quota Check
+    if (quotaInfo && quotaInfo.attemptsUsed >= 3) {
+      error('AI generation quota reached (3/3 successful attempts used for this CNE).');
+      return;
+    }
+
     setIsGenerating(true);
     try {
-      // 1. Fetch reference material to ground the prompt
-      let refText = '';
-      let syllabus = cne.description || '';
-      try {
-        const refRes = await ApiService.getReferenceMaterial(cne.classId);
-        if (refRes.success && refRes.data) {
-          refText = refRes.data.referenceText || '';
-          if (refRes.data.syllabus) syllabus = refRes.data.syllabus;
+      // 2. Material Grounding Check (Authoritative backend reference check)
+      const refRes = await ApiService.getReferenceMaterial(cne.classId);
+      const materialText = (refRes.data?.unifiedContent || refRes.data?.referenceText || '').trim();
+
+      if (!materialText || materialText.length < 15) {
+        setHasMaterial(false);
+        error('CNE Class Content / Learning Material is required before generating AI questions. Please enter and save learning material first.');
+        return;
+      }
+      setHasMaterial(true);
+
+      // 3. Atomically Reserve Quota attempt with Apps Script LockService
+      const reserveRes = await ApiService.reserveAiQuota(cne.classId);
+      if (!reserveRes.success || !reserveRes.data?.reservationToken) {
+        error(reserveRes.message || 'Failed to reserve AI generation quota.');
+        if (reserveRes.data) {
+          setQuotaInfo({
+            cneId: cne.classId,
+            attemptsUsed: reserveRes.data.attemptsUsed,
+            maxQuota: reserveRes.data.maxQuota,
+            remaining: reserveRes.data.remaining,
+            canGenerate: reserveRes.data.canGenerate
+          });
         }
-      } catch (e) {}
+        return;
+      }
 
-      // 2. Call Gemini AI question generator on the backend
-      const aiRes = await ApiService.generateAiQuestions({
-        topic: cne.topic,
-        referenceMaterial: refText,
-        syllabus: syllabus,
-        count: aiQuestionCount
-      });
+      const reservationToken = reserveRes.data.reservationToken;
 
-      if (aiRes.success && aiRes.data && aiRes.data.length > 0) {
-        // Mark them finalized by default for review
-        const newQs: CNEQuestion[] = aiRes.data.map((q, idx) => ({
+      // 4. Generate exactly 10 MCQs via Gemini 2.5 Flash on Express backend
+      let aiRes: any;
+      try {
+        aiRes = await ApiService.generateAiQuestions({
+          cneId: cne.classId,
+          topic: cne.topic,
+          cneMaterial: materialText,
+          reservationToken: reservationToken
+        });
+      } catch (genErr: any) {
+        // Exception during Gemini generation: release reservation so quota is not consumed
+        try {
+          await ApiService.releaseAiQuota(cne.classId, reservationToken);
+        } catch (rErr) {}
+        error('AI question generation failed. No successful AI generation attempt was consumed.');
+        return;
+      }
+
+      if (!aiRes || !aiRes.success || !aiRes.data || aiRes.data.length !== 10) {
+        // Release reserved quota on AI generation failure
+        try {
+          await ApiService.releaseAiQuota(cne.classId, reservationToken);
+        } catch (rErr) {}
+        error(aiRes?.message || 'AI question generation failed. No successful AI generation attempt was consumed.');
+        return;
+      }
+
+      // 5. Gemini succeeded and validated exactly 10 questions.
+      // IMPORTANT: Do NOT call releaseAiQuota after successful Gemini generation.
+      // Commit Quota with safe idempotent retry on temporary failure
+      let commitRes = await ApiService.commitAiQuota(cne.classId, reservationToken);
+
+      if (!commitRes || !commitRes.success) {
+        // Attempt safe idempotent recovery retry after 1.5s
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          commitRes = await ApiService.commitAiQuota(cne.classId, reservationToken);
+        } catch (retryErr) {
+          console.warn('Commit retry error:', retryErr);
+        }
+      }
+
+      // ONLY IF COMMIT SUCCEEDS:
+      if (commitRes && commitRes.success && commitRes.data) {
+        setQuotaInfo(commitRes.data);
+
+        // AI-generated questions MUST initially be treated as DRAFT questions for coordinator review
+        const newDraftQs: CNEQuestion[] = aiRes.data.map((q: any, idx: number) => ({
           ...q,
-          id: q.id || `q_${Date.now()}_${idx + 1}`,
-          isFinalized: true
+          id: q.id || `q_ai_${Date.now()}_${idx + 1}`,
+          isFinalized: false
         }));
 
-        setQuestions(newQs);
-        success(`Generated ${newQs.length} clinical MCQs via AI. Review and save.`);
+        setQuestions(newDraftQs);
+        success(
+          `Generated exactly 10 clinical MCQs via AI. Quota used: ${commitRes.data.attemptsUsed}/${commitRes.data.maxQuota}. Questions loaded as drafts for review.`
+        );
       } else {
-        error(aiRes.message || 'Failed to generate AI questions.');
+        // DO NOT show a successful generation message.
+        // DO NOT silently treat the generation as successful.
+        // DO NOT load or display the generated questions.
+        // DO NOT release quota (commit may still be recoverable).
+        error(
+          commitRes?.message ||
+          'AI questions were generated, but the generation quota could not be confirmed. Please contact the administrator or retry after the system recovers.'
+        );
+
+        // Refresh quota from server to reflect latest accurate state
+        try {
+          const freshQuota = await ApiService.getAiQuota(cne.classId);
+          if (freshQuota.success && freshQuota.data) {
+            setQuotaInfo(freshQuota.data);
+          }
+        } catch (qErr) {}
       }
     } catch (e: any) {
       error(e?.message || 'Error occurred while communicating with AI service.');
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const handleFinalizeAll = () => {
+    if (isLocked || !isAuthorized) return;
+    setQuestions((prev) => prev.map((q) => ({ ...q, isFinalized: true })));
+    success('All questions marked as Finalized (ready for post-test).');
   };
 
   const handleAddManualQuestion = () => {
@@ -205,10 +317,11 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
   };
 
   const finalizedCount = questions.filter((q) => q.isFinalized).length;
+  const isQuotaExhausted = Boolean(quotaInfo && quotaInfo.attemptsUsed >= 3);
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
-      <div className="bg-white rounded-2xl w-[92vw] max-w-[1440px] max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 relative overflow-hidden">
+      <div className="bg-white rounded-2xl w-[92vw] max-w-[1440px] max-h-[88vh] flex flex-col shadow-2xl border border-slate-200 relative overflow-hidden">
         {/* Header */}
         <div className="px-6 py-3.5 border-b border-slate-200 flex items-center justify-between shrink-0 bg-slate-50/70">
           <div className="flex items-center gap-3">
@@ -230,6 +343,21 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                     {finalizedCount} of {questions.length} Finalized
                   </span>
                 )}
+
+                {/* Authoritative AI Quota Status Badge */}
+                {quotaInfo && (
+                  <span
+                    className={`inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                      isQuotaExhausted
+                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                        : 'bg-purple-50 text-purple-700 border-purple-200'
+                    }`}
+                  >
+                    <Sparkles className="w-2.5 h-2.5" />
+                    AI Quota: {quotaInfo.attemptsUsed}/3 Used
+                  </span>
+                )}
+
                 <span className="text-[11px] font-mono text-slate-400">
                   ({cne.classId})
                 </span>
@@ -249,43 +377,76 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
           </button>
         </div>
 
+        {/* Missing Material Inline Alert */}
+        {hasMaterial === false && !isLocked && isAuthorized && (
+          <div className="px-6 py-2 bg-amber-50 border-b border-amber-200 flex items-center justify-between gap-3 text-xs text-amber-900 shrink-0">
+            <div className="flex items-center gap-2">
+              <FileWarning className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                <strong>Learning Material Missing:</strong> CNE Class Content must be entered and saved in the Reference Material modal before AI questions can be synthesized.
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* AI & Manual Action Bar */}
         {!isLocked && isAuthorized && (
           <div className="px-6 py-2.5 bg-purple-50/50 border-b border-purple-100 flex flex-wrap items-center justify-between gap-3 shrink-0">
             <div className="flex items-center gap-2 text-xs text-purple-950 font-medium">
               <Sparkles className="w-4 h-4 text-purple-600" />
-              <span>Grounded Question Synthesizer:</span>
-              <span className="text-purple-700 text-[11px]">Generate evidence-based clinical MCQs from syllabus &amp; notes</span>
+              <span>Grounded AI Question Synthesizer:</span>
+              <span className="text-purple-700 text-[11px]">
+                {isQuotaExhausted
+                  ? 'AI generation quota reached (3/3 successful attempts used for this CNE)'
+                  : 'Generates exactly 10 standardized clinical MCQs strictly from saved CNE learning material'}
+              </span>
             </div>
 
             <div className="flex items-center gap-2">
-              <select
-                value={aiQuestionCount}
-                onChange={(e) => setAiQuestionCount(parseInt(e.target.value, 10))}
-                disabled={isGenerating || isSaving}
-                className="bg-white border border-purple-200 rounded-lg px-2.5 py-1 text-xs text-slate-700 font-semibold shadow-xs"
-              >
-                <option value={3}>3 Questions</option>
-                <option value={5}>5 Questions</option>
-                <option value={8}>8 Questions</option>
-                <option value={10}>10 Questions</option>
-              </select>
+              {questions.length > 0 && finalizedCount < questions.length && (
+                <button
+                  type="button"
+                  onClick={handleFinalizeAll}
+                  disabled={isGenerating || isSaving}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-white hover:bg-emerald-50 border border-emerald-300 text-emerald-700 rounded-lg font-bold text-xs cursor-pointer shadow-xs transition-colors"
+                  title="Include all draft questions in post-test"
+                >
+                  <CheckCheck className="w-3.5 h-3.5" />
+                  <span>Finalize All ({questions.length - finalizedCount} Drafts)</span>
+                </button>
+              )}
 
               <button
                 type="button"
                 onClick={handleGenerateAi}
-                disabled={isGenerating || isSaving}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold text-xs shadow-xs disabled:opacity-50 cursor-pointer transition-colors"
+                disabled={isGenerating || isSaving || isQuotaExhausted || hasMaterial === false}
+                title={
+                  isQuotaExhausted
+                    ? 'AI generation quota reached (3/3 successful attempts used for this CNE)'
+                    : hasMaterial === false
+                    ? 'Please enter CNE Class Content first'
+                    : 'Generate 10 clinical MCQs from learning material'
+                }
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg font-bold text-xs shadow-xs transition-colors ${
+                  isQuotaExhausted
+                    ? 'bg-slate-200 text-slate-500 cursor-not-allowed border border-slate-300'
+                    : 'bg-purple-600 hover:bg-purple-700 text-white cursor-pointer disabled:opacity-50'
+                }`}
               >
                 {isGenerating ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Synthesizing MCQs...</span>
+                    <span>Synthesizing 10 MCQs...</span>
+                  </>
+                ) : isQuotaExhausted ? (
+                  <>
+                    <Lock className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Quota Exhausted (3/3)</span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-3.5 h-3.5" />
-                    <span>Auto-Generate AI MCQs</span>
+                    <span>Auto-Generate 10 MCQs</span>
                   </>
                 )}
               </button>
@@ -324,7 +485,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
               <HelpCircle className="w-10 h-10 text-slate-300 mx-auto" />
               <h4 className="text-sm font-bold text-slate-800">No Post-Test Questions Configured</h4>
               <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-                Use the AI Generator above to formulate instant scenario-based questions from the topic, or click <strong>+ Add Manual Question</strong> to enter your own assessment items.
+                Save CNE Class Content in the Reference Material modal and click <strong>Auto-Generate 10 MCQs</strong> to synthesize evidence-based questions, or click <strong>+ Add Manual Question</strong> to craft custom assessment items.
               </p>
             </div>
           ) : (
@@ -338,7 +499,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                     className={`p-4 rounded-xl border transition-all ${
                       q.isFinalized
                         ? 'border-purple-200 bg-white shadow-xs'
-                        : 'border-slate-200 bg-slate-50/80'
+                        : 'border-amber-200 bg-amber-50/30 shadow-2xs'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3 mb-2">
@@ -349,11 +510,11 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                         {q.isFinalized ? (
                           <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
                             <CheckCircle2 className="w-3 h-3" />
-                            Included in Post-Test
+                            Finalized (Active in Post-Test)
                           </span>
                         ) : (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
-                            Draft (Excluded)
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                            Draft (Review Required)
                           </span>
                         )}
                       </div>
@@ -366,10 +527,10 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                             className={`text-[11px] font-bold px-2 py-0.5 rounded-md cursor-pointer transition-colors ${
                               q.isFinalized
                                 ? 'text-slate-600 hover:bg-slate-100'
-                                : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                                : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200'
                             }`}
                           >
-                            {q.isFinalized ? 'Exclude' : 'Finalize'}
+                            {q.isFinalized ? 'Revert to Draft' : 'Mark Finalized'}
                           </button>
 
                           <button
@@ -517,7 +678,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                 ⚠ Please finalize at least 1 question for the post-test to become available.
               </span>
             ) : (
-              <span>Evaluation ready: <strong>{finalizedCount}</strong> questions active in question bank</span>
+              <span>Evaluation ready: <strong>{finalizedCount}</strong> of {questions.length} questions active in post-test</span>
             )}
           </div>
 

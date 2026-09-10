@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { BookOpen, X, Link as LinkIcon, FileText, CheckCircle2, Loader2, Save } from 'lucide-react';
-import { UpcomingClass, CNEReferenceMaterial } from '../../types';
+import { BookOpen, X, FileText, CheckCircle2, Loader2, Save, Info } from 'lucide-react';
+import { UpcomingClass } from '../../types';
 import { ApiService } from '../../services/api';
 import { useToast } from '../Toast';
 
@@ -19,9 +19,7 @@ export const CNEReferenceModal: React.FC<CNEReferenceModalProps> = ({
 }) => {
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [referenceText, setReferenceText] = useState('');
-  const [linkUrl, setLinkUrl] = useState('');
-  const [syllabus, setSyllabus] = useState('');
+  const [unifiedContent, setUnifiedContent] = useState('');
   const [updatedBy, setUpdatedBy] = useState<string | undefined>(undefined);
   const [updatedAt, setUpdatedAt] = useState<string | undefined>(undefined);
 
@@ -36,16 +34,30 @@ export const CNEReferenceModal: React.FC<CNEReferenceModalProps> = ({
     try {
       const res = await ApiService.getReferenceMaterial(cne.classId);
       if (res.success && res.data) {
-        setReferenceText(res.data.referenceText || '');
-        setLinkUrl(res.data.linkUrl || '');
-        setSyllabus(res.data.syllabus || '');
+        let content = res.data.unifiedContent || res.data.referenceText || '';
+
+        // Backward compatibility: seamlessly merge legacy syllabus or reference links if not already present
+        const legacyAdditions: string[] = [];
+        if (res.data.syllabus && res.data.syllabus.trim() && !content.includes(res.data.syllabus.trim())) {
+          legacyAdditions.push(`### Curriculum Coverage & Syllabus:\n${res.data.syllabus.trim()}`);
+        }
+        if (res.data.linkUrl && res.data.linkUrl.trim() && !content.includes(res.data.linkUrl.trim())) {
+          legacyAdditions.push(`### Reference Links & Document URLs:\n${res.data.linkUrl.trim()}`);
+        }
+
+        if (legacyAdditions.length > 0) {
+          content = content ? `${content}\n\n${legacyAdditions.join('\n\n')}` : legacyAdditions.join('\n\n');
+        }
+
+        if (!content && cne.description) {
+          content = cne.description;
+        }
+
+        setUnifiedContent(content);
         setUpdatedBy(res.data.updatedBy);
         setUpdatedAt(res.data.updatedAt);
-      } else {
-        // Default with CNE description if available
-        if (cne.description) {
-          setSyllabus(cne.description);
-        }
+      } else if (cne.description) {
+        setUnifiedContent(cne.description);
       }
     } catch (e: any) {
       console.warn('Failed to load reference material:', e);
@@ -58,32 +70,39 @@ export const CNEReferenceModal: React.FC<CNEReferenceModalProps> = ({
     e.preventDefault();
     if (isSaving || !isAuthorized) return;
 
+    if (!unifiedContent.trim()) {
+      error('Please enter CNE Class Content / Learning Material before saving.');
+      return;
+    }
+
     setIsSaving(true);
     try {
       const res = await ApiService.saveReferenceMaterial({
         cneId: cne.classId,
-        referenceText: referenceText.trim(),
-        linkUrl: linkUrl.trim(),
-        syllabus: syllabus.trim()
+        unifiedContent: unifiedContent.trim(),
+        referenceText: unifiedContent.trim()
       });
 
       if (res.success) {
-        success('Topic reference material saved successfully.');
+        success('CNE Class Content / Learning Material saved successfully.');
         if (onUpdated) onUpdated();
         onClose();
       } else {
-        error(res.message || 'Failed to save reference material.');
+        error(res.message || 'Failed to save learning material.');
       }
     } catch (e: any) {
-      error(e?.message || 'Error occurred while saving reference material.');
+      error(e?.message || 'Error occurred while saving learning material.');
     } finally {
       setIsSaving(false);
     }
   };
 
+  const charCount = unifiedContent.length;
+  const wordCount = unifiedContent.trim() ? unifiedContent.trim().split(/\s+/).length : 0;
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
-      <div className="bg-white rounded-2xl w-[90vw] max-w-[1300px] max-h-[85vh] shadow-2xl border border-slate-200 flex flex-col overflow-hidden">
+      <div className="bg-white rounded-2xl w-[92vw] max-w-[1300px] max-h-[88vh] shadow-2xl border border-slate-200 flex flex-col overflow-hidden">
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between shrink-0 bg-slate-50/80">
           <div className="flex items-center gap-3">
@@ -103,7 +122,7 @@ export const CNEReferenceModal: React.FC<CNEReferenceModalProps> = ({
                 </span>
               </div>
               <h3 className="text-sm sm:text-base font-bold text-slate-900 mt-0.5 leading-snug line-clamp-1">
-                {cne.topic} &mdash; Reference Material &amp; Clinical Syllabus
+                {cne.topic} &mdash; CNE Class Content &amp; Learning Material
               </h3>
             </div>
           </div>
@@ -118,86 +137,55 @@ export const CNEReferenceModal: React.FC<CNEReferenceModalProps> = ({
         </div>
 
         {loading ? (
-          <div className="py-20 flex flex-col items-center justify-center gap-2 text-slate-500">
-            <Loader2 className="w-6 h-6 animate-spin text-teal-600" />
-            <span className="text-xs">Loading reference material...</span>
+          <div className="py-24 flex flex-col items-center justify-center gap-2 text-slate-500">
+            <Loader2 className="w-7 h-7 animate-spin text-teal-600" />
+            <span className="text-xs font-medium">Loading CNE learning material...</span>
           </div>
         ) : (
           <form onSubmit={handleSave} className="flex flex-col flex-1 overflow-hidden">
-            {/* 2-Column Wide Body */}
-            <div className="p-6 overflow-y-auto flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs bg-slate-50/40">
-              {/* Left Column: Syllabus and Links */}
-              <div className="space-y-4 flex flex-col">
-                <div className="flex-1 flex flex-col">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5 flex items-center gap-1.5">
-                    <FileText className="w-3.5 h-3.5 text-teal-600" />
-                    Syllabus &amp; Curriculum Coverage
-                  </label>
-                  <textarea
-                    rows={7}
-                    value={syllabus}
-                    onChange={(e) => setSyllabus(e.target.value)}
-                    disabled={!isAuthorized || isSaving}
-                    placeholder="List core objectives, procedural skills, and clinical subtopics covered during this CNE session..."
-                    className="w-full flex-1 min-h-[160px] p-3 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all disabled:opacity-60 shadow-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5 flex items-center gap-1.5">
-                    <LinkIcon className="w-3.5 h-3.5 text-teal-600" />
-                    External Guidelines / Slides Document URL
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="url"
-                      value={linkUrl}
-                      onChange={(e) => setLinkUrl(e.target.value)}
-                      disabled={!isAuthorized || isSaving}
-                      placeholder="https://drive.google.com/... or guideline link"
-                      className="flex-1 p-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all disabled:opacity-60 shadow-xs"
-                    />
-                    {linkUrl && (
-                      <a
-                        href={linkUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs inline-flex items-center gap-1 cursor-pointer transition-colors"
-                      >
-                        Open Link
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                {(updatedBy || updatedAt) && (
-                  <div className="p-2.5 bg-white rounded-xl border border-slate-200 text-[11px] text-slate-500 flex items-center justify-between shadow-xs mt-auto">
-                    <span>Last updated by: <strong className="text-slate-700">{updatedBy || 'Coordinator'}</strong></span>
-                    <span>{updatedAt || ''}</span>
-                  </div>
-                )}
+            {/* Guidance Banner */}
+            <div className="px-6 py-3 bg-teal-50/70 border-b border-teal-100/80 flex items-start gap-2.5 text-xs text-teal-900 shrink-0">
+              <Info className="w-4 h-4 text-teal-700 shrink-0 mt-0.5" />
+              <div className="leading-relaxed">
+                Enter or paste the complete educational content, clinical guidelines, and notes below.
+                The AI Question Synthesizer reads this material directly to generate standardized clinical MCQs.
               </div>
+            </div>
 
-              {/* Right Column: Reference Text for AI Generation */}
-              <div className="space-y-2 flex flex-col">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                  <BookOpen className="w-3.5 h-3.5 text-teal-600" />
-                  Clinical Reference Text &amp; Key Takeaways
+            {/* Spacious Unified Content Area */}
+            <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-2 bg-slate-50/40">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-teal-600" />
+                  CNE Class Content / Learning Material
                 </label>
-                <div className="flex-1 flex flex-col">
-                  <textarea
-                    rows={12}
-                    value={referenceText}
-                    onChange={(e) => setReferenceText(e.target.value)}
-                    disabled={!isAuthorized || isSaving}
-                    placeholder="Enter clinical notes, protocols, drug calculations, procedural steps, or high-yield reference points..."
-                    className="w-full flex-1 min-h-[240px] p-3 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all disabled:opacity-60 font-mono text-[11px] shadow-xs"
-                  />
-                  <p className="text-[11px] text-slate-500 mt-1.5">
-                    This material is used by the Question Bank and AI Generator to formulate standardized post-test MCQs.
-                  </p>
+                <div className="text-[11px] text-slate-500 flex items-center gap-3">
+                  <span>Words: <strong>{wordCount}</strong></span>
+                  <span>Characters: <strong>{charCount}</strong></span>
                 </div>
               </div>
+
+              <textarea
+                value={unifiedContent}
+                onChange={(e) => setUnifiedContent(e.target.value)}
+                disabled={!isAuthorized || isSaving}
+                placeholder={`Enter or paste the complete educational content for this CNE session:
+
+• Learning Objectives & Core Competencies
+• Clinical Concepts, Protocols & Procedural Steps
+• Medication Administration, Dosages & Monitoring Parameters
+• Emergency Escalation & Nursing Interventions
+• High-Yield Clinical Takeaways & Standards of Care
+• Reference URLs / Document Links (Google Drive slides, hospital guidelines, etc.)`}
+                className="w-full flex-1 min-h-[360px] p-4 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-800 leading-relaxed focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all disabled:opacity-60 shadow-xs resize-y font-sans"
+              />
+
+              {(updatedBy || updatedAt) && (
+                <div className="px-3 py-2 bg-white rounded-xl border border-slate-200 text-[11px] text-slate-500 flex items-center justify-between shadow-2xs mt-1">
+                  <span>Last updated by: <strong className="text-slate-700">{updatedBy || 'Coordinator'}</strong></span>
+                  <span>{updatedAt ? new Date(updatedAt).toLocaleString() : ''}</span>
+                </div>
+              )}
             </div>
 
             {/* Modal Footer */}
@@ -213,7 +201,7 @@ export const CNEReferenceModal: React.FC<CNEReferenceModalProps> = ({
               {isAuthorized && (
                 <button
                   type="submit"
-                  disabled={isSaving}
+                  disabled={isSaving || !unifiedContent.trim()}
                   className="flex items-center gap-1.5 px-5 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl font-bold text-xs shadow-xs disabled:opacity-50 cursor-pointer transition-colors"
                 >
                   {isSaving ? (
@@ -224,7 +212,7 @@ export const CNEReferenceModal: React.FC<CNEReferenceModalProps> = ({
                   ) : (
                     <>
                       <Save className="w-3.5 h-3.5" />
-                      <span>Save Reference Material</span>
+                      <span>Save Learning Material</span>
                     </>
                   )}
                 </button>

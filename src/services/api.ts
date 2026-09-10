@@ -17,6 +17,7 @@ import {
   CoordinatorDeskInfo,
   CNEQuestion,
   CNEReferenceMaterial,
+  CNEAiQuotaInfo,
   CNEParticipant,
   CNEParticipantsSummary,
   PostTestSubmissionResult,
@@ -593,28 +594,102 @@ export class ApiService {
   }
 
   /**
-   * Part 2: AI Question Generator (Calls Express backend with Gemini API)
+   * Part 2: AI Question Generator (Calls Express backend with Gemini 2.5 Flash)
    */
   static async generateAiQuestions(params: {
+    cneId: string;
     topic: string;
+    cneMaterial: string;
+    reservationToken: string;
     referenceMaterial?: string;
     syllabus?: string;
-    count?: number;
   }): Promise<ApiResponse<CNEQuestion[]>> {
     try {
+      const session = this.getSessionUser();
       const response = await fetch('/api/ai/generate-questions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params)
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          ...params,
+          token: session?.token,
+          loggedInEmployeeId: session?.employeeId
+        })
       });
-      const result = await response.json();
+
+      // 1. Read response body safely without throwing on non-JSON content
+      const rawText = await response.text();
+
+      // 2. Check Content-Type and inspect payload structure
+      const contentType = (response.headers.get('content-type') || '').toLowerCase();
+      const trimmed = rawText.trim();
+      const isLikelyJson = (contentType.includes('application/json') || trimmed.startsWith('{') || trimmed.startsWith('[')) && !trimmed.startsWith('<!');
+
+      if (!isLikelyJson) {
+        return {
+          success: false,
+          errorCode: 'AI_ENDPOINT_INVALID_RESPONSE',
+          message: 'AI question service returned an invalid non-JSON response. Please check the Cloudflare AI endpoint configuration.'
+        };
+      }
+
+      // 3. Safely parse JSON
+      let result: any;
+      try {
+        result = JSON.parse(rawText);
+      } catch {
+        return {
+          success: false,
+          errorCode: 'AI_ENDPOINT_INVALID_RESPONSE',
+          message: 'AI question service returned an invalid non-JSON response. Please check the Cloudflare AI endpoint configuration.'
+        };
+      }
+
+      // 4. If HTTP status is not ok (4xx/5xx), return controlled error response
+      if (!response.ok) {
+        return {
+          success: false,
+          errorCode: result?.errorCode || 'AI_GENERATION_ERROR',
+          message: result?.message || 'Unable to generate AI questions.'
+        };
+      }
+
       return result;
     } catch (err: any) {
       return {
         success: false,
-        message: err.message || 'Failed to generate AI questions.'
+        errorCode: 'AI_GENERATION_ERROR',
+        message: err?.message || 'Unable to generate AI questions.'
       };
     }
+  }
+
+  /**
+   * AI Quota Lifecycle & Concurrency APIs (Authoritative Google Apps Script)
+   */
+  static async getAiQuota(cneId: string): Promise<ApiResponse<CNEAiQuotaInfo>> {
+    return this.executeAction<CNEAiQuotaInfo>('getAiQuota', { cneId });
+  }
+
+  static async reserveAiQuota(cneId: string): Promise<ApiResponse<{
+    reservationToken: string;
+    cneId: string;
+    attemptsUsed: number;
+    maxQuota: number;
+    remaining: number;
+    canGenerate: boolean;
+  }>> {
+    return this.executeAction('reserveAiQuota', { cneId });
+  }
+
+  static async commitAiQuota(cneId: string, reservationToken: string): Promise<ApiResponse<CNEAiQuotaInfo>> {
+    return this.executeAction<CNEAiQuotaInfo>('commitAiQuota', { cneId, reservationToken });
+  }
+
+  static async releaseAiQuota(cneId: string, reservationToken: string): Promise<ApiResponse> {
+    return this.executeAction('releaseAiQuota', { cneId, reservationToken });
   }
 
   /**
@@ -622,6 +697,7 @@ export class ApiService {
    */
   static async saveReferenceMaterial(params: {
     cneId: string;
+    unifiedContent?: string;
     referenceText?: string;
     linkUrl?: string;
     syllabus?: string;

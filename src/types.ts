@@ -172,8 +172,20 @@ export interface CNEReferenceMaterial {
   referenceText: string;
   linkUrl: string;
   syllabus: string;
+  unifiedContent?: string;
   updatedBy?: string;
   updatedAt?: string;
+}
+
+export interface CNEAiQuotaInfo {
+  cneId: string;
+  topic?: string;
+  attemptsUsed: number;
+  maxQuota: number;
+  remaining: number;
+  canGenerate: boolean;
+  lastAttemptAt?: string;
+  lastGeneratedBy?: string;
 }
 
 export interface CNEParticipant {
