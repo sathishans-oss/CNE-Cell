@@ -43,15 +43,17 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
   onNavigate,
   onOpenLogin
 }) => {
-  const [upcomingClasses, setUpcomingClasses] = useState<UpcomingClass[]>([]);
-  const [gallery, setGallery] = useState<GalleryItem[]>([]);
-  const [newsEvents, setNewsEvents] = useState<NewsEventItem[]>([]);
-  const [quickLinks, setQuickLinks] = useState<QuickLinkItem[]>([]);
-  const [impactStats, setImpactStats] = useState<ProgramImpactStats | null>(null);
-  const [impactLoading, setImpactLoading] = useState(true);
+  const [upcomingClasses, setUpcomingClasses] = useState<UpcomingClass[]>(() => ApiService.getCachedData<UpcomingClass[]>('getUpcomingClasses') || []);
+  const [gallery, setGallery] = useState<GalleryItem[]>(() => ApiService.getCachedData<GalleryItem[]>('getGallery') || []);
+  const [newsEvents, setNewsEvents] = useState<NewsEventItem[]>(() => ApiService.getCachedData<NewsEventItem[]>('getNewsEvents') || []);
+  const [quickLinks, setQuickLinks] = useState<QuickLinkItem[]>(() => ApiService.getCachedData<QuickLinkItem[]>('getQuickLinks') || []);
+  const [impactStats, setImpactStats] = useState<ProgramImpactStats | null>(() => ApiService.getCachedData<ProgramImpactStats>('getProgramImpact'));
+  const [impactLoading, setImpactLoading] = useState(() => !ApiService.getCachedData('getProgramImpact'));
   const [impactError, setImpactError] = useState<string | null>(null);
-  const [cnoMessage, setCnoMessage] = useState<ChairpersonMessageData>(INITIAL_CHAIRPERSON_MESSAGE);
-  const [loading, setLoading] = useState(true);
+  const [cnoMessage, setCnoMessage] = useState<ChairpersonMessageData>(() => ApiService.getCachedData<ChairpersonMessageData>('getChairpersonMessage') || INITIAL_CHAIRPERSON_MESSAGE);
+  
+  const [classesLoading, setClassesLoading] = useState(() => !ApiService.getCachedData('getUpcomingClasses'));
+  const [galleryLoading, setGalleryLoading] = useState(() => !ApiService.getCachedData('getGallery'));
 
   // Modals state
   const [selectedNews, setSelectedNews] = useState<NewsEventItem | null>(null);
@@ -63,52 +65,70 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
   const isAdmin = user?.role === 'ADMIN';
 
   useEffect(() => {
-    // Reset impact statistics immediately on user change/logout so previous user's data does not linger
-    setImpactStats(null);
-    setImpactLoading(true);
+    // Reset/rehydrate impact statistics for user scope change
+    const cachedImpact = ApiService.getCachedData<ProgramImpactStats>('getProgramImpact');
+    setImpactStats(cachedImpact);
+    setImpactLoading(!cachedImpact);
     setImpactError(null);
     loadHomeData();
   }, [user?.employeeId]);
 
-  const loadHomeData = async () => {
-    setLoading(true);
-    setImpactLoading(true);
-    setImpactError(null);
-    try {
-      // Wave 1: Primary visual components (Upcoming, Gallery, CNO Message)
-      const [upcomingRes, galleryRes, cnoRes] = await Promise.all([
-        ApiService.getUpcomingClasses(),
-        ApiService.getGallery(),
-        ApiService.getChairpersonMessage()
-      ]);
+  const loadHomeData = () => {
+    // All independent initial read requests execute concurrently in parallel
+    // and render each section progressively as its data arrives.
 
-      if (upcomingRes.success && upcomingRes.data) setUpcomingClasses(upcomingRes.data);
-      if (galleryRes.success && galleryRes.data) setGallery(galleryRes.data);
-      if (cnoRes.success && cnoRes.data) setCnoMessage(cnoRes.data);
+    // 1. Upcoming Classes
+    ApiService.getUpcomingClasses()
+      .then((res) => {
+        if (res.success && res.data) setUpcomingClasses(res.data);
+      })
+      .catch((err) => console.warn('[Home Data] Upcoming classes error:', err))
+      .finally(() => setClassesLoading(false));
 
-      // Wave 2: News events & Quick Links
-      const [newsRes, quickRes] = await Promise.all([
-        ApiService.getNewsEvents(),
-        ApiService.getQuickLinks()
-      ]);
+    // 2. Class Moments Gallery
+    ApiService.getGallery()
+      .then((res) => {
+        if (res.success && res.data) setGallery(res.data);
+      })
+      .catch((err) => console.warn('[Home Data] Gallery error:', err))
+      .finally(() => setGalleryLoading(false));
 
-      if (newsRes.success && newsRes.data) setNewsEvents(newsRes.data);
-      if (quickRes.success && quickRes.data) setQuickLinks(quickRes.data);
+    // 3. Chairperson / CNO Message
+    ApiService.getChairpersonMessage()
+      .then((res) => {
+        if (res.success && res.data) setCnoMessage(res.data);
+      })
+      .catch((err) => console.warn('[Home Data] CNO message error:', err));
 
-      // Wave 3: Live Program Impact from Data tab (institutional when unauthenticated, user-specific when logged in)
-      const impactRes = await ApiService.getProgramImpact();
-      if (impactRes.success && impactRes.data) {
-        setImpactStats(impactRes.data);
-      } else {
-        setImpactError(impactRes.message || 'Unable to load impact metrics');
-      }
-    } catch (e) {
-      console.error('Error loading home data', e);
-      setImpactError('Unable to load impact metrics');
-    } finally {
-      setLoading(false);
-      setImpactLoading(false);
-    }
+    // 4. News & Circulars
+    ApiService.getNewsEvents()
+      .then((res) => {
+        if (res.success && res.data) setNewsEvents(res.data);
+      })
+      .catch((err) => console.warn('[Home Data] News error:', err));
+
+    // 5. Quick Links
+    ApiService.getQuickLinks()
+      .then((res) => {
+        if (res.success && res.data) setQuickLinks(res.data);
+      })
+      .catch((err) => console.warn('[Home Data] Quick links error:', err));
+
+    // 6. Program Impact Metrics (heavier Data tab calculation, isolated so it never blocks other sections)
+    ApiService.getProgramImpact()
+      .then((res) => {
+        if (res.success && res.data) {
+          setImpactStats(res.data);
+          setImpactError(null);
+        } else {
+          setImpactError(res.message || 'Unable to load impact metrics');
+        }
+      })
+      .catch((err) => {
+        console.warn('[Home Data] Impact error:', err);
+        setImpactError('Unable to load impact metrics');
+      })
+      .finally(() => setImpactLoading(false));
   };
 
   const handleQuickLinkClick = (item: QuickLinkItem) => {
@@ -145,14 +165,14 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
           <UpcomingClassesWidget
             openClasses={openClasses}
             totalCount={totalScheduledCount}
-            loading={loading}
+            loading={classesLoading}
             onNavigate={onNavigate}
             onSelectClass={(c) => setSelectedClass(c)}
             accentColor="teal"
           />
           <ClassMomentsGalleryWidget
             gallery={gallery}
-            loading={loading}
+            loading={galleryLoading}
             onNavigate={onNavigate}
             onSelectPhoto={(photo) => setSelectedPhoto(photo)}
             accentColor="teal"

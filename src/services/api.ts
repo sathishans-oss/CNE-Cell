@@ -370,6 +370,27 @@ export class ApiService {
   }
 
   /**
+   * Safe read from local storage cache for instant UI hydration (stale-while-revalidate)
+   */
+  static getCachedData<T = any>(action: string, specificKey?: string): T | null {
+    try {
+      const session = this.getSessionUser();
+      const cacheKey = specificKey || (
+        action === 'getProgramImpact'
+          ? (session && session.employeeId ? `cne_cache_getProgramImpact_${session.employeeId.toLowerCase()}` : 'cne_cache_getProgramImpact_institutional')
+          : (action === 'getCNERecords' && session && session.employeeId ? `cne_cache_getCNERecords_${session.employeeId.toLowerCase()}` : `cne_cache_${action}`)
+      );
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        return JSON.parse(cached) as T;
+      }
+    } catch {
+      // Ignore cache retrieval errors
+    }
+    return null;
+  }
+
+  /**
    * Master Data APIs
    */
   static async getOfficersDropdown(): Promise<ApiResponse<Employee[]>> {
