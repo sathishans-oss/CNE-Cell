@@ -4,6 +4,16 @@ import { DepartmentalScheduleRow, Employee, SessionUser } from '../../types';
 import { ApiService } from '../../services/api';
 import { useToast } from '../Toast';
 import { getUserAssignedAreas, calculateCneDuration, validateCneDuration } from '../../utils';
+import { CneDateTimeFields } from './CneDateTimeFields';
+
+function parseDateTimeParts(dateTimeStr?: string, defaultTime: string = '09:00') {
+  if (!dateTimeStr) return { date: '', time: defaultTime };
+  if (dateTimeStr.includes('T')) {
+    const [d, t] = dateTimeStr.split('T');
+    return { date: d, time: t.substring(0, 5) || defaultTime };
+  }
+  return { date: dateTimeStr, time: defaultTime };
+}
 
 interface DepartmentalScheduleModalProps {
   isOpen: boolean;
@@ -21,7 +31,7 @@ const createInitialRow = (userArea: string = ''): DepartmentalScheduleRow => ({
   date: '',
   toDate: '',
   time: '',
-  duration: '01:30:00',
+  duration: '00:00:00',
   resourcePersonEmpId: '',
   resourcePersonEmpIds: [],
   resourcePersonName: '',
@@ -91,42 +101,6 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
         resourcePersonEmpId: nextIds.join(', '),
         resourcePersonName: rpNames.join(', ')
       };
-      return updated;
-    });
-  };
-
-  const handleDateChange = (index: number, newDate: string) => {
-    setRows((prev) => {
-      const updated = [...prev];
-      const r = updated[index];
-      let newDuration = r.duration;
-      if (newDate && r.toDate) {
-        const dFrom = new Date(newDate);
-        const dTo = new Date(r.toDate);
-        if (!isNaN(dFrom.getTime()) && !isNaN(dTo.getTime()) && dTo >= dFrom) {
-          const autoDur = calculateCneDuration(newDate, r.toDate);
-          if (autoDur) newDuration = autoDur;
-        }
-      }
-      updated[index] = { ...r, date: newDate, duration: newDuration };
-      return updated;
-    });
-  };
-
-  const handleToDateChange = (index: number, newToDate: string) => {
-    setRows((prev) => {
-      const updated = [...prev];
-      const r = updated[index];
-      let newDuration = r.duration;
-      if (r.date && newToDate) {
-        const dFrom = new Date(r.date);
-        const dTo = new Date(newToDate);
-        if (!isNaN(dFrom.getTime()) && !isNaN(dTo.getTime()) && dTo >= dFrom) {
-          const autoDur = calculateCneDuration(r.date, newToDate);
-          if (autoDur) newDuration = autoDur;
-        }
-      }
-      updated[index] = { ...r, toDate: newToDate, duration: newDuration };
       return updated;
     });
   };
@@ -245,7 +219,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
           date: r.date,
           toDate: r.toDate,
           time: '',
-          duration: r.duration.trim() || '01:30:00',
+          duration: r.duration.trim() || '00:00:00',
           resourcePersonEmpId: rpIds.join(', '),
           resourcePersonEmpIds: rpIds,
           resourcePersonName: rpNames.join(', '),
@@ -306,6 +280,8 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
           <div className="p-6 overflow-y-auto space-y-4 flex-1 bg-slate-50">
             {rows.map((row, idx) => {
+              const fromParts = parseDateTimeParts(row.date, '09:00');
+              const toParts = parseDateTimeParts(row.toDate, '10:30');
               const selectedRowRpIds = (row.resourcePersonEmpIds && row.resourcePersonEmpIds.length > 0)
                 ? row.resourcePersonEmpIds
                 : (row.resourcePersonEmpId ? row.resourcePersonEmpId.split(',').map((s) => s.trim()).filter(Boolean) : []);
@@ -412,32 +388,28 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
 
                   {/* Column 2: Dates & Duration */}
                   <div className="space-y-2.5">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        From Date &amp; Time <span className="text-rose-500">*</span>
-                      </label>
-                      <input
-                        type="datetime-local"
-                        required
-                        value={row.date}
-                        onChange={(e) => handleDateChange(idx, e.target.value)}
-                        className="w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs focus:ring-1 focus:ring-emerald-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        To Date &amp; Time <span className="text-rose-500">*</span>
-                      </label>
-                      <input
-                        type="datetime-local"
-                        required
-                        value={row.toDate || ''}
-                        min={row.date}
-                        onChange={(e) => handleToDateChange(idx, e.target.value)}
-                        className="w-full px-2 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs focus:ring-1 focus:ring-emerald-500"
-                      />
-                    </div>
+                    <CneDateTimeFields
+                      idPrefix={`dept-sched-${idx}`}
+                      fromDate={fromParts.date}
+                      fromTime={fromParts.time}
+                      toDate={toParts.date}
+                      toTime={toParts.time}
+                      minDate={new Date().toISOString().split('T')[0]}
+                      compact={true}
+                      accentColor="emerald"
+                      onChange={({ fullFrom, fullTo, calculatedDuration }) => {
+                        setRows((prev) => {
+                          const updated = [...prev];
+                          updated[idx] = {
+                            ...updated[idx],
+                            date: fullFrom,
+                            toDate: fullTo,
+                            duration: calculatedDuration !== '00:00:00' ? calculatedDuration : updated[idx].duration
+                          };
+                          return updated;
+                        });
+                      }}
+                    />
 
                     <div>
                       <div className="flex items-center justify-between mb-1">
@@ -449,7 +421,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                       <input
                         type="text"
                         required
-                        placeholder="01:30:00"
+                        placeholder="00:00:00"
                         value={row.duration}
                         onChange={(e) => handleFieldChange(idx, 'duration', e.target.value)}
                         className="w-full px-2 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg shadow-xs focus:ring-1 focus:ring-emerald-500"

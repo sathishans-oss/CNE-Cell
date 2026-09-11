@@ -26,8 +26,19 @@ import {
   formatCneDateRangeDisplay,
   formatResourcePersonsDisplay,
   formatStaffParticipantsDisplay,
-  resolveEmployeeName
+  resolveEmployeeName,
+  validateCneDuration
 } from '../utils';
+import { CneDateTimeFields } from './cne/CneDateTimeFields';
+
+function parseDateTimeParts(dateTimeStr?: string, defaultTime: string = '09:00') {
+  if (!dateTimeStr) return { date: '', time: defaultTime };
+  if (dateTimeStr.includes('T')) {
+    const [d, t] = dateTimeStr.split('T');
+    return { date: d, time: t.substring(0, 5) || defaultTime };
+  }
+  return { date: dateTimeStr, time: defaultTime };
+}
 
 interface AdminCNEDataProps {
   user: SessionUser;
@@ -56,9 +67,11 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
   const [isAddModalOpen, setIsAddModalOpen] = useState(isOpenAddModalDefault);
   const [formCneType, setFormCneType] = useState<'CENTRAL' | 'DEPARTMENTAL'>('CENTRAL');
   const [formArea, setFormArea] = useState('');
-  const [formFromDate, setFormFromDate] = useState(new Date().toISOString().split('T')[0]);
-  const [formToDate, setFormToDate] = useState(new Date().toISOString().split('T')[0]);
-  const [formDuration, setFormDuration] = useState('1:00:00');
+  const [formFromDate, setFormFromDate] = useState('');
+  const [formFromTime, setFormFromTime] = useState('09:00');
+  const [formToDate, setFormToDate] = useState('');
+  const [formToTime, setFormToTime] = useState('10:30');
+  const [formDuration, setFormDuration] = useState('00:00:00');
   const [formTopic, setFormTopic] = useState('');
   const [selectedRpEmpIds, setSelectedRpEmpIds] = useState<string[]>([]);
   const [rpSearchQuery, setRpSearchQuery] = useState('');
@@ -77,8 +90,10 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
   const [editCneType, setEditCneType] = useState<'CENTRAL' | 'DEPARTMENTAL'>('CENTRAL');
   const [editArea, setEditArea] = useState('');
   const [editFromDate, setEditFromDate] = useState('');
+  const [editFromTime, setEditFromTime] = useState('09:00');
   const [editToDate, setEditToDate] = useState('');
-  const [editDuration, setEditDuration] = useState('1:00:00');
+  const [editToTime, setEditToTime] = useState('10:30');
+  const [editDuration, setEditDuration] = useState('00:00:00');
   const [editTopic, setEditTopic] = useState('');
   const [editRpEmpIds, setEditRpEmpIds] = useState<string[]>([]);
   const [editRpSearchQuery, setEditRpSearchQuery] = useState('');
@@ -262,13 +277,29 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formTopic.trim() || !formArea.trim() || !formFromDate.trim() || (selectedRpEmpIds.length === 0 && externalRpList.length === 0)) {
-      error('Please complete all required fields (Topic, Area, Date, at least one Resource Person).');
+      error('Please complete all required fields (Topic, Area, Date & Time, at least one Resource Person).');
       return;
     }
 
-    if (formToDate && formToDate < formFromDate) {
+    const fullFrom = formFromDate && formFromTime ? `${formFromDate}T${formFromTime}` : formFromDate;
+    const fullTo = formToDate && formToTime ? `${formToDate}T${formToTime}` : (formToDate || fullFrom);
+
+    if (formToDate && formFromDate && formToDate < formFromDate) {
       error('To Date cannot be earlier than From Date.');
       return;
+    }
+
+    if (fullTo && fullFrom && fullTo < fullFrom) {
+      error('To Date & Time must be equal to or later than From Date & Time.');
+      return;
+    }
+
+    if (formDuration && formDuration !== '00:00:00') {
+      const durVal = validateCneDuration(formDuration, fullFrom, fullTo);
+      if (!durVal.isValid) {
+        error(durVal.message);
+        return;
+      }
     }
 
     // Build resource person names
@@ -287,9 +318,9 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
       const res = await ApiService.addCNE({
         cneType: formCneType,
         area: formArea,
-        fromDate: formFromDate,
-        toDate: formToDate || formFromDate,
-        duration: formDuration || '1:00:00',
+        fromDate: fullFrom,
+        toDate: fullTo || fullFrom,
+        duration: formDuration || '00:00:00',
         topic: formTopic.trim(),
         resourcePersonEmpId: selectedRpEmpIds.join(', '),
         resourcePersonEmpIds: selectedRpEmpIds,
@@ -308,6 +339,11 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
         setIsAddModalOpen(false);
         // Reset form
         setFormTopic('');
+        setFormFromDate('');
+        setFormFromTime('09:00');
+        setFormToDate('');
+        setFormToTime('10:30');
+        setFormDuration('00:00:00');
         setSelectedRpEmpIds([]);
         setSelectedStaffIds([]);
         setExternalRpList([]);
@@ -332,9 +368,13 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
     setEditingRecord(rec);
     setEditCneType((rec.cneType as any) || 'CENTRAL');
     setEditArea(rec.area || '');
-    setEditFromDate(rec.fromDate || '');
-    setEditToDate(rec.toDate || rec.fromDate || '');
-    setEditDuration(rec.duration || '1:00:00');
+    const fromParts = parseDateTimeParts(rec.fromDate, '09:00');
+    const toParts = parseDateTimeParts(rec.toDate || rec.fromDate, '10:30');
+    setEditFromDate(fromParts.date);
+    setEditFromTime(fromParts.time);
+    setEditToDate(toParts.date);
+    setEditToTime(toParts.time);
+    setEditDuration(rec.duration || '00:00:00');
     setEditTopic(rec.topic || '');
     setEditMode(rec.modeOfTeaching || 'Lecture Cum Discussion');
     setEditRemarks(rec.remarks || '');
@@ -365,13 +405,29 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
     if (!editingRecord) return;
 
     if (!editTopic.trim() || !editArea.trim() || !editFromDate.trim() || (editRpEmpIds.length === 0 && editExternalRpList.length === 0)) {
-      error('Please complete all required fields (Topic, Area, Date, at least one Resource Person).');
+      error('Please complete all required fields (Topic, Area, Date & Time, at least one Resource Person).');
       return;
     }
 
-    if (editToDate && editToDate < editFromDate) {
+    const fullFrom = editFromDate && editFromTime ? `${editFromDate}T${editFromTime}` : editFromDate;
+    const fullTo = editToDate && editToTime ? `${editToDate}T${editToTime}` : (editToDate || fullFrom);
+
+    if (editToDate && editFromDate && editToDate < editFromDate) {
       error('To Date cannot be earlier than From Date.');
       return;
+    }
+
+    if (fullTo && fullFrom && fullTo < fullFrom) {
+      error('To Date & Time must be equal to or later than From Date & Time.');
+      return;
+    }
+
+    if (editDuration && editDuration !== '00:00:00') {
+      const durVal = validateCneDuration(editDuration, fullFrom, fullTo);
+      if (!durVal.isValid) {
+        error(durVal.message);
+        return;
+      }
     }
 
     const rpNames = editRpEmpIds.map((id) => {
@@ -387,9 +443,9 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
     const updatedData: any = {
       cneType: editCneType,
       area: editArea,
-      fromDate: editFromDate,
-      toDate: editToDate || editFromDate,
-      duration: editDuration || '1:00:00',
+      fromDate: fullFrom,
+      toDate: fullTo || fullFrom,
+      duration: editDuration || '00:00:00',
       topic: editTopic.trim(),
       resourcePersonEmpId: editRpEmpIds.join(', '),
       resourcePersonEmpIds: editRpEmpIds,
@@ -630,7 +686,14 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
 
           <button
             id="btn-admin-open-add-cne"
-            onClick={() => setIsAddModalOpen(true)}
+            onClick={() => {
+              setFormFromDate('');
+              setFormFromTime('09:00');
+              setFormToDate('');
+              setFormToTime('10:30');
+              setFormDuration('00:00:00');
+              setIsAddModalOpen(true);
+            }}
             className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
           >
             <PlusCircle className="w-4 h-4 text-emerald-400" />
@@ -1003,44 +1066,43 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                 </div>
               </div>
 
-              {/* Dates & Duration (Preserved Duration Handling) */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    From Date *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={formFromDate}
-                    onChange={(e) => setFormFromDate(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                  />
-                </div>
+              {/* Dates & Duration */}
+              <div className="space-y-3">
+                <CneDateTimeFields
+                  idPrefix="activity-add"
+                  fromDate={formFromDate}
+                  fromTime={formFromTime}
+                  toDate={formToDate}
+                  toTime={formToTime}
+                  layout="grid"
+                  accentColor="emerald"
+                  onChange={({ fromDate, fromTime, toDate, toTime, calculatedDuration }) => {
+                    setFormFromDate(fromDate);
+                    setFormFromTime(fromTime);
+                    setFormToDate(toDate);
+                    setFormToTime(toTime);
+                    if (calculatedDuration && calculatedDuration !== '00:00:00') {
+                      setFormDuration(calculatedDuration);
+                    }
+                  }}
+                />
 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    To Date
-                  </label>
-                  <input
-                    type="date"
-                    value={formToDate}
-                    onChange={(e) => setFormToDate(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Duration (hh:mm:ss)
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                      Duration (HH:MM:SS) *
+                    </label>
+                    <span className="text-[10px] text-emerald-700 font-semibold">Auto-calculated</span>
+                  </div>
                   <input
                     type="text"
-                    placeholder="1:00:00"
+                    required
+                    placeholder="00:00:00"
                     value={formDuration}
                     onChange={(e) => setFormDuration(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
+                  <p className="text-[10px] text-slate-500 mt-0.5">Calculated automatically from selected dates and times. Max 8 hrs/day.</p>
                 </div>
               </div>
 
@@ -1432,43 +1494,42 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
               </div>
 
               {/* Dates & Duration */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    From Date *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={editFromDate}
-                    onChange={(e) => setEditFromDate(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                  />
-                </div>
+              <div className="space-y-3">
+                <CneDateTimeFields
+                  idPrefix="activity-edit"
+                  fromDate={editFromDate}
+                  fromTime={editFromTime}
+                  toDate={editToDate}
+                  toTime={editToTime}
+                  layout="grid"
+                  accentColor="emerald"
+                  onChange={({ fromDate, fromTime, toDate, toTime, calculatedDuration }) => {
+                    setEditFromDate(fromDate);
+                    setEditFromTime(fromTime);
+                    setEditToDate(toDate);
+                    setEditToTime(toTime);
+                    if (calculatedDuration && calculatedDuration !== '00:00:00') {
+                      setEditDuration(calculatedDuration);
+                    }
+                  }}
+                />
 
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    To Date
-                  </label>
-                  <input
-                    type="date"
-                    value={editToDate}
-                    onChange={(e) => setEditToDate(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Duration (hh:mm:ss)
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                      Duration (HH:MM:SS) *
+                    </label>
+                    <span className="text-[10px] text-emerald-700 font-semibold">Auto-calculated</span>
+                  </div>
                   <input
                     type="text"
-                    placeholder="1:00:00"
+                    required
+                    placeholder="00:00:00"
                     value={editDuration}
                     onChange={(e) => setEditDuration(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
+                  <p className="text-[10px] text-slate-500 mt-0.5">Calculated automatically from selected dates and times. Max 8 hrs/day.</p>
                 </div>
               </div>
 

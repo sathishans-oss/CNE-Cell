@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface ConfirmDatePickerProps {
@@ -8,6 +8,7 @@ interface ConfirmDatePickerProps {
   disabled?: boolean;
   placeholder?: string;
   id?: string;
+  compact?: boolean;
 }
 
 const MONTH_NAMES = [
@@ -35,10 +36,14 @@ export const ConfirmDatePicker: React.FC<ConfirmDatePickerProps> = ({
   minDate,
   disabled = false,
   placeholder = 'Select date...',
-  id
+  id,
+  compact = false
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [stagedDate, setStagedDate] = useState(value);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties>({});
 
   // Calendar view month & year
   const today = new Date();
@@ -66,10 +71,75 @@ export const ConfirmDatePicker: React.FC<ConfirmDatePickerProps> = ({
     return today.getMonth();
   });
 
+  // Automatically calculate popup position so it is fully visible in viewport without scrolling
+  const updatePosition = () => {
+    if (!triggerRef.current) return;
+    const triggerRect = triggerRef.current.getBoundingClientRect();
+    const popoverWidth = 288; // w-72 = 18rem = 288px
+    const popoverHeight = popoverRef.current ? popoverRef.current.offsetHeight : 340;
+
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+
+    const spaceBelow = viewportHeight - triggerRect.bottom;
+    const spaceAbove = triggerRect.top;
+
+    // If space below is insufficient (< popoverHeight + 10) and space above is greater, open above field
+    let top: number;
+    if (spaceBelow < popoverHeight + 10 && spaceAbove > spaceBelow) {
+      top = triggerRect.top - popoverHeight - 6;
+    } else {
+      top = triggerRect.bottom + 6;
+    }
+
+    // Safety clamp: ensure entire popup including OK/Cancel is visible within viewport
+    if (top + popoverHeight > viewportHeight - 8) {
+      top = viewportHeight - popoverHeight - 8;
+    }
+    if (top < 8) {
+      top = 8;
+    }
+
+    // Horizontal alignment with trigger, clamped inside viewport
+    let left = triggerRect.left;
+    if (left + popoverWidth > viewportWidth - 8) {
+      left = viewportWidth - popoverWidth - 8;
+    }
+    if (left < 8) {
+      left = 8;
+    }
+
+    setPopoverStyle({
+      position: 'fixed',
+      top: `${Math.round(top)}px`,
+      left: `${Math.round(left)}px`,
+      width: `${popoverWidth}px`,
+      zIndex: 70,
+    });
+  };
+
   // Sync stagedDate when value changes externally
   useEffect(() => {
     setStagedDate(value);
   }, [value]);
+
+  // Keep position updated on open, scroll, or resize
+  useEffect(() => {
+    if (!isOpen) return;
+
+    updatePosition();
+
+    const handleReposition = () => {
+      updatePosition();
+    };
+
+    window.addEventListener('resize', handleReposition);
+    window.addEventListener('scroll', handleReposition, true);
+    return () => {
+      window.removeEventListener('resize', handleReposition);
+      window.removeEventListener('scroll', handleReposition, true);
+    };
+  }, [isOpen, viewYear, viewMonth]);
 
   const handleOpen = () => {
     if (disabled) return;
@@ -87,6 +157,41 @@ export const ConfirmDatePicker: React.FC<ConfirmDatePickerProps> = ({
         }
       }
     }
+
+    // Pre-calculate immediate position before mounting
+    if (triggerRef.current) {
+      const triggerRect = triggerRef.current.getBoundingClientRect();
+      const popoverWidth = 288;
+      const estimatedHeight = 340;
+      const viewportHeight = window.innerHeight;
+      const viewportWidth = window.innerWidth;
+      const spaceBelow = viewportHeight - triggerRect.bottom;
+      const spaceAbove = triggerRect.top;
+
+      let top = (spaceBelow < estimatedHeight + 10 && spaceAbove > spaceBelow)
+        ? triggerRect.top - estimatedHeight - 6
+        : triggerRect.bottom + 6;
+
+      if (top + estimatedHeight > viewportHeight - 8) {
+        top = viewportHeight - estimatedHeight - 8;
+      }
+      if (top < 8) top = 8;
+
+      let left = triggerRect.left;
+      if (left + popoverWidth > viewportWidth - 8) {
+        left = viewportWidth - popoverWidth - 8;
+      }
+      if (left < 8) left = 8;
+
+      setPopoverStyle({
+        position: 'fixed',
+        top: `${Math.round(top)}px`,
+        left: `${Math.round(left)}px`,
+        width: `${popoverWidth}px`,
+        zIndex: 70,
+      });
+    }
+
     setIsOpen(true);
   };
 
@@ -143,11 +248,12 @@ export const ConfirmDatePicker: React.FC<ConfirmDatePickerProps> = ({
     <div className="relative w-full">
       {/* Trigger Button */}
       <button
+        ref={triggerRef}
         type="button"
         id={id}
         disabled={disabled}
         onClick={handleOpen}
-        className={`w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs flex items-center justify-between focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all ${
+        className={`w-full ${compact ? 'px-2 py-1.5' : 'p-2.5'} bg-white border border-slate-300 rounded-lg text-xs flex items-center justify-between focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-all ${
           disabled
             ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200'
             : 'hover:border-indigo-400 cursor-pointer text-slate-800'
@@ -167,12 +273,16 @@ export const ConfirmDatePicker: React.FC<ConfirmDatePickerProps> = ({
         <>
           {/* Backdrop for outside click cancellation */}
           <div
-            className="fixed inset-0 z-40 cursor-default"
+            className="fixed inset-0 z-[60] cursor-default"
             onClick={handleCancel}
           />
 
           {/* Calendar Modal Card */}
-          <div className="absolute left-0 top-full mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl p-3.5 w-72 text-slate-800 select-none animate-in fade-in zoom-in-95 duration-100">
+          <div
+            ref={popoverRef}
+            style={popoverStyle}
+            className="fixed z-[70] bg-white border border-slate-200 rounded-xl shadow-2xl p-3.5 text-slate-800 select-none animate-in fade-in zoom-in-95 duration-100"
+          >
             {/* Header: Month / Year & Prev / Next */}
             <div className="flex items-center justify-between pb-2.5 mb-2 border-b border-slate-100">
               <button

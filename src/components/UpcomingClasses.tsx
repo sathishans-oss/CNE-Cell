@@ -67,7 +67,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   const [scheduleFromTime, setScheduleFromTime] = useState('09:00');
   const [scheduleToDate, setScheduleToDate] = useState('');
   const [scheduleToTime, setScheduleToTime] = useState('10:30');
-  const [newDuration, setNewDuration] = useState('01:30:00');
+  const [newDuration, setNewDuration] = useState('00:00:00');
   const [selectedRpEmpIds, setSelectedRpEmpIds] = useState<string[]>([]);
   const [rpSearchQuery, setRpSearchQuery] = useState('');
   const [newExternalRpList, setNewExternalRpList] = useState<string[]>([]);
@@ -338,7 +338,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
         setScheduleToTime('10:30');
         setNewDate('');
         setNewToDate('');
-        setNewDuration('01:30:00');
+        setNewDuration('00:00:00');
         setSelectedRpEmpIds([]);
         setRpSearchQuery('');
         setNewExternalRpList([]);
@@ -607,6 +607,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                 id="btn-admin-add-upcoming-class"
                 type="button"
                 onClick={() => {
+                  setNewDuration('00:00:00');
                   setIsAddClassOpen(true);
                 }}
                 className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer shadow-xs"
@@ -1000,7 +1001,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                         required
                         value={newDuration}
                         onChange={(e) => setNewDuration(e.target.value)}
-                        placeholder="01:30:00"
+                        placeholder="00:00:00"
                         className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                       />
                       <p className="text-[10px] text-slate-500 mt-1">
