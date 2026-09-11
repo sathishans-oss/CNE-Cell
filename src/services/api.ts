@@ -595,7 +595,7 @@ export class ApiService {
   }
 
   /**
-   * Part 2: AI Question Generator (Calls Express backend with Gemini 2.5 Flash)
+   * Part 2: AI Question Generator (Calls Express backend with Gemini Flash Free Tier)
    */
   static async generateAiQuestions(params: {
     cneId: string;
@@ -615,6 +615,7 @@ export class ApiService {
         },
         body: JSON.stringify({
           ...params,
+          appsScriptUrl: this.getAppsScriptUrl() || undefined,
           token: session?.token,
           loggedInEmployeeId: session?.employeeId
         })
@@ -629,10 +630,13 @@ export class ApiService {
       const isLikelyJson = (contentType.includes('application/json') || trimmed.startsWith('{') || trimmed.startsWith('[')) && !trimmed.startsWith('<!');
 
       if (!isLikelyJson) {
+        const isProxyError = trimmed.startsWith('<!') || response.status >= 500;
         return {
           success: false,
-          errorCode: 'AI_ENDPOINT_INVALID_RESPONSE',
-          message: 'AI question service returned an invalid non-JSON response. Please check the Gemini AI endpoint configuration.'
+          errorCode: isProxyError ? 'AI_SERVICE_UNAVAILABLE' : 'AI_ENDPOINT_INVALID_RESPONSE',
+          message: isProxyError
+            ? 'AI question generation service is temporarily unavailable. Please try again in a few moments.'
+            : 'AI question generation service returned an unexpected response. Please try again.'
         };
       }
 
@@ -643,8 +647,8 @@ export class ApiService {
       } catch {
         return {
           success: false,
-          errorCode: 'AI_ENDPOINT_INVALID_RESPONSE',
-          message: 'AI question service returned an invalid non-JSON response. Please check the Gemini AI endpoint configuration.'
+          errorCode: 'AI_SERVICE_UNAVAILABLE',
+          message: 'AI question generation service is temporarily unavailable. Please try again in a few moments.'
         };
       }
 

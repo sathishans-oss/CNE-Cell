@@ -217,18 +217,59 @@ export const onRequestPost = async (context: {
   }
 
   try {
-    const preferredModel = (
+    const APPROVED_FREE_TIER_MODELS = [
+      'gemini-3.1-flash-lite',
+      'gemini-flash-latest',
+      'gemini-3.8-flash'
+    ] as const;
+
+    const BLOCKED_PAID_MODELS = new Set([
+      'gemini-3.1-pro-preview',
+      'gemini-3.1-pro',
+      'gemini-3-pro-image',
+      'gemini-3.1-flash-image',
+      'gemini-3.1-flash-lite-image',
+      'gemini-pro',
+      'veo-3.1-generate-preview',
+      'veo-3.1-lite-generate-preview',
+      'lyria-3-clip-preview',
+      'lyria-3-pro-preview'
+    ]);
+
+    const DEPRECATED_MODELS = new Set([
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-lite',
+      'gemini-1.5-flash',
+      'gemini-1.5-pro',
+      'gemini-2.0-flash',
+      'gemini-2.0-pro',
+      'gemini-2.0-flash-thinking',
+      'gemini-3.6-flash'
+    ]);
+
+    const rawEnvModel = (
       env?.GEMINI_MODEL ||
       (typeof process !== 'undefined' && process.env?.GEMINI_MODEL) ||
-      'gemini-3.6-flash'
+      ''
     ).trim();
 
+    let primaryModel: string = 'gemini-3.1-flash-lite';
+    if (rawEnvModel) {
+      if (BLOCKED_PAID_MODELS.has(rawEnvModel) || /pro|image|veo|lyria/i.test(rawEnvModel)) {
+        primaryModel = 'gemini-3.1-flash-lite';
+      } else if (DEPRECATED_MODELS.has(rawEnvModel)) {
+        primaryModel = 'gemini-3.1-flash-lite';
+      } else if (APPROVED_FREE_TIER_MODELS.includes(rawEnvModel as any)) {
+        primaryModel = rawEnvModel;
+      } else {
+        primaryModel = 'gemini-3.1-flash-lite';
+      }
+    }
+
     const candidateModels = Array.from(new Set([
-      preferredModel,
-      'gemini-3.6-flash',
-      'gemini-3.8-flash',
-      'gemini-2.5-flash'
-    ]));
+      primaryModel,
+      ...APPROVED_FREE_TIER_MODELS
+    ])).filter(m => !BLOCKED_PAID_MODELS.has(m) && !DEPRECATED_MODELS.has(m));
 
     const prompt = `You are a Senior Clinical Nursing Education Specialist and Examiner at AIIMS (All India Institute of Medical Sciences).
 Your task is to generate EXACTLY 5 high-quality Multiple Choice Questions (MCQs) for a Clinical Nursing Education (CNE) post-test evaluation.
@@ -255,74 +296,113 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
 8. Output MUST strictly conform to the requested JSON schema with an array of exactly 5 question objects.`;
 
     let generatedText = '';
-    let usedModel = preferredModel;
+    let usedModel = primaryModel;
     let lastError: any = null;
+    let isTransientCapacityIssue = false;
 
     for (const candidate of candidateModels) {
-      try {
-        usedModel = candidate;
-        const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${candidate}:generateContent?key=${encodeURIComponent(apiKey)}`;
-        const geminiRes = await fetch(geminiEndpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'aistudio-build'
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [{ text: prompt }]
-              }
-            ],
-            generationConfig: {
-              temperature: 0.2,
-              responseMimeType: 'application/json',
-              responseSchema: {
-                type: 'object',
-                properties: {
-                  questions: {
-                    type: 'array',
-                    items: {
-                      type: 'object',
-                      properties: {
-                        questionText: { type: 'string' },
-                        optionA: { type: 'string' },
-                        optionB: { type: 'string' },
-                        optionC: { type: 'string' },
-                        optionD: { type: 'string' },
-                        correctOption: { type: 'string' },
-                        explanation: { type: 'string' },
-                        authoritativeSource: { type: 'string' }
-                      },
-                      required: ['questionText', 'optionA', 'optionB', 'optionC', 'optionD', 'correctOption', 'explanation', 'authoritativeSource']
-                    }
-                  }
-                },
-                required: ['questions']
-              }
-            }
-          })
-        });
+      if (BLOCKED_PAID_MODELS.has(candidate) || /pro|image|veo|lyria/i.test(candidate)) {
+        continue;
+      }
 
-        if (geminiRes.ok) {
-          const geminiData: any = await geminiRes.json();
-          const textCandidate = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (textCandidate) {
-            generatedText = textCandidate;
-            lastError = null;
+      usedModel = candidate;
+      const MAX_RETRIES = 2;
+
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${candidate}:generateContent?key=${encodeURIComponent(apiKey)}`;
+          const geminiRes = await fetch(geminiEndpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'User-Agent': 'aistudio-build'
+            },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [{ text: prompt }]
+                }
+              ],
+              generationConfig: {
+                temperature: 0.2,
+                responseMimeType: 'application/json',
+                responseSchema: {
+                  type: 'object',
+                  properties: {
+                    questions: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          questionText: { type: 'string' },
+                          optionA: { type: 'string' },
+                          optionB: { type: 'string' },
+                          optionC: { type: 'string' },
+                          optionD: { type: 'string' },
+                          correctOption: { type: 'string' },
+                          explanation: { type: 'string' },
+                          authoritativeSource: { type: 'string' }
+                        },
+                        required: ['questionText', 'optionA', 'optionB', 'optionC', 'optionD', 'correctOption', 'explanation', 'authoritativeSource']
+                      }
+                    }
+                  },
+                  required: ['questions']
+                }
+              }
+            })
+          });
+
+          if (geminiRes.ok) {
+            const geminiData: any = await geminiRes.json();
+            const textCandidate = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (textCandidate) {
+              generatedText = textCandidate;
+              lastError = null;
+              isTransientCapacityIssue = false;
+              break;
+            }
+          } else {
+            const errData: any = await geminiRes.json().catch(() => ({}));
+            const errMsg = errData?.error?.message || `HTTP ${geminiRes.status}`;
+            lastError = new Error(errMsg);
+            if (geminiRes.status === 503 || geminiRes.status === 429 || /503|429|high demand|UNAVAILABLE|RESOURCE_EXHAUSTED|capacity/i.test(errMsg)) {
+              isTransientCapacityIssue = true;
+            }
+            if (attempt < MAX_RETRIES && isTransientCapacityIssue) {
+              await new Promise(r => setTimeout(r, 1000));
+            } else {
+              break;
+            }
+          }
+        } catch (attemptErr: any) {
+          lastError = attemptErr;
+          const msg = attemptErr?.message || String(attemptErr);
+          if (/503|429|high demand|UNAVAILABLE|RESOURCE_EXHAUSTED|capacity/i.test(msg)) {
+            isTransientCapacityIssue = true;
+          }
+          if (attempt < MAX_RETRIES && isTransientCapacityIssue) {
+            await new Promise(r => setTimeout(r, 1000));
+          } else {
             break;
           }
-        } else {
-          const errData: any = await geminiRes.json().catch(() => ({}));
-          lastError = new Error(errData?.error?.message || `HTTP ${geminiRes.status}`);
         }
-      } catch (attemptErr: any) {
-        lastError = attemptErr;
+      }
+
+      if (generatedText) {
+        break;
       }
     }
 
     if (!generatedText) {
-      throw lastError || new Error('No valid content returned by Gemini models.');
+      if (isTransientCapacityIssue) {
+        return createJsonResponse({
+          success: false,
+          errorCode: 'AI_TEMPORARILY_UNAVAILABLE',
+          message: 'AI question generation is temporarily unavailable. Please try again in a few moments.'
+        }, 503);
+      }
+      throw lastError || new Error('No valid content returned by Gemini free-tier models.');
     }
 
     let cleaned = generatedText.trim();
@@ -451,11 +531,15 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
       reservationToken: cleanToken,
       source: usedModel
     });
-  } catch {
+  } catch (err: any) {
+    const isOverloaded = /503|UNAVAILABLE|high demand|429|RESOURCE_EXHAUSTED|capacity/i.test(err?.message || '');
+    const clientMessage = isOverloaded
+      ? 'AI question generation is temporarily unavailable. Please try again in a few moments.'
+      : (err?.message ? `AI generation failed: ${err.message}` : 'Unable to generate AI questions.');
     return createJsonResponse({
       success: false,
-      errorCode: 'AI_GENERATION_ERROR',
-      message: 'Unable to generate AI questions.'
-    }, 502);
+      errorCode: isOverloaded ? 'AI_TEMPORARILY_UNAVAILABLE' : 'AI_GENERATION_ERROR',
+      message: clientMessage
+    }, isOverloaded ? 503 : 502);
   }
 };

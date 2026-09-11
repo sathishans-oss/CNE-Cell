@@ -23,7 +23,7 @@ export const onRequestGet = async (context: {
     status: 'ok',
     service: 'CNE Management System API (Cloudflare)',
     aiAvailable: !!apiKey,
-    model: env?.GEMINI_MODEL || 'gemini-2.5-flash',
+    model: (env?.GEMINI_MODEL || (typeof process !== 'undefined' && process.env?.GEMINI_MODEL) || 'gemini-3.1-flash-lite').trim(),
     timestamp: new Date().toISOString()
   }), {
     status: 200,

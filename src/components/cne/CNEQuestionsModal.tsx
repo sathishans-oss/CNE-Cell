@@ -133,7 +133,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
 
       const reservationToken = reserveRes.data.reservationToken;
 
-      // 4. Generate EXACTLY 5 MCQs via Gemini 2.5 Flash on Express backend
+      // 4. Generate EXACTLY 5 MCQs via Gemini Flash Free Tier on Express backend
       let aiRes: any;
       try {
         aiRes = await ApiService.generateAiQuestions({

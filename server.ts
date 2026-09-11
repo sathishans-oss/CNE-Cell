@@ -3,6 +3,15 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 
+// Safely load local .env variables into process.env if available in Node runtime
+try {
+  if (typeof process.loadEnvFile === 'function') {
+    process.loadEnvFile();
+  }
+} catch {
+  // .env file is optional in containerized environments where env vars are injected directly
+}
+
 const PORT = 3000;
 
 let aiClient: GoogleGenAI | null = null;
@@ -43,6 +52,59 @@ interface RawGeneratedQuestion {
   reference?: string;
 }
 
+// ============================================================================
+// FREE-TIER ONLY GEMINI MODEL CONFIGURATION & SAFEGUARDS
+// ============================================================================
+// Verified currently supported FREE-TIER models for text generation:
+// 1. gemini-3.1-flash-lite: High throughput, robust availability, lowest latency, free tier
+// 2. gemini-flash-latest: Canonical alias routing to latest stable free flash model
+// 3. gemini-3.8-flash: Full-featured flash model for text tasks, free tier
+const APPROVED_FREE_TIER_MODELS = [
+  'gemini-3.1-flash-lite',
+  'gemini-flash-latest',
+  'gemini-3.8-flash'
+] as const;
+
+// Explicitly blocked paid-tier models - MUST NEVER BE CALLED
+const BLOCKED_PAID_MODELS = new Set([
+  'gemini-3.1-pro-preview',
+  'gemini-3.1-pro',
+  'gemini-3-pro-image',
+  'gemini-3.1-flash-image',
+  'gemini-3.1-flash-lite-image',
+  'gemini-pro',
+  'veo-3.1-generate-preview',
+  'veo-3.1-lite-generate-preview',
+  'lyria-3-clip-preview',
+  'lyria-3-pro-preview'
+]);
+
+// Deprecated / Prohibited models
+const DEPRECATED_MODELS = new Set([
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-1.5-flash',
+  'gemini-1.5-pro',
+  'gemini-2.0-flash',
+  'gemini-2.0-pro',
+  'gemini-2.0-flash-thinking',
+  'gemini-3.6-flash'
+]);
+
+// AI Question In-Memory Cache to protect free-tier quotas and prevent duplicate Gemini API requests
+const aiQuestionCache = new Map<string, {
+  questions: any[];
+  timestamp: number;
+  model: string;
+  topic: string;
+}>();
+
+function computeContentKey(cneId: string, topic: string, material: string): string {
+  const normTopic = topic.trim().toLowerCase();
+  const normMat = material.trim().toLowerCase().slice(0, 300);
+  return `${cneId.toUpperCase()}::${normTopic}::${normMat}`;
+}
+
 async function startServer() {
   const app = express();
   app.use(express.json({ limit: '10mb' }));
@@ -59,9 +121,15 @@ async function startServer() {
     next(err);
   });
 
-  // Guarantee application/json header for all API routes
+  // Guarantee application/json header & CORS for all API routes
   app.use('/api', (req, res, next) => {
-    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, X-Requested-With');
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
     next();
   });
 
@@ -80,7 +148,7 @@ async function startServer() {
   // Strictly generates exactly 5 MCQs from CNE Topic + Unified Learning Material.
   // Authoritatively verified against Apps Script session and active quota reservation before invoking Gemini.
   // Never falls back silently to mock or static questions.
-  app.post('/api/ai/generate-questions', async (req, res) => {
+  app.post(['/api/ai/generate-questions', '/api/ai/generate-questions/'], async (req, res) => {
     const {
       cneId,
       topic,
@@ -99,8 +167,11 @@ async function startServer() {
     const cleanTopic = String(topic || '').trim();
     const cleanMaterial = String(cneMaterial || referenceMaterial || syllabus || '').trim();
 
+    console.log(`[AI Service] Incoming request: POST /api/ai/generate-questions (cneId: ${cleanCneId || 'none'})`);
+
     // 1. Validate required basic parameters before network calls
     if (!cleanSessionToken) {
+      console.warn('[AI Service] Missing session token in request');
       return res.status(401).json({
         success: false,
         errorCode: 'UNAUTHORIZED',
@@ -109,6 +180,7 @@ async function startServer() {
     }
 
     if (!cleanCneId) {
+      console.warn('[AI Service] Missing CNE ID in request');
       return res.status(400).json({
         success: false,
         errorCode: 'CNE_ID_REQUIRED',
@@ -117,7 +189,8 @@ async function startServer() {
     }
 
     if (!cleanToken) {
-      return res.status(403).json({
+      console.warn('[AI Service] Missing reservation token in request');
+      return res.status(400).json({
         success: false,
         errorCode: 'RESERVATION_TOKEN_REQUIRED',
         message: 'A valid AI quota reservation token is required before invoking question generation.'
@@ -125,6 +198,7 @@ async function startServer() {
     }
 
     if (!cleanMaterial || cleanMaterial.length < 15) {
+      console.warn('[AI Service] Material too short or missing in request');
       return res.status(400).json({
         success: false,
         errorCode: 'MATERIAL_REQUIRED',
@@ -140,7 +214,8 @@ async function startServer() {
       'https://script.google.com/macros/s/AKfycbxgKxrXro6DIEXeOCkZUysnUHdpW168MreeYJ5LE9QMG3OsDty1TFQrqeLFLkk4mC7s2g/exec'
     ).trim();
     if (!appsScriptUrl) {
-      return res.status(503).json({
+      console.error('[AI Service] Apps Script backend URL is not configured');
+      return res.status(200).json({
         success: false,
         errorCode: 'BACKEND_NOT_CONFIGURED',
         message: 'Authoritative Apps Script backend service URL is not configured on the server.'
@@ -163,7 +238,8 @@ async function startServer() {
       });
 
       if (!authRes.ok) {
-        return res.status(502).json({
+        console.error(`[AI Service] Apps Script HTTP status: ${authRes.status}`);
+        return res.status(200).json({
           success: false,
           errorCode: 'AUTH_SERVICE_ERROR',
           message: 'Failed to communicate with authoritative authentication service.'
@@ -172,8 +248,8 @@ async function startServer() {
 
       authResult = await authRes.json();
     } catch (fetchErr: any) {
-      console.error('[Express Auth Verification Error]', fetchErr.message);
-      return res.status(502).json({
+      console.error('[AI Service Auth Verification Error]', fetchErr.message);
+      return res.status(200).json({
         success: false,
         errorCode: 'AUTH_SERVICE_UNAVAILABLE',
         message: 'Authoritative authentication service is unreachable. Question generation aborted.'
@@ -183,7 +259,8 @@ async function startServer() {
     // 4. Evaluate authoritative Apps Script authorization verdict
     if (!authResult || !authResult.success) {
       const errCode = authResult?.errorCode || 'UNAUTHORIZED';
-      const statusCode = (errCode === 'UNAUTHORIZED') ? 401 : 403;
+      const statusCode = (errCode === 'UNAUTHORIZED') ? 401 : 400;
+      console.warn(`[AI Service] Auth validation failed: ${errCode} - ${authResult?.message || 'Unauthorized'}`);
       return res.status(statusCode).json({
         success: false,
         errorCode: errCode,
@@ -199,7 +276,8 @@ async function startServer() {
       verifiedCneId.toUpperCase() !== cleanCneId.toUpperCase() ||
       verifiedToken !== cleanToken
     ) {
-      return res.status(403).json({
+      console.warn('[AI Service] Parameter substitution detected between reservation and request');
+      return res.status(400).json({
         success: false,
         errorCode: 'PARAMETER_SUBSTITUTION_DETECTED',
         message: 'Reservation token does not match the requested CNE record.'
@@ -208,6 +286,7 @@ async function startServer() {
 
     const authoritativeTopic = String(authResult.data?.topic || cleanTopic).trim();
     if (!authoritativeTopic) {
+      console.warn('[AI Service] Missing authoritative CNE topic');
       return res.status(400).json({
         success: false,
         errorCode: 'TOPIC_REQUIRED',
@@ -215,45 +294,71 @@ async function startServer() {
       });
     }
 
+    // Cache Check: Return cached AI questions if identical CNE request was already generated
+    // Protects free-tier usage by avoiding redundant Gemini API calls
+    const cacheKey = computeContentKey(cleanCneId, authoritativeTopic, cleanMaterial);
+    const cachedEntry = aiQuestionCache.get(cacheKey);
+    if (cachedEntry && Array.isArray(cachedEntry.questions) && cachedEntry.questions.length === 5) {
+      console.log(`[AI Question Cache] Cache HIT for CNE ${cleanCneId}. Reusing existing questions to protect free-tier API.`);
+      return res.json({
+        success: true,
+        data: cachedEntry.questions,
+        cneId: cleanCneId,
+        reservationToken: cleanToken,
+        source: `${cachedEntry.model} (Cached Result)`
+      });
+    }
+
     // 6. Check Gemini client availability
     const apiKey = (process.env.GEMINI_API_KEY || '').trim();
     if (!apiKey) {
-      return res.status(503).json({
+      console.warn('[AI Service] GEMINI_API_KEY is not configured on the server');
+      return res.status(200).json({
         success: false,
         errorCode: 'AI_CONFIGURATION_ERROR',
-        message: 'Gemini API is not configured on the server.'
+        message: 'AI question generation is temporarily unavailable. Please check the AI service configuration.'
       });
     }
 
     const ai = getAiClient();
     if (!ai) {
-      return res.status(503).json({
+      console.warn('[AI Service] Gemini client initialization returned null');
+      return res.status(200).json({
         success: false,
         errorCode: 'AI_CONFIGURATION_ERROR',
-        message: 'Gemini API is not configured on the server.'
+        message: 'AI question generation is temporarily unavailable. Please check the AI service configuration.'
       });
     }
 
     try {
-      // Prioritize actively supported Gemini models with resilient fallback
-      // 1. gemini-3.1-flash-lite: High throughput, robust availability, avoids 503 peak-hour spikes
-      // 2. gemini-flash-latest: Production alias routing to latest stable flash
-      // 3. gemini-3.8-flash: Full flash model
-      const cleanEnvModel = (process.env.GEMINI_MODEL || '').trim();
-      const isDeprecatedOrInvalid = [
-        'gemini-2.5-flash',
-        'gemini-1.5-flash',
-        'gemini-1.5-pro',
-        'gemini-2.0-flash',
-        'gemini-3.6-flash'
-      ].includes(cleanEnvModel);
+      // FREE-TIER ONLY MODEL RESOLUTION:
+      // Respect process.env.GEMINI_MODEL if it is an approved free-tier model.
+      // Prohibit all paid-only models and deprecated models.
+      const rawEnvModel = (process.env.GEMINI_MODEL || '').trim();
+      let primaryModel: string = 'gemini-3.1-flash-lite';
 
+      if (rawEnvModel) {
+        if (BLOCKED_PAID_MODELS.has(rawEnvModel) || /pro|image|veo|lyria/i.test(rawEnvModel)) {
+          console.warn(`[Security Alert] Configured model "${rawEnvModel}" is a paid model. Paid models are prohibited. Using free model "gemini-3.1-flash-lite".`);
+          primaryModel = 'gemini-3.1-flash-lite';
+        } else if (DEPRECATED_MODELS.has(rawEnvModel)) {
+          console.warn(`[Model Warning] Configured model "${rawEnvModel}" is deprecated. Overriding with free-tier model "gemini-3.1-flash-lite".`);
+          primaryModel = 'gemini-3.1-flash-lite';
+        } else if (APPROVED_FREE_TIER_MODELS.includes(rawEnvModel as any)) {
+          primaryModel = rawEnvModel;
+        } else {
+          console.warn(`[Model Warning] Configured model "${rawEnvModel}" is not in approved free-tier list. Using "gemini-3.1-flash-lite".`);
+          primaryModel = 'gemini-3.1-flash-lite';
+        }
+      }
+
+      console.log(`[AI Service] Resolved free-tier model: "${primaryModel}" (configured: "${rawEnvModel || 'none'}")`);
+
+      // Build candidates strictly from verified free-tier models (primary first)
       const candidateModels = Array.from(new Set([
-        ...(!isDeprecatedOrInvalid && cleanEnvModel ? [cleanEnvModel] : []),
-        'gemini-3.1-flash-lite',
-        'gemini-flash-latest',
-        'gemini-3.8-flash'
-      ]));
+        primaryModel,
+        ...APPROVED_FREE_TIER_MODELS
+      ])).filter(m => !BLOCKED_PAID_MODELS.has(m) && !DEPRECATED_MODELS.has(m));
 
       const prompt = `You are a Senior Clinical Nursing Education Specialist and Examiner at AIIMS (All India Institute of Medical Sciences).
 Your task is to generate EXACTLY 5 high-quality Multiple Choice Questions (MCQs) for a Clinical Nursing Education (CNE) post-test evaluation.
@@ -280,63 +385,95 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
 8. Output MUST strictly conform to the requested JSON schema with an array of exactly 5 question objects.`;
 
       let response: any = null;
-      let usedModel = candidateModels[0];
+      let usedModel = primaryModel;
       let lastAiErr: any = null;
+      let isTransientCapacityIssue = false;
 
+      // Small, bounded retry mechanism for temporary 503 / 429 errors across free models only
       for (const candidate of candidateModels) {
-        try {
-          usedModel = candidate;
-          console.log(`[AI Generation] Attempting generation with model: ${candidate}...`);
-          response = await ai.models.generateContent({
-            model: candidate,
-            contents: prompt,
-            config: {
-              temperature: 0.2,
-              responseMimeType: 'application/json',
-              responseSchema: {
-                type: 'object',
-                properties: {
-                  questions: {
-                    type: 'array',
-                    items: {
-                      type: 'object',
-                      properties: {
-                        questionText: { type: 'string' },
-                        optionA: { type: 'string' },
-                        optionB: { type: 'string' },
-                        optionC: { type: 'string' },
-                        optionD: { type: 'string' },
-                        correctOption: { type: 'string' },
-                        explanation: { type: 'string' },
-                        authoritativeSource: { type: 'string' }
-                      },
-                      required: ['questionText', 'optionA', 'optionB', 'optionC', 'optionD', 'correctOption', 'explanation', 'authoritativeSource']
+        if (BLOCKED_PAID_MODELS.has(candidate) || /pro|image|veo|lyria/i.test(candidate)) {
+          continue; // Extra safety guard: Never call any paid model
+        }
+
+        usedModel = candidate;
+        const MAX_RETRIES_PER_MODEL = 2; // Initial attempt + 1 bounded backoff retry
+
+        for (let attempt = 1; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
+          try {
+            console.log(`[AI Generation] Calling free-tier model: ${candidate} (attempt ${attempt}/${MAX_RETRIES_PER_MODEL})...`);
+            response = await ai.models.generateContent({
+              model: candidate,
+              contents: prompt,
+              config: {
+                temperature: 0.2,
+                responseMimeType: 'application/json',
+                responseSchema: {
+                  type: 'object',
+                  properties: {
+                    questions: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          questionText: { type: 'string' },
+                          optionA: { type: 'string' },
+                          optionB: { type: 'string' },
+                          optionC: { type: 'string' },
+                          optionD: { type: 'string' },
+                          correctOption: { type: 'string' },
+                          explanation: { type: 'string' },
+                          authoritativeSource: { type: 'string' }
+                        },
+                        required: ['questionText', 'optionA', 'optionB', 'optionC', 'optionD', 'correctOption', 'explanation', 'authoritativeSource']
+                      }
                     }
-                  }
-                },
-                required: ['questions']
+                  },
+                  required: ['questions']
+                }
               }
+            });
+            if (response?.text) {
+              lastAiErr = null;
+              isTransientCapacityIssue = false;
+              console.log(`[AI Generation] Successfully generated questions with free-tier model: ${candidate}`);
+              break;
             }
-          });
-          if (response?.text) {
-            lastAiErr = null;
-            console.log(`[AI Generation] Successfully generated questions with model: ${candidate}`);
-            break;
+          } catch (attemptErr: any) {
+            lastAiErr = attemptErr;
+            const status = attemptErr?.status || attemptErr?.code || (attemptErr?.error?.code);
+            const msg = attemptErr?.message || attemptErr?.error?.message || String(attemptErr);
+            const is503or429 = status === 503 || status === 429 || /503|429|high demand|UNAVAILABLE|RESOURCE_EXHAUSTED|capacity/i.test(msg);
+
+            if (is503or429) {
+              isTransientCapacityIssue = true;
+            }
+
+            console.warn(`[AI Generation] Free model ${candidate} attempt ${attempt} failed (${status || 'error'}): ${msg}`);
+
+            // If temporary 503/429 and retries remaining for this model, brief backoff
+            if (is503or429 && attempt < MAX_RETRIES_PER_MODEL) {
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+            } else {
+              break; // Try next free candidate model
+            }
           }
-        } catch (attemptErr: any) {
-          lastAiErr = attemptErr;
-          const status = attemptErr?.status || attemptErr?.code || (attemptErr?.error?.code);
-          const msg = attemptErr?.message || attemptErr?.error?.message || String(attemptErr);
-          console.warn(`[AI Generation] Model ${candidate} failed (${status || 'error'}): ${msg}. Trying next candidate if available...`);
-          // If the model is experiencing high demand (503) or rate limits (429), brief pause before next candidate
-          if (status === 503 || status === 429 || /high demand|UNAVAILABLE|RESOURCE_EXHAUSTED/i.test(msg)) {
-            await new Promise((resolve) => setTimeout(resolve, 600));
-          }
+        }
+
+        if (response?.text) {
+          break; // Generation succeeded with free-tier model
         }
       }
 
       if (!response || !response.text) {
-        const detailMsg = lastAiErr?.message || (typeof lastAiErr === 'string' ? lastAiErr : 'No response returned from Gemini AI models.');
+        if (isTransientCapacityIssue) {
+          console.warn('[AI Service] Free-tier capacity temporarily overloaded across candidate models');
+          return res.status(200).json({
+            success: false,
+            errorCode: 'AI_TEMPORARILY_UNAVAILABLE',
+            message: 'AI question generation is temporarily unavailable. Please try again in a few moments.'
+          });
+        }
+        const detailMsg = lastAiErr?.message || (typeof lastAiErr === 'string' ? lastAiErr : 'No response returned from Gemini AI free-tier models.');
         throw new Error(detailMsg);
       }
 
@@ -466,6 +603,14 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
         });
       }
 
+      // Cache valid result to protect future free-tier quota and avoid duplicate requests
+      aiQuestionCache.set(cacheKey, {
+        questions: validatedQuestions,
+        timestamp: Date.now(),
+        model: usedModel,
+        topic: authoritativeTopic
+      });
+
       return res.json({
         success: true,
         data: validatedQuestions,
@@ -475,16 +620,26 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
       });
     } catch (err: any) {
       console.error('[AI Generator Error]', err?.message || err);
-      const isOverloaded = /503|UNAVAILABLE|high demand/i.test(err?.message || '');
+      const isOverloaded = /503|UNAVAILABLE|high demand|429|RESOURCE_EXHAUSTED|capacity/i.test(err?.message || '');
       const clientMessage = isOverloaded
-        ? 'AI models are temporarily experiencing high demand. Please wait a few moments and try again.'
+        ? 'AI question generation is temporarily unavailable. Please try again in a few moments.'
         : (err?.message ? `AI generation failed: ${err.message}` : 'Unable to generate AI questions.');
-      return res.status(502).json({
+      return res.status(200).json({
         success: false,
-        errorCode: 'AI_GENERATION_ERROR',
+        errorCode: isOverloaded ? 'AI_TEMPORARILY_UNAVAILABLE' : 'AI_GENERATION_ERROR',
         message: clientMessage
       });
     }
+  });
+
+  // Handle non-POST HTTP methods on AI question endpoint with strict JSON 405 Method Not Allowed
+  app.all(['/api/ai/generate-questions', '/api/ai/generate-questions/'], (req, res) => {
+    res.setHeader('Allow', 'POST, OPTIONS');
+    res.status(405).json({
+      success: false,
+      errorCode: 'METHOD_NOT_ALLOWED',
+      message: 'Only POST requests are supported for AI question generation.'
+    });
   });
 
   // Catch-all route for any unhandled /api calls to prevent HTML fall-through
@@ -499,10 +654,10 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
   // API error middleware to catch any unexpected server exceptions and return strict JSON
   app.use('/api', (err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
     console.error('[API Server Error]', err?.message || err);
-    res.status(500).json({
+    res.status(200).json({
       success: false,
-      errorCode: 'AI_GENERATION_ERROR',
-      message: 'Unable to generate AI questions.'
+      errorCode: 'SERVER_ERROR',
+      message: 'An unexpected server error occurred during AI question generation.'
     });
   });
 
