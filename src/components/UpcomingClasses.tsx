@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Sparkles,
   Calendar,
@@ -18,15 +18,17 @@ import {
   AlertTriangle,
   FileText,
   Eye,
-  Edit3
+  Edit3,
+  RefreshCw
 } from 'lucide-react';
-import { SessionUser, UpcomingClass } from '../types';
+import { SessionUser, UpcomingClass, CNEActivityProgress } from '../types';
 import { ApiService } from '../services/api';
 import { useToast } from './Toast';
 import {
   formatCneDateRangeDisplay,
   formatResourcePersonsDisplay,
   isCneAuthorized,
+  canManageCneActions,
   getUserAssignedAreas,
   formatCneDateTimeDisplay,
   calculateCneDuration,
@@ -88,6 +90,11 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   const [activeFinalizeCne, setActiveFinalizeCne] = useState<UpcomingClass | null>(null);
   const [activePostTest, setActivePostTest] = useState<{ cneId?: string; qrToken?: string } | null>(null);
 
+  // CNE Activity Progress State
+  const [activityProgress, setActivityProgress] = useState<CNEActivityProgress | null>(null);
+  const [isActivityLoading, setIsActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState<string | null>(null);
+
   // Edit CNE Modal State
   const [editingCne, setEditingCne] = useState<UpcomingClass | null>(null);
   const [editCneType, setEditCneType] = useState<'CENTRAL' | 'DEPARTMENTAL'>('CENTRAL');
@@ -125,6 +132,42 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   useEffect(() => {
     loadData();
   }, [isAdmin]);
+
+  const fetchActivityProgress = useCallback((cneId: string) => {
+    setIsActivityLoading(true);
+    setActivityError(null);
+    setActivityProgress(null);
+
+    ApiService.getCNEActivityProgress(cneId)
+      .then((res) => {
+        if (res && res.success && res.data) {
+          setActivityProgress(res.data);
+          setActivityError(null);
+        } else {
+          setActivityProgress(null);
+          setActivityError(res?.message || 'Unable to load activity progress');
+        }
+      })
+      .catch((err: any) => {
+        setActivityProgress(null);
+        setActivityError(err?.message || 'Unable to load activity progress');
+      })
+      .finally(() => {
+        setIsActivityLoading(false);
+      });
+  }, []);
+
+  // Fetch real-time CNE Activity Progress whenever a CNE details modal is opened
+  useEffect(() => {
+    if (!selectedDetailCne?.cneId) {
+      setActivityProgress(null);
+      setIsActivityLoading(false);
+      setActivityError(null);
+      return;
+    }
+
+    fetchActivityProgress(selectedDetailCne.cneId);
+  }, [selectedDetailCne?.cneId, fetchActivityProgress]);
 
   const loadData = async () => {
     setLoading(true);
@@ -704,20 +747,15 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    <th className="py-3.5 px-4 whitespace-nowrap">CNE ID</th>
                     <th className="py-3.5 px-4 whitespace-nowrap">Type of CNE</th>
                     <th className="py-3.5 px-4 min-w-[200px]">Topic</th>
-                    <th className="py-3.5 px-4 whitespace-nowrap">Area/Department</th>
-                    <th className="py-3.5 px-4 whitespace-nowrap">Date</th>
-                    <th className="py-3.5 px-4 min-w-[180px]">Resource Persons</th>
-                    <th className="py-3.5 px-4 whitespace-nowrap">Status</th>
-                    <th className="py-3.5 px-4 text-center whitespace-nowrap">Action</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Area/Ward</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Date &amp; Time</th>
+                    <th className="py-3.5 px-4 min-w-[180px]">Resource Person</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
                   {availableClasses.map((cls) => {
-                    const isCompleted = cls.status === 'Completed';
-                    const isCanceled = cls.status === 'Canceled';
                     const rpDisplay = formatResourcePersonsDisplay({
                       resourcePersonEmpId: cls.resourcePersonEmpId,
                       resourcePersonName: cls.resourcePersonName,
@@ -731,11 +769,6 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                         onClick={() => setSelectedDetailCne(cls)}
                         className="hover:bg-slate-50/90 cursor-pointer transition-colors group"
                       >
-                        <td className="py-3 px-4 font-mono font-bold text-slate-900 whitespace-nowrap">
-                          <span className="bg-slate-100 text-slate-800 px-2 py-1 rounded border border-slate-200 inline-block">
-                            {cls.cneId}
-                          </span>
-                        </td>
                         <td className="py-3 px-4 whitespace-nowrap">
                           <span
                             className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1 ${
@@ -776,40 +809,11 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                           <div className="font-semibold text-slate-800">
                             {formatCneDateTimeDisplay(cls.date, cls.toDate, cls.time)}
                           </div>
-                          <div className="text-[11px] text-slate-500">Duration: {cls.duration || 'N/A'}</div>
                         </td>
                         <td className="py-3 px-4">
                           <div className="line-clamp-2 max-w-[220px] text-slate-600 text-xs leading-relaxed" title={rpDisplay}>
                             {rpDisplay}
                           </div>
-                        </td>
-                        <td className="py-3 px-4 whitespace-nowrap">
-                          {isCompleted ? (
-                            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              Completed
-                            </span>
-                          ) : isCanceled ? (
-                            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
-                              Canceled
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                              Scheduled
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4 text-center whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedDetailCne(cls);
-                            }}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-xs"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                            <span>View</span>
-                          </button>
                         </td>
                       </tr>
                     );
@@ -1195,39 +1199,27 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
       {/* Modal: CNE Details & Actions (Wide Horizontal Layout) */}
       {selectedDetailCne && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
-          <div className="bg-white rounded-2xl w-[92vw] max-w-[1440px] max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 relative overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            {/* Header */}
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/70">
-              <div className="flex flex-wrap items-center gap-2.5">
-                <span className="font-mono text-xs font-bold bg-slate-100 text-slate-800 border border-slate-200 px-2.5 py-1 rounded-md inline-flex items-center gap-1.5 shadow-2xs">
-                  <Lock className="w-3 h-3 text-slate-500" />
-                  <span>{selectedDetailCne.cneId}</span>
+          <div className="bg-white rounded-2xl w-[92vw] max-w-[1280px] max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 relative overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Compact Header: CNE ID • CNE TYPE • STATUS */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/80">
+              <div className="flex flex-wrap items-center gap-2 text-sm sm:text-base font-bold text-slate-900">
+                <span className="font-mono text-slate-800">{selectedDetailCne.cneId}</span>
+                <span className="text-slate-400 font-sans">•</span>
+                <span className="text-slate-700 uppercase">
+                  {(selectedDetailCne.cneType || 'CENTRAL').toUpperCase() === 'CENTRAL' ? 'CENTRAL CNE' : 'DEPARTMENTAL CNE'}
                 </span>
-
+                <span className="text-slate-400 font-sans">•</span>
                 <span
-                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${
-                    (selectedDetailCne.cneType || 'CENTRAL').toUpperCase() === 'CENTRAL'
-                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                      : 'bg-teal-50 text-teal-700 border border-teal-200'
+                  className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
+                    selectedDetailCne.status === 'Completed'
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                      : selectedDetailCne.status === 'Canceled'
+                      ? 'bg-rose-50 text-rose-800 border border-rose-200'
+                      : 'bg-blue-50 text-blue-700 border border-blue-200'
                   }`}
                 >
-                  {(selectedDetailCne.cneType || 'CENTRAL').toUpperCase()} CNE
+                  {selectedDetailCne.status || 'Scheduled'}
                 </span>
-
-                {selectedDetailCne.status === 'Completed' ? (
-                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-                    ✓ Completed
-                  </span>
-                ) : selectedDetailCne.status === 'Canceled' ? (
-                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-800 border border-rose-200">
-                    Canceled
-                  </span>
-                ) : (
-                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                    Scheduled
-                  </span>
-                )}
-
                 {selectedDetailCne.isLocked && (
                   <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 inline-flex items-center gap-1">
                     <Lock className="w-3 h-3" /> Questions Locked
@@ -1244,88 +1236,67 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
               </button>
             </div>
 
-            {/* Scrollable Content Body */}
-            <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
-              {/* Row 1: Key Metadata Highlights Bar */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">CNE ID</span>
-                  <div className="font-mono font-bold text-slate-900 text-sm mt-0.5 flex items-center gap-1">
-                    <Lock className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{selectedDetailCne.cneId}</span>
-                  </div>
+            {/* Scrollable Content Body (Wide Horizontal Landscape Layout) */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-5 text-xs">
+              {/* Schedule Date & Time Display (Duration is strictly omitted) */}
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 flex flex-wrap items-center gap-4 text-xs">
+                <div className="flex items-center gap-2 text-slate-700 font-bold">
+                  <Calendar className="w-4 h-4 text-emerald-600" />
+                  <span className="text-[11px] uppercase tracking-wider text-slate-500">Schedule:</span>
                 </div>
-
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Status</span>
-                  <div className="font-bold text-slate-800 text-xs mt-1">
-                    {selectedDetailCne.status || 'Scheduled'}
-                  </div>
-                </div>
-
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Date &amp; Schedule</span>
-                  <div className="font-bold text-slate-800 text-xs mt-1 flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>{formatCneDateTimeDisplay(selectedDetailCne.date, selectedDetailCne.toDate, selectedDetailCne.time)}</span>
-                  </div>
-                </div>
-
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Duration</span>
-                  <div className="font-bold text-slate-800 text-xs mt-1 flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-slate-500" />
-                    <span>{selectedDetailCne.duration || 'N/A'}</span>
-                  </div>
+                <div className="flex flex-wrap items-center gap-3 font-semibold text-slate-800">
+                  <span>{formatCneDateTimeDisplay(selectedDetailCne.date)}</span>
+                  {selectedDetailCne.toDate && selectedDetailCne.toDate !== selectedDetailCne.date && (
+                    <>
+                      <span className="text-slate-400">to</span>
+                      <span>{formatCneDateTimeDisplay(selectedDetailCne.toDate)}</span>
+                    </>
+                  )}
                 </div>
               </div>
 
-              {/* Row 2: Comprehensive 3-Column Content Panels */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                {/* Column 1: Topic & Scope */}
-                <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-3">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-200 pb-1.5">
-                    Topic & Clinical Scope
-                  </span>
-
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900 leading-snug">
-                      {selectedDetailCne.topic}
-                    </h3>
-                  </div>
-
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-white text-teal-800 border border-teal-200 flex items-center gap-1">
-                      <MapPin className="w-3 h-3 text-teal-600" />
-                      <span>{selectedDetailCne.area}</span>
+              {/* 2-Column Landscape Split: Left = Topic & Faculty, Right = CNE Activity Progress */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                {/* Left Column (7 cols): CNE Details */}
+                <div className="lg:col-span-7 space-y-4">
+                  <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-3">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-200 pb-1.5">
+                      Topic &amp; Clinical Scope
                     </span>
 
-                    <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-white text-slate-700 border border-slate-200 flex items-center gap-1">
-                      <FileText className="w-3 h-3 text-slate-500" />
-                      <span>{selectedDetailCne.modeOfTeaching || 'Lecture Cum Discussion'}</span>
-                    </span>
-                  </div>
-
-                  {selectedDetailCne.description ? (
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Curriculum & Description</span>
-                      <p className="text-xs text-slate-600 leading-relaxed bg-white p-3 rounded-lg border border-slate-200">
-                        {selectedDetailCne.description}
-                      </p>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900 leading-snug">
+                        {selectedDetailCne.topic}
+                      </h3>
                     </div>
-                  ) : (
-                    <p className="text-xs text-slate-400 italic">No syllabus notes provided.</p>
-                  )}
-                </div>
 
-                {/* Column 2: Resource Persons & Faculty */}
-                <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-3">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-200 pb-1.5">
-                    Resource Persons & Faculty
-                  </span>
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-white text-teal-800 border border-teal-200 flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-teal-600" />
+                        <span>{selectedDetailCne.area}</span>
+                      </span>
 
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Faculty / Speakers</span>
+                      <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-white text-slate-700 border border-slate-200 flex items-center gap-1">
+                        <FileText className="w-3 h-3 text-slate-500" />
+                        <span>{selectedDetailCne.modeOfTeaching || 'Lecture Cum Discussion'}</span>
+                      </span>
+                    </div>
+
+                    {selectedDetailCne.description ? (
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Curriculum &amp; Description</span>
+                        <p className="text-xs text-slate-600 leading-relaxed bg-white p-3 rounded-lg border border-slate-200">
+                          {selectedDetailCne.description}
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-3">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-200 pb-1.5">
+                      Resource Persons &amp; Faculty
+                    </span>
+
                     <div className="bg-white p-3 rounded-lg border border-slate-200 text-slate-800 leading-relaxed flex items-start gap-2">
                       <User className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
                       <div>
@@ -1337,202 +1308,307 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                         })}
                       </div>
                     </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      {/* Max Capacity: ONLY for Central CNE */}
+                      {(selectedDetailCne.cneType || 'CENTRAL').toUpperCase() === 'CENTRAL' && (
+                        <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Max Capacity</span>
+                          <div className="font-semibold text-slate-800 flex items-center gap-1 mt-0.5">
+                            <Users className="w-3.5 h-3.5 text-slate-500" />
+                            <span>{selectedDetailCne.maxParticipants || 40} Seats</span>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Proposed By</span>
+                        <div className="font-semibold text-slate-800 truncate mt-0.5" title={selectedDetailCne.proposedByName || 'Coordinator'}>
+                          {selectedDetailCne.proposedByName || 'Coordinator'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {selectedDetailCne.adminRemarks && (
+                      <div className="space-y-1 pt-1">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Admin Remarks</span>
+                        <div className="bg-white p-3 rounded-lg border border-slate-200 text-slate-700 italic">
+                          {selectedDetailCne.adminRemarks}
+                        </div>
+                      </div>
+                    )}
                   </div>
-
-                  {/* Capacity shown only for Central CNE */}
-                  {(selectedDetailCne.cneType || 'CENTRAL').toUpperCase() === 'CENTRAL' ? (
-                    <div className="grid grid-cols-2 gap-2 pt-1">
-                      <div className="bg-white p-2.5 rounded-lg border border-slate-200">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Capacity</span>
-                        <div className="font-semibold text-slate-800 flex items-center gap-1 mt-0.5">
-                          <Users className="w-3.5 h-3.5 text-slate-500" />
-                          <span>{selectedDetailCne.maxParticipants || 40} Seats</span>
-                        </div>
-                      </div>
-
-                      <div className="bg-white p-2.5 rounded-lg border border-slate-200">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Proposed By</span>
-                        <div className="font-semibold text-slate-800 truncate mt-0.5" title={selectedDetailCne.proposedByName || 'Coordinator'}>
-                          {selectedDetailCne.proposedByName || 'Coordinator'}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="pt-1">
-                      <div className="bg-white p-2.5 rounded-lg border border-slate-200">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Proposed By</span>
-                        <div className="font-semibold text-slate-800 truncate mt-0.5" title={selectedDetailCne.proposedByName || 'Coordinator'}>
-                          {selectedDetailCne.proposedByName || 'Coordinator'}
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
 
-                {/* Column 3: Administration & Remarks */}
-                <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200 space-y-3">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-200 pb-1.5">
-                    Administration & Observations
-                  </span>
+                {/* Right Column (5 cols): CNE Activity Progress (Replaces Administration & Observations) */}
+                <div className="lg:col-span-5 flex flex-col">
+                  <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200 h-full flex flex-col">
+                    <div className="border-b border-slate-200 pb-2 mb-3">
+                      <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                        CNE Activity Progress
+                      </span>
+                      <span className="text-[10px] text-slate-400">Live activity and workflow status</span>
+                    </div>
 
-                  {selectedDetailCne.adminRemarks ? (
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Admin Remarks</span>
-                      <div className="bg-white p-3 rounded-lg border border-slate-200 text-slate-700 italic">
-                        {selectedDetailCne.adminRemarks}
+                    {isActivityLoading ? (
+                      <div className="flex-1 flex flex-col items-center justify-center py-12 text-center space-y-3">
+                        <Loader2 className="w-7 h-7 animate-spin text-teal-600" />
+                        <div className="text-xs font-medium text-slate-500">
+                          Loading CNE activity progress...
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-slate-400 italic">No administrative remarks logged.</p>
-                  )}
+                    ) : activityProgress ? (
+                      <div className="space-y-2.5 flex-1">
+                        {/* 1. Material */}
+                        <div className="bg-white p-3 rounded-lg border border-slate-200 flex items-center justify-between">
+                          <span className="font-semibold text-slate-700 text-xs">Material</span>
+                          {activityProgress.materialStatus === 'Added' ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                              <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> Added
+                            </span>
+                          ) : (
+                            <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              Not Added
+                            </span>
+                          )}
+                        </div>
 
-                  <div className="bg-white p-3 rounded-lg border border-slate-200 space-y-1.5">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Portal Readiness</span>
-                    <div className="flex flex-col gap-1 text-[11px] text-slate-600">
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                        <span>QR Attendance token generated</span>
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <span className={`w-2 h-2 rounded-full ${selectedDetailCne.isLocked ? 'bg-rose-500' : 'bg-amber-500'}`} />
-                        <span>{selectedDetailCne.isLocked ? 'Question bank locked' : 'Question bank active'}</span>
-                      </span>
-                    </div>
+                        {/* 2. Questions */}
+                        <div className="bg-white p-3 rounded-lg border border-slate-200 flex items-center justify-between">
+                          <span className="font-semibold text-slate-700 text-xs">Questions</span>
+                          {activityProgress.questionsStatus === 'Generated' ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                              <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> Generated
+                            </span>
+                          ) : (
+                            <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              Not Generated
+                            </span>
+                          )}
+                        </div>
+
+                        {/* 3. QR Code */}
+                        <div className="bg-white p-3 rounded-lg border border-slate-200 flex items-center justify-between">
+                          <span className="font-semibold text-slate-700 text-xs">QR Code</span>
+                          {activityProgress.qrStatus === 'Generated' ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                              <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> Generated
+                            </span>
+                          ) : (
+                            <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              Not Generated
+                            </span>
+                          )}
+                        </div>
+
+                        {/* 4. Participants */}
+                        <div className="bg-white p-3 rounded-lg border border-slate-200 flex items-center justify-between">
+                          <span className="font-semibold text-slate-700 text-xs">Participants</span>
+                          <span className="font-mono font-bold text-slate-900 text-xs bg-slate-100 px-2.5 py-0.5 rounded border border-slate-200">
+                            {activityProgress.participantsCount}
+                          </span>
+                        </div>
+
+                        {/* 5. Post Test */}
+                        <div className="bg-white p-3 rounded-lg border border-slate-200 flex items-center justify-between">
+                          <span className="font-semibold text-slate-700 text-xs">Post Test</span>
+                          {activityProgress.postTestStatus === 'Completed' ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                              <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> Completed
+                            </span>
+                          ) : activityProgress.postTestStatus === 'Available' ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                              <CheckCircle className="w-3.5 h-3.5 text-indigo-600" /> Available
+                            </span>
+                          ) : (
+                            <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              Not Available
+                            </span>
+                          )}
+                        </div>
+
+                        {/* 6. Finalization */}
+                        <div className="bg-white p-3 rounded-lg border border-slate-200 flex items-center justify-between">
+                          <span className="font-semibold text-slate-700 text-xs">Finalization</span>
+                          {activityProgress.finalizationStatus === 'Finalized' ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                              <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> Finalized
+                            </span>
+                          ) : (
+                            <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                              Not Finalized
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex-1 flex flex-col items-center justify-center py-8 text-center space-y-2 text-slate-400">
+                        <AlertTriangle className="w-6 h-6 text-amber-500" />
+                        <p className="text-xs text-slate-600 font-medium">
+                          {activityError || 'Unable to load activity progress'}
+                        </p>
+                        {selectedDetailCne?.cneId && (
+                          <button
+                            type="button"
+                            onClick={() => fetchActivityProgress(selectedDetailCne.cneId)}
+                            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold cursor-pointer shadow-2xs transition-colors"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Retry</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Sticky Actions Bar at bottom */}
+            {/* Sticky Actions Bar at bottom:
+                Exact order: Material | Questions | QR Code | Take Post Test | Participants | Finalize
+                Right side: Edit CNE | Close
+            */}
             {(() => {
-              const isAuthorized = isCneAuthorized(user, selectedDetailCne.area, selectedDetailCne.cneType);
+              const canManage = canManageCneActions(user, selectedDetailCne);
+              const canFinalize = isCneAuthorized(user, selectedDetailCne.area, selectedDetailCne.cneType);
               const isCompleted = selectedDetailCne.status === 'Completed';
               const isCanceled = selectedDetailCne.status === 'Canceled';
-              const canEdit = isAuthorized && !isCompleted && !isCanceled;
+              const canEdit = canFinalize && !isCompleted && !isCanceled;
 
               return (
-                <div className="px-6 py-3.5 border-t border-slate-200 flex flex-wrap items-center gap-2 bg-slate-50/70 shrink-0">
-                  {/* Post Test */}
-                  {!isCanceled && (
+                <div className="px-6 py-3.5 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 bg-slate-50/80 shrink-0">
+                  {/* Left: Operational actions */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* 1. Material */}
+                    {canManage && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const target = selectedDetailCne;
+                          setSelectedDetailCne(null);
+                          setActiveReferenceCne(target);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-2xs"
+                        title="View or edit learning material and syllabus"
+                      >
+                        <BookOpen className="w-4 h-4 text-teal-600" />
+                        <span>Material</span>
+                      </button>
+                    )}
+
+                    {/* 2. Questions */}
+                    {canManage && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const target = selectedDetailCne;
+                          setSelectedDetailCne(null);
+                          setActiveQuestionsCne(target);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-2xs"
+                        title="Generate AI questions or edit question bank"
+                      >
+                        <Sparkles className="w-4 h-4 text-purple-600" />
+                        <span>Questions</span>
+                      </button>
+                    )}
+
+                    {/* 3. QR Code */}
+                    {canManage && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const target = selectedDetailCne;
+                          setSelectedDetailCne(null);
+                          setActiveQRCne(target);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-2xs"
+                        title="Display or print Post-Test QR code"
+                      >
+                        <QrCode className="w-4 h-4 text-indigo-600" />
+                        <span>QR Code</span>
+                      </button>
+                    )}
+
+                    {/* 4. Take Post Test */}
+                    {canManage && !isCanceled && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const target = selectedDetailCne;
+                          setSelectedDetailCne(null);
+                          setActivePostTest({ cneId: target.cneId, qrToken: target.qrToken });
+                        }}
+                        className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer transition-colors"
+                      >
+                        <Award className="w-4 h-4" />
+                        <span>{isCompleted ? 'View Evaluation / Test' : 'Take Post Test'}</span>
+                      </button>
+                    )}
+
+                    {/* 5. Participants (renamed from Roster) */}
+                    {canManage && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const target = selectedDetailCne;
+                          setSelectedDetailCne(null);
+                          setActiveParticipantsCne(target);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-2xs"
+                        title="View attendee list, post-test scores, and record attendance"
+                      >
+                        <Users className="w-4 h-4 text-teal-600" />
+                        <span>Participants</span>
+                      </button>
+                    )}
+
+                    {/* 6. Finalize (slightly separated from operational actions) */}
+                    {canFinalize && !isCompleted && !isCanceled && (
+                      <div className="pl-2 border-l border-slate-300">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const target = selectedDetailCne;
+                            setSelectedDetailCne(null);
+                            setActiveFinalizeCne(target);
+                          }}
+                          className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs"
+                          title="Complete and archive CNE into institutional master"
+                        >
+                          <CheckCircle className="w-4 h-4 text-emerald-200" />
+                          <span>Finalize</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right: Edit CNE | Close */}
+                  <div className="flex items-center gap-2 ml-auto">
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const target = selectedDetailCne;
+                          setSelectedDetailCne(null);
+                          handleOpenEditModal(target);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-2xs"
+                        title="Edit CNE workshop details"
+                      >
+                        <Edit3 className="w-4 h-4 text-amber-700" />
+                        <span>Edit CNE</span>
+                      </button>
+                    )}
+
                     <button
                       type="button"
-                      onClick={() => {
-                        const target = selectedDetailCne;
-                        setSelectedDetailCne(null);
-                        setActivePostTest({ cneId: target.cneId, qrToken: target.qrToken });
-                      }}
-                      className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer transition-colors"
+                      onClick={() => setSelectedDetailCne(null)}
+                      className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl text-xs font-bold cursor-pointer transition-colors"
                     >
-                      <Award className="w-4 h-4" />
-                      <span>{isCompleted ? 'View Evaluation / Test' : 'Take Post-Test'}</span>
+                      Close
                     </button>
-                  )}
-
-                  {/* QR Code */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const target = selectedDetailCne;
-                      setSelectedDetailCne(null);
-                      setActiveQRCne(target);
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-2xs"
-                    title="Display or print Post-Test QR code"
-                  >
-                    <QrCode className="w-4 h-4" />
-                    <span>QR Code</span>
-                  </button>
-
-                  {/* Materials */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const target = selectedDetailCne;
-                      setSelectedDetailCne(null);
-                      setActiveReferenceCne(target);
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-2xs"
-                    title="View or edit reference notes and syllabus"
-                  >
-                    <BookOpen className="w-4 h-4 text-teal-600" />
-                    <span>Materials</span>
-                  </button>
-
-                  {/* Edit - only when existing permission/state rules allow it */}
-                  {canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const target = selectedDetailCne;
-                        setSelectedDetailCne(null);
-                        handleOpenEditModal(target);
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-2xs"
-                      title="Edit CNE workshop details"
-                    >
-                      <Edit3 className="w-4 h-4 text-amber-700" />
-                      <span>Edit CNE</span>
-                    </button>
-                  )}
-
-                  {/* Questions */}
-                  {isAuthorized && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const target = selectedDetailCne;
-                        setSelectedDetailCne(null);
-                        setActiveQuestionsCne(target);
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-2xs"
-                      title="Generate AI questions or edit question bank"
-                    >
-                      <Sparkles className="w-4 h-4 text-purple-600" />
-                      <span>Questions</span>
-                    </button>
-                  )}
-
-                  {/* Roster */}
-                  {isAuthorized && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const target = selectedDetailCne;
-                        setSelectedDetailCne(null);
-                        setActiveParticipantsCne(target);
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-2xs"
-                      title="View attendee list, post-test scores, and record attendance"
-                    >
-                      <Users className="w-4 h-4 text-teal-600" />
-                      <span>Roster</span>
-                    </button>
-                  )}
-
-                  {/* Finalize */}
-                  {isAuthorized && !isCompleted && !isCanceled && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const target = selectedDetailCne;
-                        setSelectedDetailCne(null);
-                        setActiveFinalizeCne(target);
-                      }}
-                      className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs"
-                      title="Complete and archive CNE into institutional master"
-                    >
-                      <CheckCircle className="w-4 h-4 text-emerald-200" />
-                      <span>Finalize</span>
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDetailCne(null)}
-                    className="ml-auto px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl text-xs font-bold cursor-pointer transition-colors"
-                  >
-                    Close
-                  </button>
+                  </div>
                 </div>
               );
             })()}
@@ -1584,38 +1660,23 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                       <span>1. Topic & Department</span>
                     </h4>
 
-                    {/* CNE Type */}
+                    {/* CNE Category / Type (Read-only during edit) */}
                     <div>
                       <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                        CNE Category / Type *
+                        CNE Category / Type
                       </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          disabled={!isAdmin}
-                          onClick={() => setEditCneType('CENTRAL')}
-                          className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
-                            editCneType === 'CENTRAL'
-                              ? 'bg-blue-50 border-blue-400 text-blue-900 font-bold'
-                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-50'
-                          }`}
-                        >
-                          <div className="text-xs">Central CNE</div>
-                          <div className="text-[10px] text-slate-500 font-normal">Hospital-wide clinical seminar</div>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setEditCneType('DEPARTMENTAL')}
-                          className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
-                            editCneType === 'DEPARTMENTAL'
-                              ? 'bg-teal-50 border-teal-400 text-teal-900 font-bold'
-                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
-                          }`}
-                        >
-                          <div className="text-xs">Departmental CNE</div>
-                          <div className="text-[10px] text-slate-500 font-normal">Ward / ICU / Unit-specific</div>
-                        </button>
+                      <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-100 flex items-center justify-between">
+                        <div>
+                          <div className="text-xs font-bold text-slate-800">
+                            {editCneType === 'CENTRAL' ? 'Central CNE' : 'Departmental CNE'}
+                          </div>
+                          <div className="text-[10px] text-slate-500">
+                            {editCneType === 'CENTRAL' ? 'Hospital-wide clinical seminar' : 'Ward / ICU / Unit-specific'}
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-500 bg-slate-200 px-2 py-0.5 rounded border border-slate-300">
+                          Read-only
+                        </span>
                       </div>
                     </div>
 
@@ -1733,20 +1794,36 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                          Max Capacity
-                        </label>
-                        <input
-                          type="number"
-                          min={1}
-                          max={500}
-                          value={editMaxParticipants}
-                          onChange={(e) => setEditMaxParticipants(Number(e.target.value))}
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs"
-                        />
+                    {/* Max Capacity: ONLY for Central CNE */}
+                    {editCneType === 'CENTRAL' ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                            Max Capacity
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={500}
+                            value={editMaxParticipants}
+                            onChange={(e) => setEditMaxParticipants(Number(e.target.value))}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                            Admin Remarks
+                          </label>
+                          <input
+                            type="text"
+                            value={editAdminRemarks}
+                            onChange={(e) => setEditAdminRemarks(e.target.value)}
+                            placeholder="Internal notes..."
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs"
+                          />
+                        </div>
                       </div>
+                    ) : (
                       <div>
                         <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
                           Admin Remarks
@@ -1759,7 +1836,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                           className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs"
                         />
                       </div>
-                    </div>
+                    )}
                   </div>
 
                   {/* Column 3: Resource Persons Selection */}

@@ -469,6 +469,10 @@ function handleRequest(e, method) {
         output = handleGetReferenceMaterial(params, session);
         break;
 
+      case 'getCNEActivityProgress':
+        output = handleGetCNEActivityProgress(params, session);
+        break;
+
       case 'getAiQuota':
         output = handleGetAiQuota(params, session);
         break;
@@ -780,6 +784,59 @@ function checkCNEAuthorized(session, cneArea, cneType) {
     success: false,
     errorCode: 'FORBIDDEN',
     message: 'Permission denied. Only an Administrator or the designated Area Incharge for this department may manage this CNE.'
+  };
+}
+
+/**
+ * Check authorization for operational CNE actions:
+ * Material, Questions, QR Code, Take Post Test, Participants.
+ *
+ * Allowed:
+ * 1. Admin
+ * 2. Responsible Area Incharge (Departmental CNE within their assigned area)
+ * 3. Resource Person ONLY when the authenticated user is actually assigned as a Resource Person for THIS PARTICULAR CNE.
+ *
+ * Forbidden:
+ * - Other Resource Persons not assigned to this CNE
+ * - Ordinary staff
+ */
+function checkCNEActionAuthorized(session, record) {
+  if (!session || !session.employeeId) {
+    return {
+      success: false,
+      errorCode: 'UNAUTHORIZED',
+      message: 'Authentication required. Please sign in.'
+    };
+  }
+
+  var role = String(session.role || '').toUpperCase();
+  if (role === 'ADMIN') {
+    return null; // Admin has full operational authority
+  }
+
+  if (record) {
+    // 1. Check if authenticated user is an assigned Resource Person for THIS PARTICULAR CNE
+    var loggedInId = normalizeEmpId(session.employeeId);
+    var rawRp = record.instructor || record.resourcePersonEmpId || '';
+    var rpList = String(rawRp).split(/[,;\\n]+/).map(function(s) {
+      return normalizeEmpId(s);
+    }).filter(Boolean);
+
+    if (loggedInId && rpList.indexOf(loggedInId) !== -1) {
+      return null; // Assigned Resource Person for this specific CNE
+    }
+
+    // 2. Check if responsible Area Incharge for this Departmental CNE
+    var areaAuth = checkCNEAuthorized(session, record.area, record.cneType);
+    if (areaAuth === null) {
+      return null; // Responsible Area Incharge
+    }
+  }
+
+  return {
+    success: false,
+    errorCode: 'FORBIDDEN',
+    message: 'Permission denied. Only Administrators, the responsible Area Incharge, or assigned Resource Persons for this CNE may perform this action.'
   };
 }
 
@@ -2904,21 +2961,29 @@ function handleUpdateUpcomingClass(params, session) {
           if (colMap['mode'] !== undefined) sheet.getRange(rowNum, colMap['mode'] + 1).setValue(sanitizeCellInput(params.modeOfTeaching));
         }
         if (params.description !== undefined) setColVal('description', 9, sanitizeCellInput(params.description));
-        if (params.maxParticipants !== undefined) setColVal('maxparticipants', 10, parseInt(params.maxParticipants, 10) || 50);
+        
+        // DEPARTMENTAL CNE — NO MAX CAPACITY:
+        // Only CENTRAL CNE may update maxParticipants. For DEPARTMENTAL CNE, do not expose or modify maxParticipants.
+        var currentCneType = normalizeCNEType(record.cneType);
+        if (currentCneType === 'CENTRAL' && params.maxParticipants !== undefined) {
+          setColVal('maxparticipants', 10, parseInt(params.maxParticipants, 10) || 50);
+        }
         
         if (params.status !== undefined) {
           setColVal('status', 11, normalizeCNEStatus(params.status));
         }
+        
+        // CNE TYPE IS IMMUTABLE DURING EDIT:
+        // Reject any attempt to change CNE Category/Type and preserve stored value.
         if (params.cneType !== undefined) {
           var normType = normalizeCNEType(params.cneType);
-          if (!normType) {
+          if (normType && normType !== currentCneType) {
             return {
               success: false,
-              errorCode: 'INVALID_CNE_TYPE',
-              message: 'Type of CNE is invalid or missing. Must be either CENTRAL or DEPARTMENTAL.'
+              errorCode: 'IMMUTABLE_CNE_TYPE',
+              message: 'CNE Category / Type is immutable and cannot be changed.'
             };
           }
-          setColVal('typeofcne', 12, normType);
         }
         if (params.adminRemarks !== undefined) setColVal('adminremarks', 15, sanitizeCellInput(params.adminRemarks));
         
@@ -4702,7 +4767,7 @@ function handleSaveReferenceMaterial(params, session) {
     return { success: false, message: 'CNE record not found for ID: ' + cneId };
   }
   
-  var authErr = checkCNEAuthorized(session, record.area, record.cneType);
+  var authErr = checkCNEActionAuthorized(session, record);
   if (authErr) return authErr;
   
   // Unified educational content entered through the single large content box
@@ -4783,6 +4848,12 @@ function handleGetReferenceMaterial(params, session) {
   var cneId = sanitizeCellInput(params.cneId);
   if (!cneId) return { success: false, message: 'CNE ID is required.' };
   
+  var record = getCNEClassRecord(cneId);
+  if (record) {
+    var authErr = checkCNEActionAuthorized(session, record);
+    if (authErr) return authErr;
+  }
+  
   var sheet = getOrCreateSheet('CNE_Reference');
   var data = sheet.getDataRange().getValues();
   var colMap = getHeaderMap(sheet);
@@ -4824,7 +4895,6 @@ function handleGetReferenceMaterial(params, session) {
     }
   }
   
-  var record = getCNEClassRecord(cneId);
   return {
     success: true,
     data: {
@@ -4839,15 +4909,17 @@ function handleGetReferenceMaterial(params, session) {
 }
 
 /**
- * Authoritative Reservation Lifetime (10 minutes)
+ * Get CNE Activity Progress (Real Data Check)
+ * Checked against actual Google Sheet records:
+ * 1. Material: Added or Not Added (checks CNE_Reference for clinical guides / notes)
+ * 2. Questions: Generated or Not Generated (checks CNE Post Test Questions)
+ * 3. QR Code: Generated or Not Generated (checks CNE_QR_Tokens for active QR token)
+ * 4. Participants: Real participant count (checks CNE Post Test Responses)
+ * 5. Post Test: Available, Not Available, or Completed
+ * 6. Finalization: Finalized or Not Finalized
  */
-var AI_QUOTA_RESERVATION_MS = 10 * 60 * 1000;
-
-/**
- * Authoritative check: User must be System Admin or Assigned Resource Person / Instructor
- */
-function checkQuestionManagementAuthorized(session, record) {
-  if (!session || !session.employeeId) {
+function handleGetCNEActivityProgress(params, session) {
+  if (!session) {
     return {
       success: false,
       errorCode: 'UNAUTHORIZED',
@@ -4855,27 +4927,126 @@ function checkQuestionManagementAuthorized(session, record) {
     };
   }
 
-  var role = String(session.role || '').toUpperCase();
-  if (role === 'ADMIN') {
-    return null; // Admin has full management authority
+  var cneId = sanitizeCellInput(params.cneId);
+  if (!cneId) return { success: false, message: 'CNE ID is required.' };
+
+  var record = getCNEClassRecord(cneId);
+  if (!record) return { success: false, message: 'CNE record not found for ID: ' + cneId };
+
+  var cleanId = cneId.toUpperCase();
+
+  // 1. Check Learning Material
+  var materialStatus = 'Not Added';
+  try {
+    var refSheet = getOrCreateSheet('CNE_Reference');
+    var refData = refSheet.getDataRange().getValues();
+    var refColMap = getHeaderMap(refSheet);
+    var refIdCol = refColMap['cneid'] !== undefined ? refColMap['cneid'] : 0;
+    var refTextCol = refColMap['referencetextclinicalguides'] !== undefined
+      ? refColMap['referencetextclinicalguides']
+      : (refColMap['referencetext'] !== undefined ? refColMap['referencetext'] : 2);
+
+    for (var r = 1; r < refData.length; r++) {
+      if (String(refData[r][refIdCol] || '').trim().toUpperCase() === cleanId) {
+        var txt = String(refData[r][refTextCol] || '').trim();
+        if (txt.length >= 15) {
+          materialStatus = 'Added';
+        }
+        break;
+      }
+    }
+  } catch (e) {
+    materialStatus = 'Not Added';
   }
 
-  var sessionEmpId = normalizeEmpId(session.employeeId);
-  var instructorEmpId = normalizeEmpId(record.instructor);
-  if (sessionEmpId && instructorEmpId && sessionEmpId === instructorEmpId) {
-    return null; // Assigned CNE Resource Person / Instructor
+  // 2. Check Questions
+  var questionsStatus = 'Not Generated';
+  var finalizedCount = 0;
+  try {
+    var qSheet = getQuestionsSheet();
+    var qData = qSheet.getDataRange().getValues();
+    for (var q = 1; q < qData.length; q++) {
+      if (String(qData[q][0] || '').trim().toUpperCase() === cleanId) {
+        var isFin = String(qData[q][9] || 'NO').toUpperCase() === 'YES';
+        var qStatus = String(qData[q][14] || 'ACTIVE').trim().toUpperCase();
+        if (isFin && qStatus !== 'INACTIVE' && qStatus !== 'REPLACED') {
+          finalizedCount++;
+        }
+      }
+    }
+    if (finalizedCount > 0) {
+      questionsStatus = 'Generated';
+    }
+  } catch (e) {
+    questionsStatus = 'Not Generated';
   }
 
-  var areaAuth = checkCNEAuthorized(session, record.area, record.cneType);
-  if (areaAuth === null) {
-    return null; // Designated Area Incharge for this CNE
+  // 3. Check QR Code
+  var qrStatus = 'Not Generated';
+  try {
+    var qrSheet = getQRTokensSheet();
+    var qrData = qrSheet.getDataRange().getValues();
+    for (var t = 1; t < qrData.length; t++) {
+      if (String(qrData[t][1] || '').trim().toUpperCase() === cleanId &&
+          String(qrData[t][4] || 'ACTIVE').trim().toUpperCase() === 'ACTIVE') {
+        qrStatus = 'Generated';
+        break;
+      }
+    }
+  } catch (e) {
+    qrStatus = 'Not Generated';
   }
+
+  // 4. Check Participants Count
+  var participantsCount = 0;
+  try {
+    var respSheet = getResponsesSheet();
+    var respData = respSheet.getDataRange().getValues();
+    for (var p = 1; p < respData.length; p++) {
+      if (String(respData[p][1] || '').trim().toUpperCase() === cleanId) {
+        participantsCount++;
+      }
+    }
+  } catch (e) {
+    participantsCount = 0;
+  }
+
+  // 5. Post Test Status
+  var isCompleted = record.status === 'Completed';
+  var postTestStatus = 'Not Available';
+  if (isCompleted) {
+    postTestStatus = 'Completed';
+  } else if (qrStatus === 'Generated' && finalizedCount >= 5) {
+    postTestStatus = 'Available';
+  }
+
+  // 6. Finalization Status
+  var finalizationStatus = isCompleted ? 'Finalized' : 'Not Finalized';
 
   return {
-    success: false,
-    errorCode: 'FORBIDDEN',
-    message: 'Permission denied. Only an Administrator, the assigned CNE Resource Person, or the designated Area Incharge may manage post-test questions.'
+    success: true,
+    data: {
+      cneId: cneId,
+      materialStatus: materialStatus,
+      questionsStatus: questionsStatus,
+      qrStatus: qrStatus,
+      participantsCount: participantsCount,
+      postTestStatus: postTestStatus,
+      finalizationStatus: finalizationStatus
+    }
   };
+}
+
+/**
+ * Authoritative Reservation Lifetime (10 minutes)
+ */
+var AI_QUOTA_RESERVATION_MS = 10 * 60 * 1000;
+
+/**
+ * Authoritative check: User must be System Admin, Responsible Area Incharge, or Assigned Resource Person for this CNE
+ */
+function checkQuestionManagementAuthorized(session, record) {
+  return checkCNEActionAuthorized(session, record);
 }
 
 /**
@@ -6445,7 +6616,7 @@ function handleAddManualParticipant(params, session) {
   var record = getCNEClassRecord(cneId);
   if (!record) return { success: false, message: 'CNE record not found.' };
   
-  var authErr = checkCNEAuthorized(session, record.area, record.cneType);
+  var authErr = checkCNEActionAuthorized(session, record);
   if (authErr) return authErr;
   
   var empId = normalizeEmpId(params.employeeId);
@@ -6526,6 +6697,9 @@ function handleGetCNEParticipants(params, session) {
   
   var record = getCNEClassRecord(cneId);
   if (!record) return { success: false, message: 'CNE record not found.' };
+  
+  var authErr = checkCNEActionAuthorized(session, record);
+  if (authErr) return authErr;
   
   var partSheet = getResponsesSheet();
   var data = partSheet.getDataRange().getValues();
@@ -7009,7 +7183,6 @@ function setupNewCNESpreadsheet() {
   
   Logger.log('>>> setupNewCNESpreadsheet COMPLETED SUCCESSFULLY.');
 }
-
 `;
 
 export const GOOGLE_APPS_SCRIPT_CODE = APPS_SCRIPT_SOURCE_CODE;

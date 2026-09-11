@@ -599,3 +599,45 @@ export function isCneAuthorized(
   }
   return false;
 }
+
+/**
+ * Checks if the user is an assigned Resource Person for a specific CNE.
+ * Normalizes and checks against comma- or semicolon-separated resource person employee IDs.
+ */
+export function isUserAssignedResourcePerson(
+  user?: SessionUser | null,
+  resourcePersonEmpId?: string | null
+): boolean {
+  if (!user?.employeeId || !resourcePersonEmpId) return false;
+  const userEmpId = user.employeeId.trim().toUpperCase();
+  const rpList = resourcePersonEmpId
+    .split(/[,;\n]+/)
+    .map((s) => s.trim().toUpperCase())
+    .filter(Boolean);
+  return rpList.includes(userEmpId);
+}
+
+/**
+ * Checks if the user is authorized for operational CNE actions:
+ * Material, Questions, QR Code, Take Post Test, Participants.
+ *
+ * Allowed:
+ * 1. Admin
+ * 2. Responsible Area Incharge (Departmental CNE in their assigned area)
+ * 3. Resource Person ONLY when assigned to THIS particular CNE
+ *
+ * Forbidden:
+ * - Other Resource Persons not assigned to this CNE
+ * - Ordinary staff
+ */
+export function canManageCneActions(
+  user?: SessionUser | null,
+  cne?: { area?: string; cneType?: string; resourcePersonEmpId?: string | null } | null
+): boolean {
+  if (!user || !cne) return false;
+  if (user.role === 'ADMIN') return true;
+  if (isCneAuthorized(user, cne.area, cne.cneType)) return true;
+  if (isUserAssignedResourcePerson(user, cne.resourcePersonEmpId)) return true;
+  return false;
+}
+

@@ -134,6 +134,16 @@ export interface UpcomingClass {
   qrToken?: string;
 }
 
+export interface CNEActivityProgress {
+  cneId: string;
+  materialStatus: 'Added' | 'Not Added';
+  questionsStatus: 'Generated' | 'Not Generated';
+  qrStatus: 'Generated' | 'Not Generated';
+  participantsCount: number;
+  postTestStatus: 'Available' | 'Not Available' | 'Completed';
+  finalizationStatus: 'Finalized' | 'Not Finalized';
+}
+
 export interface DepartmentalScheduleRow {
   id: string;
   topic: string;

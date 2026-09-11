@@ -20,6 +20,7 @@ import {
   CNEAiQuotaInfo,
   CNEParticipant,
   CNEParticipantsSummary,
+  CNEActivityProgress,
   PostTestSubmissionResult,
   SheetAuditItem
 } from '../types';
@@ -707,6 +708,13 @@ export class ApiService {
 
   static async getReferenceMaterial(cneId: string): Promise<ApiResponse<CNEReferenceMaterial>> {
     return this.executeAction<CNEReferenceMaterial>('getReferenceMaterial', { cneId });
+  }
+
+  /**
+   * CNE Activity Progress (Real data check across Material, Questions, QR, Participants, Post-Test, Finalization)
+   */
+  static async getCNEActivityProgress(cneId: string): Promise<ApiResponse<CNEActivityProgress>> {
+    return this.executeAction<CNEActivityProgress>('getCNEActivityProgress', { cneId });
   }
 
   /**
