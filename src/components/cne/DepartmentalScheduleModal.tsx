@@ -55,9 +55,8 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
   const assignedAreas = getUserAssignedAreas(user);
   const defaultArea = (isAreaIncharge && assignedAreas.length > 0) ? assignedAreas[0] : (areasList[0] || '');
 
-  // Requirement: Initially show exactly 2 blank CNE schedule rows
+  // Initially show exactly 1 blank CNE schedule row
   const [rows, setRows] = useState<DepartmentalScheduleRow[]>([
-    createInitialRow(defaultArea),
     createInitialRow(defaultArea)
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -301,7 +300,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                       {idx + 1}
                     </span>
                     <span className="text-xs font-bold text-slate-800">
-                      Departmental CNE Schedule Item #{idx + 1}
+                      Departmental CNE #{idx + 1}
                     </span>
                   </div>
                   {rows.length > 1 && (
@@ -612,7 +611,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                 className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer shadow-xs"
               >
                 <Plus className="w-4 h-4 text-emerald-600" />
-                <span>Add Another Schedule Row</span>
+                <span>add another Schedule</span>
               </button>
             </div>
           </div>

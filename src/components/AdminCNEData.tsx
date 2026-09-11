@@ -697,7 +697,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
             className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
           >
             <PlusCircle className="w-4 h-4 text-emerald-400" />
-            <span>Add CNE Activity</span>
+            <span>Record Unscheduled CNE Activity</span>
           </button>
         </div>
       </div>
@@ -901,7 +901,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                         <td className="py-3 px-3 text-center">
                           <span
                             className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-full text-[11px] cursor-help"
-                            title={`Staff Participants (${rec.staffCount || 0}):\n${
+                            title={`Participants (${rec.staffCount || 0}):\n${
                               formatStaffParticipantsDisplay({
                                 staffEmpIds: rec.staffEmpIds,
                                 staffNames: rec.staffNames,
@@ -976,417 +976,454 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
       </div>
 
       {/* ========================================================= */}
-      {/* 1. ADD CNE Activity Modal (With RP & Staff Multi-Select)  */}
+      {/* 1. Record Unscheduled CNE Activity Modal                 */}
       {/* ========================================================= */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-xl border border-slate-200 relative max-h-[90vh] overflow-y-auto">
-            <button
-              type="button"
-              onClick={() => setIsAddModalOpen(false)}
-              disabled={isSubmitting}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1"
-            >
-              <X className="w-5 h-5" />
-            </button>
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
+          <div className="bg-white rounded-2xl w-[92vw] max-w-[1440px] max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 relative overflow-hidden">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/70">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                  <PlusCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Record Unscheduled CNE Activity</h3>
+                  <p className="text-xs text-slate-500">Records a CNE activity conducted outside the web scheduling workflow.</p>
+                </div>
+              </div>
 
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center">
-                <PlusCircle className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900">Add CNE Activity Record</h3>
-                <p className="text-xs text-slate-500">Logs session into CNE database</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddModalOpen(false)}
+                disabled={isSubmitting}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 cursor-pointer transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            <form onSubmit={handleAddSubmit} className="space-y-4 text-xs">
-              {/* Topic */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                  CNE Topic / Skills Description *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Nursing management patient with Glaucoma (Skills: Instillation of Eye Drops)"
-                  value={formTopic}
-                  onChange={(e) => setFormTopic(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                />
-              </div>
+            <form onSubmit={handleAddSubmit} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
+                {/* 4 Logical Sections organized into a responsive grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+                  {/* Section 1: Classification & Activity Details */}
+                  <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200 flex flex-col">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-purple-900 border-b border-purple-100 pb-2 flex items-center gap-1.5">
+                      <span>1. Classification &amp; Activity Details</span>
+                    </h4>
 
-              {/* Type of CNE & Area & Mode */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Type of CNE *
-                  </label>
-                  <select
-                    required
-                    value={formCneType}
-                    onChange={(e) => setFormCneType(e.target.value as any)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800"
-                  >
-                    <option value="CENTRAL">Central CNE</option>
-                    <option value="DEPARTMENTAL">Departmental CNE</option>
-                  </select>
-                </div>
+                    {/* Topic */}
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        CNE Topic / Skills Description *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Nursing management patient with Glaucoma (Skills: Instillation of Eye Drops)"
+                        value={formTopic}
+                        onChange={(e) => setFormTopic(e.target.value)}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Ward Name / Area *
-                  </label>
-                  <select
-                    required
-                    value={formArea}
-                    onChange={(e) => setFormArea(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                  >
-                    <option value="">Select Ward / Area...</option>
-                    {activeAreas.map((a) => (
-                      <option key={a.id} value={a.name}>{a.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Mode of Teaching
-                  </label>
-                  <select
-                    value={formMode}
-                    onChange={(e) => setFormMode(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                  >
-                    {teachingModes.map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Dates & Duration */}
-              <div className="space-y-3">
-                <CneDateTimeFields
-                  idPrefix="activity-add"
-                  fromDate={formFromDate}
-                  fromTime={formFromTime}
-                  toDate={formToDate}
-                  toTime={formToTime}
-                  layout="grid"
-                  accentColor="emerald"
-                  onChange={({ fromDate, fromTime, toDate, toTime, calculatedDuration }) => {
-                    setFormFromDate(fromDate);
-                    setFormFromTime(fromTime);
-                    setFormToDate(toDate);
-                    setFormToTime(toTime);
-                    if (calculatedDuration && calculatedDuration !== '00:00:00') {
-                      setFormDuration(calculatedDuration);
-                    }
-                  }}
-                />
-
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                      Duration (HH:MM:SS) *
-                    </label>
-                    <span className="text-[10px] text-emerald-700 font-semibold">Auto-calculated</span>
-                  </div>
-                  <input
-                    type="text"
-                    required
-                    placeholder="00:00:00"
-                    value={formDuration}
-                    onChange={(e) => setFormDuration(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                  <p className="text-[10px] text-slate-500 mt-0.5">Calculated automatically from selected dates and times. Max 8 hrs/day.</p>
-                </div>
-              </div>
-
-              {/* MULTI-SELECT 1: Resource Persons */}
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                    Resource Person(s) / Instructors (Multi-Select) *
-                  </label>
-                  <span className="text-xs font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
-                    Selected: {selectedRpEmpIds.length}
-                  </span>
-                </div>
-
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-                  <input
-                    type="text"
-                    placeholder="Filter resource persons by name or ID..."
-                    value={rpSearchQuery}
-                    onChange={(e) => setRpSearchQuery(e.target.value)}
-                    className="w-full pl-8 pr-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
-                  />
-                </div>
-
-                {/* Selected RP chips */}
-                {selectedRpEmpIds.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1 bg-white rounded-lg border border-slate-200">
-                    {selectedRpEmpIds.map((id) => {
-                      const off = officers.find((o) => o.employeeId === id);
-                      return (
-                        <span
-                          key={id}
-                          className="inline-flex items-center gap-1 text-[11px] font-medium bg-purple-50 text-purple-900 px-2 py-0.5 rounded-md border border-purple-200"
-                        >
-                          <span>{off ? off.name : id} <span className="text-[10px] text-purple-700 opacity-75 font-mono">({id})</span></span>
-                          <button
-                            type="button"
-                            onClick={() => toggleRpSelection(id)}
-                            className="hover:text-rose-600"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* RP Selection List */}
-                <div className="max-h-32 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white">
-                  {filteredRpOptions.slice(0, 15).map((o) => {
-                    const isSelected = selectedRpEmpIds.includes(o.employeeId);
-                    return (
-                      <div
-                        key={o.employeeId}
-                        onClick={() => toggleRpSelection(o.employeeId)}
-                        className={`p-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer text-xs ${
-                          isSelected ? 'bg-purple-50/60 font-semibold' : ''
-                        }`}
+                    {/* Type of CNE */}
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Type of CNE *
+                      </label>
+                      <select
+                        required
+                        value={formCneType}
+                        onChange={(e) => setFormCneType(e.target.value as any)}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-purple-500 focus:outline-none"
                       >
-                        <div>
-                          <span className="font-mono text-slate-600">{o.employeeId}</span>
-                          <span className="mx-1.5">•</span>
-                          <span className="text-slate-900">{o.name}</span>
-                          <span className="text-slate-400 text-[10px] ml-1">({o.designation})</span>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => {}}
-                          className="rounded text-purple-600 focus:ring-purple-500"
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
+                        <option value="CENTRAL">Central CNE</option>
+                        <option value="DEPARTMENTAL">Departmental CNE</option>
+                      </select>
+                    </div>
 
-                {/* External Resource Persons */}
-                <div className="pt-2 border-t border-slate-200">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                      External Resource Persons (Outside Faculty / Professors / Guests)
-                    </label>
-                    <span className="text-[10px] text-slate-400">No Employee ID required</span>
+                    {/* Ward Name / Area */}
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Ward Name / Area *
+                      </label>
+                      <select
+                        required
+                        value={formArea}
+                        onChange={(e) => setFormArea(e.target.value)}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                      >
+                        <option value="">Select Ward / Area...</option>
+                        {activeAreas.map((a) => (
+                          <option key={a.id} value={a.name}>{a.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Mode of Teaching */}
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Mode of Teaching
+                      </label>
+                      <select
+                        value={formMode}
+                        onChange={(e) => setFormMode(e.target.value)}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                      >
+                        {teachingModes.map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Remarks / Notes */}
+                    <div className="flex-1 flex flex-col">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Remarks / Notes
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={formRemarks}
+                        onChange={(e) => setFormRemarks(e.target.value)}
+                        placeholder="Additional skills notes, simulation equipment used..."
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none flex-1"
+                      />
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="e.g. Prof. R. Sharma (PGI Chandigarh)..."
-                      value={externalRpInput}
-                      onChange={(e) => setExternalRpInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleAddExternalRp();
+
+                  {/* Section 2: Date, Time & Duration */}
+                  <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200 flex flex-col">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-900 border-b border-indigo-100 pb-2 flex items-center gap-1.5">
+                      <span>2. Date, Time &amp; Duration</span>
+                    </h4>
+
+                    {/* Dates & Duration via CneDateTimeFields */}
+                    <CneDateTimeFields
+                      idPrefix="activity-add"
+                      fromDate={formFromDate}
+                      fromTime={formFromTime}
+                      toDate={formToDate}
+                      toTime={formToTime}
+                      layout="stack"
+                      accentColor="emerald"
+                      onChange={({ fromDate, fromTime, toDate, toTime, calculatedDuration }) => {
+                        setFormFromDate(fromDate);
+                        setFormFromTime(fromTime);
+                        setFormToDate(toDate);
+                        setFormToTime(toTime);
+                        if (calculatedDuration && calculatedDuration !== '00:00:00') {
+                          setFormDuration(calculatedDuration);
                         }
                       }}
-                      className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs"
                     />
-                    <button
-                      type="button"
-                      onClick={handleAddExternalRp}
-                      className="px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-900 font-semibold rounded-lg text-xs cursor-pointer"
-                    >
-                      + Add
-                    </button>
-                  </div>
-                  {externalRpList.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {externalRpList.map((rp, idx) => (
-                        <span
-                          key={idx}
-                          className="inline-flex items-center gap-1 text-[11px] font-medium bg-amber-50 text-amber-900 px-2 py-0.5 rounded-md border border-amber-200"
-                        >
-                          <span>{rp} (External)</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveExternalRp(idx)}
-                            className="hover:text-rose-600 cursor-pointer"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      ))}
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                          Duration (HH:MM:SS) *
+                        </label>
+                        <span className="text-[10px] text-emerald-700 font-semibold">Auto-calculated</span>
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        placeholder="00:00:00"
+                        value={formDuration}
+                        onChange={(e) => setFormDuration(e.target.value)}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Calculated automatically from selected dates and times. Max 8 hrs/day. Format: HH:MM:SS
+                      </p>
                     </div>
-                  )}
-                </div>
-              </div>
-
-              {/* MULTI-SELECT 2: Staff Participants */}
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                    Staff Participants (Multi-Select)
-                  </label>
-                  <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-                    Selected Count: {selectedStaffIds.length + externalStaffList.length} ({selectedStaffIds.length} internal + {externalStaffList.length} external)
-                  </span>
-                </div>
-
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-                  <input
-                    type="text"
-                    placeholder="Filter staff by name or employee ID..."
-                    value={staffSearchQuery}
-                    onChange={(e) => setStaffSearchQuery(e.target.value)}
-                    className="w-full pl-8 pr-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
-                  />
-                </div>
-
-                {/* Selected staff chips */}
-                {selectedStaffIds.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1 bg-white rounded-lg border border-slate-200">
-                    {selectedStaffIds.map((id) => {
-                      const off = officers.find((o) => o.employeeId === id);
-                      return (
-                        <span
-                          key={id}
-                          className="inline-flex items-center gap-1 text-[11px] font-medium bg-slate-100 text-slate-800 px-2 py-0.5 rounded-md border border-slate-300"
-                        >
-                          <span>{off ? off.name : id} <span className="text-[10px] text-slate-500 opacity-75 font-mono">({id})</span></span>
-                          <button
-                            type="button"
-                            onClick={() => toggleStaffSelection(id)}
-                            className="hover:text-rose-600"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      );
-                    })}
                   </div>
-                )}
 
-                {/* Staff Selection List */}
-                <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white">
-                  {filteredStaffOptions.slice(0, 15).map((o) => {
-                    const isSelected = selectedStaffIds.includes(o.employeeId);
-                    return (
-                      <div
-                        key={o.employeeId}
-                        onClick={() => toggleStaffSelection(o.employeeId)}
-                        className={`p-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer text-xs ${
-                          isSelected ? 'bg-emerald-50/60 font-semibold' : ''
-                        }`}
-                      >
-                        <div>
-                          <span className="font-mono text-slate-600">{o.employeeId}</span>
-                          <span className="mx-1.5">•</span>
-                          <span className="text-slate-900">{o.name}</span>
-                          <span className="text-slate-400 text-[10px] ml-1">({o.designation})</span>
-                        </div>
+                  {/* Section 3: Resource Persons */}
+                  <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200 flex flex-col">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-teal-900 border-b border-teal-100 pb-2 flex items-center justify-between">
+                      <span>3. Resource Persons</span>
+                      <span className="text-xs font-bold text-teal-800 bg-teal-100 px-2 py-0.5 rounded-full">
+                        Selected: {selectedRpEmpIds.length}
+                      </span>
+                    </h4>
+
+                    {/* Internal Resource Persons */}
+                    <div className="space-y-2 flex-1 flex flex-col">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                          Resource Person(s) / Instructors *
+                        </label>
+                      </div>
+
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
                         <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => {}}
-                          className="rounded text-emerald-600 focus:ring-emerald-500"
+                          type="text"
+                          placeholder="Filter resource persons by name or ID..."
+                          value={rpSearchQuery}
+                          onChange={(e) => setRpSearchQuery(e.target.value)}
+                          className="w-full pl-8 pr-2 py-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none"
                         />
                       </div>
-                    );
-                  })}
-                </div>
 
-                {/* External Staff Participants */}
-                <div className="pt-2 border-t border-slate-200">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                      External Staff Participants (Outside Observers / Trainees / Students)
-                    </label>
-                    <span className="text-[10px] text-slate-400">No Employee ID required</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="e.g. Sneha Patel (MSc Nursing Trainee)..."
-                      value={externalStaffInput}
-                      onChange={(e) => setExternalStaffInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleAddExternalStaff();
-                        }
-                      }}
-                      className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddExternalStaff}
-                      className="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-semibold rounded-lg text-xs cursor-pointer"
-                    >
-                      + Add
-                    </button>
-                  </div>
-                  {externalStaffList.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {externalStaffList.map((staff, idx) => (
-                        <span
-                          key={idx}
-                          className="inline-flex items-center gap-1 text-[11px] font-medium bg-emerald-50 text-emerald-900 px-2 py-0.5 rounded-md border border-emerald-200"
-                        >
-                          <span>{staff} (External)</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveExternalStaff(idx)}
-                            className="hover:text-rose-600 cursor-pointer"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      ))}
+                      {/* Selected RP chips */}
+                      {selectedRpEmpIds.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1 bg-white rounded-lg border border-slate-200">
+                          {selectedRpEmpIds.map((id) => {
+                            const off = officers.find((o) => o.employeeId === id);
+                            return (
+                              <span
+                                key={id}
+                                className="inline-flex items-center gap-1 text-[11px] font-medium bg-purple-50 text-purple-900 px-2 py-0.5 rounded-md border border-purple-200"
+                              >
+                                <span>{off ? off.name : id} <span className="text-[10px] text-purple-700 opacity-75 font-mono">({id})</span></span>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleRpSelection(id)}
+                                  className="hover:text-rose-600 cursor-pointer"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* RP Selection List */}
+                      <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white flex-1">
+                        {filteredRpOptions.slice(0, 50).map((o) => {
+                          const isSelected = selectedRpEmpIds.includes(o.employeeId);
+                          return (
+                            <div
+                              key={o.employeeId}
+                              onClick={() => toggleRpSelection(o.employeeId)}
+                              className={`p-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer text-xs ${
+                                isSelected ? 'bg-purple-50/60 font-semibold' : ''
+                              }`}
+                            >
+                              <div className="truncate mr-2">
+                                <span className="font-mono text-slate-600">{o.employeeId}</span>
+                                <span className="mx-1.5">•</span>
+                                <span className="text-slate-900">{o.name}</span>
+                                <span className="text-slate-400 text-[10px] ml-1">({o.designation})</span>
+                              </div>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {}}
+                                className="rounded text-purple-600 focus:ring-purple-500 pointer-events-none shrink-0"
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  )}
+
+                    {/* External Resource Persons */}
+                    <div className="pt-2 border-t border-slate-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                          External Resource Persons
+                        </label>
+                        <span className="text-[10px] text-slate-400">No Employee ID</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="e.g. Prof. R. Sharma (PGI Chandigarh)..."
+                          value={externalRpInput}
+                          onChange={(e) => setExternalRpInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddExternalRp();
+                            }
+                          }}
+                          className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddExternalRp}
+                          className="px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-900 font-semibold rounded-lg text-xs cursor-pointer"
+                        >
+                          + Add
+                        </button>
+                      </div>
+                      {externalRpList.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-1 max-h-20 overflow-y-auto">
+                          {externalRpList.map((rp, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center gap-1 text-[11px] font-medium bg-amber-50 text-amber-900 px-2 py-0.5 rounded-md border border-amber-200"
+                            >
+                              <span>{rp} (External)</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveExternalRp(idx)}
+                                className="hover:text-rose-600 cursor-pointer"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Section 4: Participants */}
+                  <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200 flex flex-col">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-900 border-b border-emerald-100 pb-2 flex items-center justify-between">
+                      <span>4. Participants</span>
+                      <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
+                        Selected: {selectedStaffIds.length}
+                      </span>
+                    </h4>
+
+                    {/* Internal Participants */}
+                    <div className="space-y-2 flex-1 flex flex-col">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                          Participants
+                        </label>
+                      </div>
+
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                        <input
+                          type="text"
+                          placeholder="Filter staff by name or employee ID..."
+                          value={staffSearchQuery}
+                          onChange={(e) => setStaffSearchQuery(e.target.value)}
+                          className="w-full pl-8 pr-2 py-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                        />
+                      </div>
+
+                      {/* Selected staff chips */}
+                      {selectedStaffIds.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1 bg-white rounded-lg border border-slate-200">
+                          {selectedStaffIds.map((id) => {
+                            const off = officers.find((o) => o.employeeId === id);
+                            return (
+                              <span
+                                key={id}
+                                className="inline-flex items-center gap-1 text-[11px] font-medium bg-slate-100 text-slate-800 px-2 py-0.5 rounded-md border border-slate-300"
+                              >
+                                <span>{off ? off.name : id} <span className="text-[10px] text-slate-500 opacity-75 font-mono">({id})</span></span>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleStaffSelection(id)}
+                                  className="hover:text-rose-600 cursor-pointer"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Staff Selection List */}
+                      <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white flex-1">
+                        {filteredStaffOptions.slice(0, 50).map((o) => {
+                          const isSelected = selectedStaffIds.includes(o.employeeId);
+                          return (
+                            <div
+                              key={o.employeeId}
+                              onClick={() => toggleStaffSelection(o.employeeId)}
+                              className={`p-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer text-xs ${
+                                isSelected ? 'bg-emerald-50/60 font-semibold' : ''
+                              }`}
+                            >
+                              <div className="truncate mr-2">
+                                <span className="font-mono text-slate-600">{o.employeeId}</span>
+                                <span className="mx-1.5">•</span>
+                                <span className="text-slate-900">{o.name}</span>
+                                <span className="text-slate-400 text-[10px] ml-1">({o.designation})</span>
+                              </div>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {}}
+                                className="rounded text-emerald-600 focus:ring-emerald-500 pointer-events-none shrink-0"
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* External Participants */}
+                    <div className="pt-2 border-t border-slate-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                          External Participants
+                        </label>
+                        <span className="text-[10px] text-slate-400">No Employee ID</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="e.g. Sneha Patel (MSc Nursing Trainee)..."
+                          value={externalStaffInput}
+                          onChange={(e) => setExternalStaffInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddExternalStaff();
+                            }
+                          }}
+                          className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddExternalStaff}
+                          className="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-semibold rounded-lg text-xs cursor-pointer"
+                        >
+                          + Add
+                        </button>
+                      </div>
+                      {externalStaffList.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-1 max-h-20 overflow-y-auto">
+                          {externalStaffList.map((staff, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center gap-1 text-[11px] font-medium bg-emerald-50 text-emerald-900 px-2 py-0.5 rounded-md border border-emerald-200"
+                            >
+                              <span>{staff} (External)</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveExternalStaff(idx)}
+                                className="hover:text-rose-600 cursor-pointer"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Remarks */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                  Remarks / Notes
-                </label>
-                <textarea
-                  rows={2}
-                  value={formRemarks}
-                  onChange={(e) => setFormRemarks(e.target.value)}
-                  placeholder="Additional skills notes, simulation equipment used..."
-                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              {/* Sticky Footer */}
+              <div className="px-6 py-3.5 border-t border-slate-200 flex items-center justify-end gap-2 bg-slate-50/70 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
                   disabled={isSubmitting}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium cursor-pointer"
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl font-medium text-xs disabled:opacity-40 cursor-pointer transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="flex items-center gap-1.5 px-5 py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
+                  className="flex items-center gap-1.5 px-5 py-2 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 disabled:opacity-50 cursor-pointer transition-colors shadow-xs"
                 >
                   {isSubmitting ? (
                     <>
@@ -1407,413 +1444,450 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
       {/* 2. EDIT CNE Activity Modal (Replacing Inline Edit)        */}
       {/* ========================================================= */}
       {editingRecord && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-xl border border-slate-200 relative max-h-[90vh] overflow-y-auto">
-            <button
-              type="button"
-              onClick={() => setEditingRecord(null)}
-              disabled={isEditSubmitting}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
+          <div className="bg-white rounded-2xl w-[92vw] max-w-[1440px] max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 relative overflow-hidden">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/70">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                  <Edit2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Edit CNE Activity Record</h3>
+                  <p className="text-xs text-slate-500">Update session details, resource persons, and participants</p>
+                </div>
+              </div>
 
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center">
-                <Edit2 className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900">Edit CNE Activity Record</h3>
-                <p className="text-xs text-slate-500">Update session details, resource persons, and participants</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => setEditingRecord(null)}
+                disabled={isEditSubmitting}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 cursor-pointer transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            <form onSubmit={handleEditSubmit} className="space-y-4 text-xs">
-              {/* Topic */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                  CNE Topic / Skills Description *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editTopic}
-                  onChange={(e) => setEditTopic(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                />
-              </div>
+            <form onSubmit={handleEditSubmit} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
+                {/* 4 Logical Sections organized into a responsive grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+                  {/* Section 1: Classification & Activity Details */}
+                  <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200 flex flex-col">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-purple-900 border-b border-purple-100 pb-2 flex items-center gap-1.5">
+                      <span>1. Classification &amp; Activity Details</span>
+                    </h4>
 
-              {/* Type of CNE & Area & Mode */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Type of CNE *
-                  </label>
-                  <select
-                    required
-                    value={editCneType}
-                    onChange={(e) => setEditCneType(e.target.value as any)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800"
-                  >
-                    <option value="CENTRAL">Central CNE</option>
-                    <option value="DEPARTMENTAL">Departmental CNE</option>
-                  </select>
-                </div>
+                    {/* Topic */}
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        CNE Topic / Skills Description *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editTopic}
+                        onChange={(e) => setEditTopic(e.target.value)}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Ward Name / Area *
-                  </label>
-                  <select
-                    required
-                    value={editArea}
-                    onChange={(e) => setEditArea(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                  >
-                    <option value="">Select Ward / Area...</option>
-                    {activeAreas.map((a) => (
-                      <option key={a.id} value={a.name}>{a.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                    Mode of Teaching
-                  </label>
-                  <select
-                    value={editMode}
-                    onChange={(e) => setEditMode(e.target.value)}
-                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                  >
-                    {teachingModes.map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Dates & Duration */}
-              <div className="space-y-3">
-                <CneDateTimeFields
-                  idPrefix="activity-edit"
-                  fromDate={editFromDate}
-                  fromTime={editFromTime}
-                  toDate={editToDate}
-                  toTime={editToTime}
-                  layout="grid"
-                  accentColor="emerald"
-                  onChange={({ fromDate, fromTime, toDate, toTime, calculatedDuration }) => {
-                    setEditFromDate(fromDate);
-                    setEditFromTime(fromTime);
-                    setEditToDate(toDate);
-                    setEditToTime(toTime);
-                    if (calculatedDuration && calculatedDuration !== '00:00:00') {
-                      setEditDuration(calculatedDuration);
-                    }
-                  }}
-                />
-
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                      Duration (HH:MM:SS) *
-                    </label>
-                    <span className="text-[10px] text-emerald-700 font-semibold">Auto-calculated</span>
-                  </div>
-                  <input
-                    type="text"
-                    required
-                    placeholder="00:00:00"
-                    value={editDuration}
-                    onChange={(e) => setEditDuration(e.target.value)}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                  <p className="text-[10px] text-slate-500 mt-0.5">Calculated automatically from selected dates and times. Max 8 hrs/day.</p>
-                </div>
-              </div>
-
-              {/* EDIT MULTI-SELECT 1: Resource Persons */}
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                    Resource Person(s) / Instructors (Multi-Select) *
-                  </label>
-                  <span className="text-xs font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
-                    Selected: {editRpEmpIds.length}
-                  </span>
-                </div>
-
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-                  <input
-                    type="text"
-                    placeholder="Filter resource persons by name or ID..."
-                    value={editRpSearchQuery}
-                    onChange={(e) => setEditRpSearchQuery(e.target.value)}
-                    className="w-full pl-8 pr-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
-                  />
-                </div>
-
-                {/* Selected RP chips */}
-                {editRpEmpIds.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1 bg-white rounded-lg border border-slate-200">
-                    {editRpEmpIds.map((id) => {
-                      const off = officers.find((o) => o.employeeId === id);
-                      return (
-                        <span
-                          key={id}
-                          className="inline-flex items-center gap-1 text-[11px] font-medium bg-purple-50 text-purple-900 px-2 py-0.5 rounded-md border border-purple-200"
-                        >
-                          <span>{off ? off.name : id} <span className="text-[10px] text-purple-700 opacity-75 font-mono">({id})</span></span>
-                          <button
-                            type="button"
-                            onClick={() => toggleEditRpSelection(id)}
-                            className="hover:text-rose-600"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* RP Selection List */}
-                <div className="max-h-32 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white">
-                  {filteredEditRpOptions.slice(0, 15).map((o) => {
-                    const isSelected = editRpEmpIds.includes(o.employeeId);
-                    return (
-                      <div
-                        key={o.employeeId}
-                        onClick={() => toggleEditRpSelection(o.employeeId)}
-                        className={`p-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer text-xs ${
-                          isSelected ? 'bg-purple-50/60 font-semibold' : ''
-                        }`}
+                    {/* Type of CNE */}
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Type of CNE *
+                      </label>
+                      <select
+                        required
+                        value={editCneType}
+                        onChange={(e) => setEditCneType(e.target.value as any)}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:ring-2 focus:ring-purple-500 focus:outline-none"
                       >
-                        <div>
-                          <span className="font-mono text-slate-600">{o.employeeId}</span>
-                          <span className="mx-1.5">•</span>
-                          <span className="text-slate-900">{o.name}</span>
-                          <span className="text-slate-400 text-[10px] ml-1">({o.designation})</span>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => {}}
-                          className="rounded text-purple-600 focus:ring-purple-500"
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
+                        <option value="CENTRAL">Central CNE</option>
+                        <option value="DEPARTMENTAL">Departmental CNE</option>
+                      </select>
+                    </div>
 
-                {/* External Resource Persons */}
-                <div className="pt-2 border-t border-slate-200">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                      External Resource Persons (Outside Faculty / Professors / Guests)
-                    </label>
-                    <span className="text-[10px] text-slate-400">No Employee ID required</span>
+                    {/* Ward Name / Area */}
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Ward Name / Area *
+                      </label>
+                      <select
+                        required
+                        value={editArea}
+                        onChange={(e) => setEditArea(e.target.value)}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                      >
+                        <option value="">Select Ward / Area...</option>
+                        {activeAreas.map((a) => (
+                          <option key={a.id} value={a.name}>{a.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Mode of Teaching */}
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Mode of Teaching
+                      </label>
+                      <select
+                        value={editMode}
+                        onChange={(e) => setEditMode(e.target.value)}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                      >
+                        {teachingModes.map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Remarks / Notes */}
+                    <div className="flex-1 flex flex-col">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Remarks / Notes
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={editRemarks}
+                        onChange={(e) => setEditRemarks(e.target.value)}
+                        placeholder="Additional skills notes, simulation equipment used..."
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none flex-1"
+                      />
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="e.g. Prof. R. Sharma (PGI Chandigarh)..."
-                      value={editExternalRpInput}
-                      onChange={(e) => setEditExternalRpInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleAddEditExternalRp();
+
+                  {/* Section 2: Date, Time & Duration */}
+                  <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200 flex flex-col">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-900 border-b border-indigo-100 pb-2 flex items-center gap-1.5">
+                      <span>2. Date, Time &amp; Duration</span>
+                    </h4>
+
+                    {/* Dates & Duration via CneDateTimeFields */}
+                    <CneDateTimeFields
+                      idPrefix="activity-edit"
+                      fromDate={editFromDate}
+                      fromTime={editFromTime}
+                      toDate={editToDate}
+                      toTime={editToTime}
+                      layout="stack"
+                      accentColor="emerald"
+                      onChange={({ fromDate, fromTime, toDate, toTime, calculatedDuration }) => {
+                        setEditFromDate(fromDate);
+                        setEditFromTime(fromTime);
+                        setEditToDate(toDate);
+                        setEditToTime(toTime);
+                        if (calculatedDuration && calculatedDuration !== '00:00:00') {
+                          setEditDuration(calculatedDuration);
                         }
                       }}
-                      className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs"
                     />
-                    <button
-                      type="button"
-                      onClick={handleAddEditExternalRp}
-                      className="px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-900 font-semibold rounded-lg text-xs cursor-pointer"
-                    >
-                      + Add
-                    </button>
-                  </div>
-                  {editExternalRpList.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {editExternalRpList.map((rp, idx) => (
-                        <span
-                          key={idx}
-                          className="inline-flex items-center gap-1 text-[11px] font-medium bg-amber-50 text-amber-900 px-2 py-0.5 rounded-md border border-amber-200"
-                        >
-                          <span>{rp} (External)</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveEditExternalRp(idx)}
-                            className="hover:text-rose-600 cursor-pointer"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      ))}
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                          Duration (HH:MM:SS) *
+                        </label>
+                        <span className="text-[10px] text-emerald-700 font-semibold">Auto-calculated</span>
+                      </div>
+                      <input
+                        type="text"
+                        required
+                        placeholder="00:00:00"
+                        value={editDuration}
+                        onChange={(e) => setEditDuration(e.target.value)}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Calculated automatically from selected dates and times. Max 8 hrs/day. Format: HH:MM:SS
+                      </p>
                     </div>
-                  )}
-                </div>
-              </div>
-
-              {/* EDIT MULTI-SELECT 2: Staff Participants */}
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                    Staff Participants (Multi-Select)
-                  </label>
-                  <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-                    Selected Count: {editStaffIds.length + editExternalStaffList.length} ({editStaffIds.length} internal + {editExternalStaffList.length} external)
-                  </span>
-                </div>
-
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
-                  <input
-                    type="text"
-                    placeholder="Filter staff by name or employee ID..."
-                    value={editStaffSearchQuery}
-                    onChange={(e) => setEditStaffSearchQuery(e.target.value)}
-                    className="w-full pl-8 pr-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
-                  />
-                </div>
-
-                {/* Selected staff chips */}
-                {editStaffIds.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1 bg-white rounded-lg border border-slate-200">
-                    {editStaffIds.map((id) => {
-                      const off = officers.find((o) => o.employeeId === id);
-                      return (
-                        <span
-                          key={id}
-                          className="inline-flex items-center gap-1 text-[11px] font-medium bg-slate-100 text-slate-800 px-2 py-0.5 rounded-md border border-slate-300"
-                        >
-                          <span>{off ? off.name : id} <span className="text-[10px] text-slate-500 opacity-75 font-mono">({id})</span></span>
-                          <button
-                            type="button"
-                            onClick={() => toggleEditStaffSelection(id)}
-                            className="hover:text-rose-600"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      );
-                    })}
                   </div>
-                )}
 
-                {/* Staff Selection List */}
-                <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white">
-                  {filteredEditStaffOptions.slice(0, 15).map((o) => {
-                    const isSelected = editStaffIds.includes(o.employeeId);
-                    return (
-                      <div
-                        key={o.employeeId}
-                        onClick={() => toggleEditStaffSelection(o.employeeId)}
-                        className={`p-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer text-xs ${
-                          isSelected ? 'bg-emerald-50/60 font-semibold' : ''
-                        }`}
-                      >
-                        <div>
-                          <span className="font-mono text-slate-600">{o.employeeId}</span>
-                          <span className="mx-1.5">•</span>
-                          <span className="text-slate-900">{o.name}</span>
-                          <span className="text-slate-400 text-[10px] ml-1">({o.designation})</span>
-                        </div>
+                  {/* Section 3: Resource Persons */}
+                  <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200 flex flex-col">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-teal-900 border-b border-teal-100 pb-2 flex items-center justify-between">
+                      <span>3. Resource Persons</span>
+                      <span className="text-xs font-bold text-teal-800 bg-teal-100 px-2 py-0.5 rounded-full">
+                        Selected: {editRpEmpIds.length}
+                      </span>
+                    </h4>
+
+                    {/* Internal Resource Persons */}
+                    <div className="space-y-2 flex-1 flex flex-col">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                          Resource Person(s) / Instructors *
+                        </label>
+                      </div>
+
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
                         <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => {}}
-                          className="rounded text-emerald-600 focus:ring-emerald-500"
+                          type="text"
+                          placeholder="Filter resource persons by name or ID..."
+                          value={editRpSearchQuery}
+                          onChange={(e) => setEditRpSearchQuery(e.target.value)}
+                          className="w-full pl-8 pr-2 py-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none"
                         />
                       </div>
-                    );
-                  })}
-                </div>
 
-                {/* External Staff Participants */}
-                <div className="pt-2 border-t border-slate-200">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                      External Staff Participants (Outside Observers / Trainees / Students)
-                    </label>
-                    <span className="text-[10px] text-slate-400">No Employee ID required</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="e.g. Sneha Patel (MSc Nursing Trainee)..."
-                      value={editExternalStaffInput}
-                      onChange={(e) => setEditExternalStaffInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleAddEditExternalStaff();
-                        }
-                      }}
-                      className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddEditExternalStaff}
-                      className="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-semibold rounded-lg text-xs cursor-pointer"
-                    >
-                      + Add
-                    </button>
-                  </div>
-                  {editExternalStaffList.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {editExternalStaffList.map((staff, idx) => (
-                        <span
-                          key={idx}
-                          className="inline-flex items-center gap-1 text-[11px] font-medium bg-emerald-50 text-emerald-900 px-2 py-0.5 rounded-md border border-emerald-200"
-                        >
-                          <span>{staff} (External)</span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveEditExternalStaff(idx)}
-                            className="hover:text-rose-600 cursor-pointer"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      ))}
+                      {/* Selected RP chips */}
+                      {editRpEmpIds.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1 bg-white rounded-lg border border-slate-200">
+                          {editRpEmpIds.map((id) => {
+                            const off = officers.find((o) => o.employeeId === id);
+                            return (
+                              <span
+                                key={id}
+                                className="inline-flex items-center gap-1 text-[11px] font-medium bg-purple-50 text-purple-900 px-2 py-0.5 rounded-md border border-purple-200"
+                              >
+                                <span>{off ? off.name : id} <span className="text-[10px] text-purple-700 opacity-75 font-mono">({id})</span></span>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleEditRpSelection(id)}
+                                  className="hover:text-rose-600 cursor-pointer"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* RP Selection List */}
+                      <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white flex-1">
+                        {filteredEditRpOptions.slice(0, 50).map((o) => {
+                          const isSelected = editRpEmpIds.includes(o.employeeId);
+                          return (
+                            <div
+                              key={o.employeeId}
+                              onClick={() => toggleEditRpSelection(o.employeeId)}
+                              className={`p-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer text-xs ${
+                                isSelected ? 'bg-purple-50/60 font-semibold' : ''
+                              }`}
+                            >
+                              <div className="truncate mr-2">
+                                <span className="font-mono text-slate-600">{o.employeeId}</span>
+                                <span className="mx-1.5">•</span>
+                                <span className="text-slate-900">{o.name}</span>
+                                <span className="text-slate-400 text-[10px] ml-1">({o.designation})</span>
+                              </div>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {}}
+                                className="rounded text-purple-600 focus:ring-purple-500 pointer-events-none shrink-0"
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  )}
+
+                    {/* External Resource Persons */}
+                    <div className="pt-2 border-t border-slate-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                          External Resource Persons
+                        </label>
+                        <span className="text-[10px] text-slate-400">No Employee ID</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="e.g. Prof. R. Sharma (PGI Chandigarh)..."
+                          value={editExternalRpInput}
+                          onChange={(e) => setEditExternalRpInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddEditExternalRp();
+                            }
+                          }}
+                          className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddEditExternalRp}
+                          className="px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-900 font-semibold rounded-lg text-xs cursor-pointer"
+                        >
+                          + Add
+                        </button>
+                      </div>
+                      {editExternalRpList.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-1 max-h-20 overflow-y-auto">
+                          {editExternalRpList.map((rp, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center gap-1 text-[11px] font-medium bg-amber-50 text-amber-900 px-2 py-0.5 rounded-md border border-amber-200"
+                            >
+                              <span>{rp} (External)</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveEditExternalRp(idx)}
+                                className="hover:text-rose-600 cursor-pointer"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Section 4: Participants */}
+                  <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200 flex flex-col">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-900 border-b border-emerald-100 pb-2 flex items-center justify-between">
+                      <span>4. Participants</span>
+                      <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
+                        Selected: {editStaffIds.length}
+                      </span>
+                    </h4>
+
+                    {/* Internal Participants */}
+                    <div className="space-y-2 flex-1 flex flex-col">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                          Participants
+                        </label>
+                      </div>
+
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                        <input
+                          type="text"
+                          placeholder="Filter staff by name or employee ID..."
+                          value={editStaffSearchQuery}
+                          onChange={(e) => setEditStaffSearchQuery(e.target.value)}
+                          className="w-full pl-8 pr-2 py-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                        />
+                      </div>
+
+                      {/* Selected staff chips */}
+                      {editStaffIds.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1 bg-white rounded-lg border border-slate-200">
+                          {editStaffIds.map((id) => {
+                            const off = officers.find((o) => o.employeeId === id);
+                            return (
+                              <span
+                                key={id}
+                                className="inline-flex items-center gap-1 text-[11px] font-medium bg-slate-100 text-slate-800 px-2 py-0.5 rounded-md border border-slate-300"
+                              >
+                                <span>{off ? off.name : id} <span className="text-[10px] text-slate-500 opacity-75 font-mono">({id})</span></span>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleEditStaffSelection(id)}
+                                  className="hover:text-rose-600 cursor-pointer"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Staff Selection List */}
+                      <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white flex-1">
+                        {filteredEditStaffOptions.slice(0, 50).map((o) => {
+                          const isSelected = editStaffIds.includes(o.employeeId);
+                          return (
+                            <div
+                              key={o.employeeId}
+                              onClick={() => toggleEditStaffSelection(o.employeeId)}
+                              className={`p-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer text-xs ${
+                                isSelected ? 'bg-emerald-50/60 font-semibold' : ''
+                              }`}
+                            >
+                              <div className="truncate mr-2">
+                                <span className="font-mono text-slate-600">{o.employeeId}</span>
+                                <span className="mx-1.5">•</span>
+                                <span className="text-slate-900">{o.name}</span>
+                                <span className="text-slate-400 text-[10px] ml-1">({o.designation})</span>
+                              </div>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {}}
+                                className="rounded text-emerald-600 focus:ring-emerald-500 pointer-events-none shrink-0"
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* External Participants */}
+                    <div className="pt-2 border-t border-slate-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                          External Participants
+                        </label>
+                        <span className="text-[10px] text-slate-400">No Employee ID</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="e.g. Sneha Patel (MSc Nursing Trainee)..."
+                          value={editExternalStaffInput}
+                          onChange={(e) => setEditExternalStaffInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddEditExternalStaff();
+                            }
+                          }}
+                          className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddEditExternalStaff}
+                          className="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-semibold rounded-lg text-xs cursor-pointer"
+                        >
+                          + Add
+                        </button>
+                      </div>
+                      {editExternalStaffList.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-1 max-h-20 overflow-y-auto">
+                          {editExternalStaffList.map((staff, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center gap-1 text-[11px] font-medium bg-emerald-50 text-emerald-900 px-2 py-0.5 rounded-md border border-emerald-200"
+                            >
+                              <span>{staff} (External)</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveEditExternalStaff(idx)}
+                                className="hover:text-rose-600 cursor-pointer"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Remarks */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-                  Remarks / Notes
-                </label>
-                <textarea
-                  rows={2}
-                  value={editRemarks}
-                  onChange={(e) => setEditRemarks(e.target.value)}
-                  placeholder="Additional skills notes, simulation equipment used..."
-                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              {/* Sticky Footer */}
+              <div className="px-6 py-3.5 border-t border-slate-200 flex items-center justify-end gap-2 bg-slate-50/70 shrink-0">
                 <button
                   type="button"
                   onClick={() => setEditingRecord(null)}
                   disabled={isEditSubmitting}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium cursor-pointer"
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl font-medium text-xs disabled:opacity-40 cursor-pointer transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isEditSubmitting}
-                  className="flex items-center gap-1.5 px-5 py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
+                  className="flex items-center gap-1.5 px-5 py-2 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 disabled:opacity-50 cursor-pointer transition-colors shadow-xs"
                 >
                   {isEditSubmitting ? (
                     <>

@@ -590,7 +590,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
 
         {canScheduleCne && (
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Dedicated Departmental Schedule Button (opens batch modal with 2 blank rows) */}
+            {/* Dedicated Departmental Schedule Button (opens batch modal with 1 blank row) */}
             <button
               id="btn-schedule-departmental-cne"
               type="button"

@@ -124,7 +124,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs sm:text-sm border border-slate-700 transition-all cursor-pointer"
               >
                 <PlusCircle className="w-4 h-4 text-emerald-400" />
-                <span>Add CNE Activity</span>
+                <span>Record Unscheduled CNE Activity</span>
               </button>
             )}
           </div>
