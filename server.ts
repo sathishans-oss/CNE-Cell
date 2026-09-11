@@ -71,12 +71,12 @@ async function startServer() {
       status: 'ok',
       service: 'CNE Management System API',
       aiAvailable: !!process.env.GEMINI_API_KEY,
-      model: (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim(),
+      model: (process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite').trim(),
       timestamp: new Date().toISOString()
     });
   });
 
-  // AI Question Generation Endpoint (Gemini 2.5 Flash)
+  // AI Question Generation Endpoint (Gemini Flash)
   // Strictly generates exactly 5 MCQs from CNE Topic + Unified Learning Material.
   // Authoritatively verified against Apps Script session and active quota reservation before invoking Gemini.
   // Never falls back silently to mock or static questions.
@@ -235,12 +235,24 @@ async function startServer() {
     }
 
     try {
-      const preferredModel = (process.env.GEMINI_MODEL || 'gemini-3.6-flash').trim();
+      // Prioritize actively supported Gemini models with resilient fallback
+      // 1. gemini-3.1-flash-lite: High throughput, robust availability, avoids 503 peak-hour spikes
+      // 2. gemini-flash-latest: Production alias routing to latest stable flash
+      // 3. gemini-3.8-flash: Full flash model
+      const cleanEnvModel = (process.env.GEMINI_MODEL || '').trim();
+      const isDeprecatedOrInvalid = [
+        'gemini-2.5-flash',
+        'gemini-1.5-flash',
+        'gemini-1.5-pro',
+        'gemini-2.0-flash',
+        'gemini-3.6-flash'
+      ].includes(cleanEnvModel);
+
       const candidateModels = Array.from(new Set([
-        preferredModel,
-        'gemini-3.6-flash',
-        'gemini-3.8-flash',
-        'gemini-2.5-flash'
+        ...(!isDeprecatedOrInvalid && cleanEnvModel ? [cleanEnvModel] : []),
+        'gemini-3.1-flash-lite',
+        'gemini-flash-latest',
+        'gemini-3.8-flash'
       ]));
 
       const prompt = `You are a Senior Clinical Nursing Education Specialist and Examiner at AIIMS (All India Institute of Medical Sciences).
@@ -268,12 +280,13 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
 8. Output MUST strictly conform to the requested JSON schema with an array of exactly 5 question objects.`;
 
       let response: any = null;
-      let usedModel = preferredModel;
+      let usedModel = candidateModels[0];
       let lastAiErr: any = null;
 
       for (const candidate of candidateModels) {
         try {
           usedModel = candidate;
+          console.log(`[AI Generation] Attempting generation with model: ${candidate}...`);
           response = await ai.models.generateContent({
             model: candidate,
             contents: prompt,
@@ -307,16 +320,24 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
           });
           if (response?.text) {
             lastAiErr = null;
+            console.log(`[AI Generation] Successfully generated questions with model: ${candidate}`);
             break;
           }
         } catch (attemptErr: any) {
           lastAiErr = attemptErr;
-          console.warn(`[AI Generation] Model ${candidate} failed: ${attemptErr?.message || attemptErr}. Trying next candidate if available...`);
+          const status = attemptErr?.status || attemptErr?.code || (attemptErr?.error?.code);
+          const msg = attemptErr?.message || attemptErr?.error?.message || String(attemptErr);
+          console.warn(`[AI Generation] Model ${candidate} failed (${status || 'error'}): ${msg}. Trying next candidate if available...`);
+          // If the model is experiencing high demand (503) or rate limits (429), brief pause before next candidate
+          if (status === 503 || status === 429 || /high demand|UNAVAILABLE|RESOURCE_EXHAUSTED/i.test(msg)) {
+            await new Promise((resolve) => setTimeout(resolve, 600));
+          }
         }
       }
 
       if (!response || !response.text) {
-        throw lastAiErr || new Error('No response returned from Gemini AI models.');
+        const detailMsg = lastAiErr?.message || (typeof lastAiErr === 'string' ? lastAiErr : 'No response returned from Gemini AI models.');
+        throw new Error(detailMsg);
       }
 
       const responseText = response.text || '';
@@ -453,11 +474,15 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
         source: usedModel
       });
     } catch (err: any) {
-      console.error('[AI Generator Error]', err.message);
+      console.error('[AI Generator Error]', err?.message || err);
+      const isOverloaded = /503|UNAVAILABLE|high demand/i.test(err?.message || '');
+      const clientMessage = isOverloaded
+        ? 'AI models are temporarily experiencing high demand. Please wait a few moments and try again.'
+        : (err?.message ? `AI generation failed: ${err.message}` : 'Unable to generate AI questions.');
       return res.status(502).json({
         success: false,
         errorCode: 'AI_GENERATION_ERROR',
-        message: 'Unable to generate AI questions.'
+        message: clientMessage
       });
     }
   });

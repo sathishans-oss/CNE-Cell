@@ -632,7 +632,7 @@ export class ApiService {
         return {
           success: false,
           errorCode: 'AI_ENDPOINT_INVALID_RESPONSE',
-          message: 'AI question service returned an invalid non-JSON response. Please check the Cloudflare AI endpoint configuration.'
+          message: 'AI question service returned an invalid non-JSON response. Please check the Gemini AI endpoint configuration.'
         };
       }
 
@@ -644,7 +644,7 @@ export class ApiService {
         return {
           success: false,
           errorCode: 'AI_ENDPOINT_INVALID_RESPONSE',
-          message: 'AI question service returned an invalid non-JSON response. Please check the Cloudflare AI endpoint configuration.'
+          message: 'AI question service returned an invalid non-JSON response. Please check the Gemini AI endpoint configuration.'
         };
       }
 
