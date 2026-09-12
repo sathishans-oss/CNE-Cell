@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Sparkles,
   Calendar,
@@ -84,6 +84,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   const [officersList, setOfficersList] = useState<any[]>([]);
   const [isResourcePersonsLoading, setIsResourcePersonsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
   // Part 2 Active Modals
   const [selectedDetailCne, setSelectedDetailCne] = useState<UpcomingClass | null>(null);
@@ -116,6 +117,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   const [editMaxParticipants, setEditMaxParticipants] = useState(40);
   const [editAdminRemarks, setEditAdminRemarks] = useState('');
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const editSubmittingRef = useRef(false);
 
   const { success, error } = useToast();
   const isAdmin = user?.role === 'ADMIN';
@@ -351,6 +353,8 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
 
   const handleCreateUpcomingClass = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current || isSubmitting) return;
+
     if (!newTopic.trim() || !newArea.trim() || !newDate.trim()) {
       error('Please fill in all required fields (Topic, Area, From Date & Time).');
       return;
@@ -401,6 +405,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
       rpNames.push(...newExternalRpList.map((n) => `${n} (External)`));
     }
 
+    submittingRef.current = true;
     setIsSubmitting(true);
     try {
       // The Schedule New CNE workflow MUST ALWAYS submit cneType: 'CENTRAL'
@@ -449,6 +454,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
     } catch (err: any) {
       error(err?.message || 'Error creating CNE.');
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -531,7 +537,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
 
   const handleUpdateClassSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingCne) return;
+    if (!editingCne || editSubmittingRef.current || isEditSubmitting) return;
 
     if (!editTopic.trim() || !editArea.trim() || !editDate.trim()) {
       error('Please fill in all required fields (Topic, Area, From Date & Time).');
@@ -572,6 +578,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
       rpNames.push(...editExternalRpList.map((n) => `${n} (External)`));
     }
 
+    editSubmittingRef.current = true;
     setIsEditSubmitting(true);
     try {
       // NOTE: CNE ID is permanently immutable and cannot be changed or overwritten.
@@ -627,6 +634,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
     } catch (err: any) {
       error(err?.message || 'Error updating CNE.');
     } finally {
+      editSubmittingRef.current = false;
       setIsEditSubmitting(false);
     }
   };

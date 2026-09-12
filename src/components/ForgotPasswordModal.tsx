@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { X, KeyRound, User, Calendar, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import { useToast } from './Toast';
@@ -19,6 +19,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const loadingRef = useRef(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
 
@@ -28,6 +29,8 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loadingRef.current || loading) return;
+
     if (newPassword !== confirmPassword) {
       setErrorMsg('New password and confirmation password do not match.');
       return;
@@ -37,6 +40,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
       return;
     }
 
+    loadingRef.current = true;
     setLoading(true);
     setErrorMsg('');
 
@@ -53,6 +57,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
     } catch (err: any) {
       setErrorMsg(err?.message || 'Server error during password reset.');
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   };

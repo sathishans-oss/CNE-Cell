@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Award,
   Calendar,
@@ -32,6 +32,7 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
   const [officers, setOfficers] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const generatingPdfRef = useRef(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedYear, setSelectedYear] = useState<string>('2026-2027');
   const [startDate, setStartDate] = useState('');
@@ -125,11 +126,15 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
   }, [filteredRecords]);
 
   const handleGeneratePdf = async () => {
+    if (generatingPdfRef.current || isGeneratingPdf) return;
+
     const ayDisplay = selectedYear === 'ALL' ? '2026–2027' : selectedYear.replace('-', '–');
     if (filteredRecords.length === 0) {
       error(`No CNE records found for Assessment Year ${ayDisplay}.`);
       return;
     }
+
+    generatingPdfRef.current = true;
     setIsGeneratingPdf(true);
     try {
       generateAnnualCNEPdf(user, filteredRecords, ayDisplay);
@@ -137,6 +142,7 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
     } catch (e: any) {
       error('Failed to generate PDF document.');
     } finally {
+      generatingPdfRef.current = false;
       setIsGeneratingPdf(false);
     }
   };

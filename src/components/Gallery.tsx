@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Images,
   PlusCircle,
@@ -32,8 +32,10 @@ export const Gallery: React.FC<GalleryProps> = ({ user }) => {
   const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0]);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const deletingRef = useRef(false);
 
   const { success, error } = useToast();
   const isAdmin = user?.role === 'ADMIN';
@@ -57,7 +59,8 @@ export const Gallery: React.FC<GalleryProps> = ({ user }) => {
   };
 
   const handleDeletePhoto = async (id: string) => {
-    if (isDeleting) return;
+    if (deletingRef.current || isDeleting) return;
+    deletingRef.current = true;
     setIsDeleting(true);
     try {
       const res = await ApiService.deleteGalleryItem(id);
@@ -71,6 +74,7 @@ export const Gallery: React.FC<GalleryProps> = ({ user }) => {
     } catch (e: any) {
       error('Error deleting photo.');
     } finally {
+      deletingRef.current = false;
       setIsDeleting(false);
     }
   };
@@ -93,11 +97,14 @@ export const Gallery: React.FC<GalleryProps> = ({ user }) => {
 
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current || isSubmitting) return;
+
     if (!previewImage || !newTitle.trim()) {
       error('Please select an image and enter a title.');
       return;
     }
 
+    submittingRef.current = true;
     setIsSubmitting(true);
     try {
       const res = await ApiService.uploadImage(
@@ -120,6 +127,7 @@ export const Gallery: React.FC<GalleryProps> = ({ user }) => {
     } catch (err: any) {
       error(err?.message || 'Error uploading image.');
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };

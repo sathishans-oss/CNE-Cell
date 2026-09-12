@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { X, KeyRound, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import { useToast } from './Toast';
@@ -15,6 +15,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const loadingRef = useRef(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   const { success, error } = useToast();
@@ -23,6 +24,8 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loadingRef.current || loading) return;
+
     if (newPassword !== confirmPassword) {
       setErrorMsg('Passwords do not match.');
       return;
@@ -32,6 +35,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
       return;
     }
 
+    loadingRef.current = true;
     setLoading(true);
     setErrorMsg('');
 
@@ -47,6 +51,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
     } catch (err: any) {
       setErrorMsg(err?.message || 'Server error.');
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   };

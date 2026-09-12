@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BookOpen, X, FileText, CheckCircle2, Loader2, Save, Info } from 'lucide-react';
 import { UpcomingClass } from '../../types';
 import { ApiService } from '../../services/api';
@@ -20,6 +20,7 @@ export const CNEReferenceModal: React.FC<CNEReferenceModalProps> = ({
   const cneId = cne.cneId || cne.classId || '';
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const savingRef = useRef(false);
   const [unifiedContent, setUnifiedContent] = useState('');
   const [updatedBy, setUpdatedBy] = useState<string | undefined>(undefined);
   const [updatedAt, setUpdatedAt] = useState<string | undefined>(undefined);
@@ -56,13 +57,14 @@ export const CNEReferenceModal: React.FC<CNEReferenceModalProps> = ({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSaving || !isAuthorized) return;
+    if (savingRef.current || isSaving || !isAuthorized) return;
 
     if (!unifiedContent.trim()) {
       error('Please enter CNE Class Content / Learning Material before saving.');
       return;
     }
 
+    savingRef.current = true;
     setIsSaving(true);
     try {
       const res = await ApiService.saveReferenceMaterial({
@@ -81,6 +83,7 @@ export const CNEReferenceModal: React.FC<CNEReferenceModalProps> = ({
     } catch (e: any) {
       error(e?.message || 'Error occurred while saving learning material.');
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };

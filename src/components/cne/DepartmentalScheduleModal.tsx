@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Plus, Trash2, Calendar, Clock, MapPin, User, BookOpen, AlertCircle, Loader2, X, PlusCircle } from 'lucide-react';
 import { DepartmentalScheduleRow, Employee, SessionUser } from '../../types';
 import { ApiService } from '../../services/api';
@@ -63,6 +63,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
   const [internalOfficers, setInternalOfficers] = useState<Employee[]>(officersList || []);
   const [isResourcePersonsLoading, setIsResourcePersonsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [extRpInputMap, setExtRpInputMap] = useState<Record<string, string>>({});
   const [rpSearchMap, setRpSearchMap] = useState<Record<string, string>>({});
 
@@ -177,6 +178,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current || isSubmitting) return;
 
     // Validation
     const todayDate = new Date();
@@ -238,6 +240,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
       }
     }
 
+    submittingRef.current = true;
     setIsSubmitting(true);
     try {
       const payload = rows.map((r) => {
@@ -287,6 +290,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
     } catch (err: any) {
       error(err?.message || 'Error scheduling departmental CNE batch.');
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };

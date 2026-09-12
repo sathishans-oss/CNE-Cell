@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Database,
   PlusCircle,
@@ -84,6 +84,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
   const [externalStaffInput, setExternalStaffInput] = useState('');
   const [formRemarks, setFormRemarks] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
   // Edit CNE Modal State (Replacing Inline Edit)
   const [editingRecord, setEditingRecord] = useState<CNERecord | null>(null);
@@ -106,14 +107,17 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
   const [editExternalStaffInput, setEditExternalStaffInput] = useState('');
   const [editRemarks, setEditRemarks] = useState('');
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const editSubmittingRef = useRef(false);
 
   // Delete Confirm Modal State
   const [deletingRecord, setDeletingRecord] = useState<CNERecord | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const deletingRef = useRef(false);
 
   // Verify Sheets State (Admin Only)
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  const verifyingRef = useRef(false);
   const [verifyReport, setVerifyReport] = useState<SheetAuditItem[] | null>(null);
   const [verifyError, setVerifyError] = useState<string | null>(null);
 
@@ -121,8 +125,9 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
 
   const handleExecuteVerifySheets = async () => {
     if (user.role !== 'ADMIN') return;
-    if (isVerifying) return;
+    if (verifyingRef.current || isVerifying) return;
 
+    verifyingRef.current = true;
     setIsVerifying(true);
     setVerifyError(null);
     setVerifyReport(null);
@@ -146,6 +151,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
       setVerifyError(errMsg);
       error(errMsg);
     } finally {
+      verifyingRef.current = false;
       setIsVerifying(false);
     }
   };
@@ -276,6 +282,8 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
   // Handle Add CNE
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current || isSubmitting) return;
+
     if (!formTopic.trim() || !formArea.trim() || !formFromDate.trim() || (selectedRpEmpIds.length === 0 && externalRpList.length === 0)) {
       error('Please complete all required fields (Topic, Area, Date & Time, at least one Resource Person).');
       return;
@@ -313,6 +321,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
 
     const totalStaffCount = selectedStaffIds.length + externalStaffList.length;
 
+    submittingRef.current = true;
     setIsSubmitting(true);
     try {
       const res = await ApiService.addCNE({
@@ -359,6 +368,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
     } catch (err: any) {
       error(err?.message || 'Error saving record.');
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -402,7 +412,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
   // Save Edit Modal
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingRecord) return;
+    if (!editingRecord || editSubmittingRef.current || isEditSubmitting) return;
 
     if (!editTopic.trim() || !editArea.trim() || !editFromDate.trim() || (editRpEmpIds.length === 0 && editExternalRpList.length === 0)) {
       error('Please complete all required fields (Topic, Area, Date & Time, at least one Resource Person).');
@@ -458,6 +468,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
       remarks: editRemarks.trim()
     };
 
+    editSubmittingRef.current = true;
     setIsEditSubmitting(true);
     try {
       const res = await ApiService.updateCNE(editingRecord.dataId, updatedData);
@@ -473,13 +484,15 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
     } catch (err: any) {
       error(err?.message || 'Error updating record.');
     } finally {
+      editSubmittingRef.current = false;
       setIsEditSubmitting(false);
     }
   };
 
   // Delete action
   const confirmDelete = async () => {
-    if (!deletingRecord || isDeleting) return;
+    if (!deletingRecord || deletingRef.current || isDeleting) return;
+    deletingRef.current = true;
     setIsDeleting(true);
     try {
       const res = await ApiService.deleteCNE(deletingRecord.dataId);
@@ -494,6 +507,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
     } catch (err: any) {
       error(err?.message || 'Error deleting record.');
     } finally {
+      deletingRef.current = false;
       setIsDeleting(false);
     }
   };

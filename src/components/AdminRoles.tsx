@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Shield,
   Search,
@@ -104,47 +104,29 @@ const AreaMultiSelect: React.FC<AreaMultiSelectProps> = ({
 
   return (
     <div className="relative inline-block text-left" ref={popoverRef}>
-      <div className="flex flex-col gap-1.5">
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={isOpen ? handleCancel : handleOpen}
-            className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
-              assignedAreas.length === 0
-                ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
-                : 'bg-teal-50 text-teal-800 border-teal-300 hover:bg-teal-100'
-            }`}
-            title="Assign or modify clinical areas/wards"
-          >
-            {assignedAreas.length === 0 ? (
-              <>
-                <Plus className="w-3 h-3 text-amber-700" />
-                <span>Assign Ward</span>
-              </>
-            ) : (
-              <>
-                <span>{assignedAreas.length} Ward{assignedAreas.length > 1 ? 's' : ''} Assigned</span>
-                <ChevronDown className="w-3 h-3 text-teal-700" />
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* Selected ward badges */}
-        {assignedAreas.length > 0 && (
-          <div className="flex flex-wrap gap-1 max-w-[280px]">
-            {assignedAreas.map((area) => (
-              <span
-                key={area}
-                className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[11px] font-semibold bg-teal-100/90 text-teal-900 border border-teal-200"
-              >
-                <span>{area}</span>
-              </span>
-            ))}
-          </div>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={isOpen ? handleCancel : handleOpen}
+        className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+          assignedAreas.length === 0
+            ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+            : 'bg-teal-50 text-teal-800 border-teal-300 hover:bg-teal-100'
+        }`}
+        title="Assign or modify clinical areas/wards"
+      >
+        {assignedAreas.length === 0 ? (
+          <>
+            <Plus className="w-3 h-3 text-amber-700" />
+            <span>Assign Ward</span>
+          </>
+        ) : (
+          <>
+            <span>{assignedAreas.length} Ward{assignedAreas.length > 1 ? 's' : ''} Assigned</span>
+            <ChevronDown className="w-3 h-3 text-teal-700" />
+          </>
         )}
-      </div>
+      </button>
 
       {/* Floating Multi-Select Dropdown with Local Draft */}
       {isOpen && (
@@ -246,8 +228,13 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [resettingId, setResettingId] = useState<string | null>(null);
+  const resettingRef = useRef(false);
   const [updatingEmpId, setUpdatingEmpId] = useState<string | null>(null);
+  const updatingEmpIdRef = useRef<string | null>(null);
+  const syncingRef = useRef(false);
   const [confirmResetOfficer, setConfirmResetOfficer] = useState<{ empId: string; name: string } | null>(null);
+  const [removingWardKeys, setRemovingWardKeys] = useState<Set<string>>(() => new Set<string>());
+  const removingWardsRef = useRef<Set<string>>(new Set<string>());
 
   const { success, error } = useToast();
 
@@ -319,10 +306,16 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
   };
 
   const handleSyncRoles = async () => {
+    if (syncingRef.current || loading) return;
+    syncingRef.current = true;
     try {
-      localStorage.removeItem('cne_cache_getRoles');
-    } catch {}
-    await loadRolesData();
+      try {
+        localStorage.removeItem('cne_cache_getRoles');
+      } catch {}
+      await loadRolesData();
+    } finally {
+      syncingRef.current = false;
+    }
   };
 
   const handleRoleChange = async (
@@ -357,7 +350,7 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
     // If assigned areas exist and not ADMIN, effective role is AREA_INCHARGE
     const effectiveRole: UserRole = (newRole !== 'ADMIN' && nextAssignedAreas.length > 0)
       ? 'AREA_INCHARGE'
-      : newRole;
+      : (newRole === 'AREA_INCHARGE' && nextAssignedAreas.length === 0 ? 'EMPLOYEE' : newRole);
 
     const nextAreaString = nextAssignedAreas.join(', ');
 
@@ -366,8 +359,9 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
       prev.assignedAreas.length === nextAssignedAreas.length &&
       prev.assignedAreas.every((a, i) => a === nextAssignedAreas[i]);
     if (prev.role === effectiveRole && areasUnchanged && targetAssignedAreas === undefined) return;
-    if (updatingEmpId) return;
+    if (updatingEmpIdRef.current === empId || updatingEmpId) return;
 
+    updatingEmpIdRef.current = empId;
     setUpdatingEmpId(empId);
     try {
       const res = await ApiService.updateRole(empId, effectiveRole, nextAssignedAreas);
@@ -402,12 +396,49 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
         [normId]: prev
       }));
     } finally {
+      updatingEmpIdRef.current = null;
       setUpdatingEmpId(null);
     }
   };
 
+  const handleRemoveWard = async (empId: string, wardToRemove: string) => {
+    const removeKey = `${empId}:${wardToRemove}`;
+    // Defensive guard: return immediately if already removing this ward
+    if (removingWardsRef.current.has(removeKey)) return;
+    if (updatingEmpId === empId) return;
+
+    // Synchronously set removing state before any async calls
+    removingWardsRef.current.add(removeKey);
+    setRemovingWardKeys((prev) => {
+      const next = new Set(prev);
+      next.add(removeKey);
+      return next;
+    });
+
+    try {
+      const normId = empId.toLowerCase().trim();
+      const current = rolesMap[normId];
+      const currentAreas = current?.assignedAreas || [];
+      const updatedAreas = currentAreas.filter((w) => w !== wardToRemove);
+      const targetRole: UserRole = current?.role === 'ADMIN'
+        ? 'ADMIN'
+        : updatedAreas.length > 0
+        ? 'AREA_INCHARGE'
+        : 'EMPLOYEE';
+      await handleRoleChange(empId, targetRole, updatedAreas);
+    } finally {
+      removingWardsRef.current.delete(removeKey);
+      setRemovingWardKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(removeKey);
+        return next;
+      });
+    }
+  };
+
   const executeAdminResetPassword = async (empId: string, name: string) => {
-    if (resettingId) return;
+    if (resettingRef.current || resettingId) return;
+    resettingRef.current = true;
     setResettingId(empId);
     try {
       const res = await ApiService.adminResetPassword(empId);
@@ -420,6 +451,7 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
     } catch (e: any) {
       error('Error resetting employee password.');
     } finally {
+      resettingRef.current = false;
       setResettingId(null);
     }
   };
@@ -490,7 +522,9 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
                   <th className="py-3 px-4">Officer Name</th>
                   <th className="py-3 px-4">Designation</th>
                   <th className="py-3 px-4">Assigned Role</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="py-3 px-4">Assign Ward</th>
+                  <th className="py-3 px-4">Assigned Wards</th>
+                  <th className="py-3 px-4 text-right">Reset Password</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -513,16 +547,16 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
                         )}
                       </td>
 
-                      <td className="py-3 px-4 font-semibold text-slate-900">
+                      <td className="py-3 px-4 font-semibold text-slate-900 whitespace-nowrap">
                         {officer.name}
                       </td>
 
-                      <td className="py-3 px-4 text-slate-600">
+                      <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
                         {officer.designation}
                       </td>
 
-                      <td className="py-3 px-4">
-                        <div className="flex flex-col sm:flex-row sm:items-start gap-2.5">
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
                           <select
                             value={role}
                             disabled={updatingEmpId === officer.employeeId}
@@ -540,20 +574,64 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
                             <option value="ADMIN">ADMIN</option>
                           </select>
 
-                          {role !== 'ADMIN' && (
-                            <AreaMultiSelect
-                              employeeId={officer.employeeId}
-                              assignedAreas={assignedAreas}
-                              areasList={areasList}
-                              disabled={updatingEmpId === officer.employeeId}
-                              onSave={(newAreas) => handleRoleChange(officer.employeeId, 'AREA_INCHARGE', newAreas)}
-                            />
-                          )}
-
                           {updatingEmpId === officer.employeeId && (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-700 shrink-0 self-center" />
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-700 shrink-0" />
                           )}
                         </div>
+                      </td>
+
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        {role !== 'ADMIN' ? (
+                          <AreaMultiSelect
+                            employeeId={officer.employeeId}
+                            assignedAreas={assignedAreas}
+                            areasList={areasList}
+                            disabled={updatingEmpId === officer.employeeId}
+                            onSave={(newAreas) => {
+                              const targetRole: UserRole = newAreas.length > 0 ? 'AREA_INCHARGE' : 'EMPLOYEE';
+                              handleRoleChange(officer.employeeId, targetRole, newAreas);
+                            }}
+                          />
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-4">
+                        {role !== 'ADMIN' && assignedAreas.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 max-w-[320px]">
+                            {assignedAreas.map((ward) => {
+                              const removeKey = `${officer.employeeId}:${ward}`;
+                              const isRemoving = removingWardKeys.has(removeKey);
+                              const isOfficerUpdating = updatingEmpId === officer.employeeId;
+
+                              return (
+                                <span
+                                  key={ward}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-teal-50 text-teal-900 border border-teal-200"
+                                >
+                                  <span>{ward}</span>
+                                  <button
+                                    type="button"
+                                    disabled={isRemoving || isOfficerUpdating}
+                                    onClick={() => handleRemoveWard(officer.employeeId, ward)}
+                                    className="text-teal-600 hover:text-rose-600 hover:bg-rose-50 rounded p-0.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                                    title={isRemoving ? `Removing ${ward}...` : `Remove ${ward}`}
+                                    aria-label={`Remove ${ward}`}
+                                  >
+                                    {isRemoving ? (
+                                      <Loader2 className="w-3 h-3 animate-spin text-teal-700" />
+                                    ) : (
+                                      <X className="w-3 h-3" />
+                                    )}
+                                  </button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
                       </td>
 
                       <td className="py-3 px-4 text-right whitespace-nowrap">

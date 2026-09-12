@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Sparkles,
   X,
@@ -40,7 +40,9 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
   const [questions, setQuestions] = useState<CNEQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  const generatingRef = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
+  const savingRef = useRef(false);
   const [isLocked, setIsLocked] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -100,7 +102,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
   );
 
   const handleGenerateAi = async () => {
-    if (isGenerating || isLocked || !isAuthorized) return;
+    if (generatingRef.current || isGenerating || isLocked || !isAuthorized) return;
 
     // 1. One-time allowance check
     if (isAiGenerationUsed) {
@@ -108,19 +110,20 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
       return;
     }
 
-    // 2. Material-First Rule: Material grounding check
-    const refRes = await ApiService.getReferenceMaterial(cneId);
-    const materialText = (refRes.data?.unifiedContent || refRes.data?.referenceText || '').trim();
-
-    if (!materialText || materialText.length < 15) {
-      setHasMaterial(false);
-      error('CNE Class Content / Learning Material is required before generating AI questions. Please enter and save learning material first.');
-      return;
-    }
-    setHasMaterial(true);
-
+    generatingRef.current = true;
     setIsGenerating(true);
     try {
+      // 2. Material-First Rule: Material grounding check
+      const refRes = await ApiService.getReferenceMaterial(cneId);
+      const materialText = (refRes.data?.unifiedContent || refRes.data?.referenceText || '').trim();
+
+      if (!materialText || materialText.length < 15) {
+        setHasMaterial(false);
+        error('CNE Class Content / Learning Material is required before generating AI questions. Please enter and save learning material first.');
+        return;
+      }
+      setHasMaterial(true);
+
       // 3. Atomically Reserve Quota attempt with Apps Script LockService
       const reserveRes = await ApiService.reserveAiQuota(cneId);
       if (!reserveRes.success || !reserveRes.data?.reservationToken) {
@@ -186,6 +189,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
     } catch (e: any) {
       error(e?.message || 'Error occurred during AI question generation.');
     } finally {
+      generatingRef.current = false;
       setIsGenerating(false);
     }
   };
@@ -303,7 +307,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
   };
 
   const handleSaveQuestions = async () => {
-    if (isSaving || isLocked || !isAuthorized) return;
+    if (savingRef.current || isSaving || isLocked || !isAuthorized) return;
 
     const activeQuestions = questions.filter(
       (q) => q.status !== 'INACTIVE' && q.status !== 'REPLACED'
@@ -339,6 +343,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
       }
     }
 
+    savingRef.current = true;
     setIsSaving(true);
     try {
       const res = await ApiService.saveCNEQuestions({
@@ -356,6 +361,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
     } catch (e: any) {
       error(e?.message || 'Error occurred while saving questions.');
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };

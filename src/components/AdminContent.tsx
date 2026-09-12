@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   FileText,
   Bell,
@@ -52,6 +52,7 @@ export const AdminContent: React.FC<AdminContentProps> = ({
   const [editingNews, setEditingNews] = useState<NewsEventItem | null>(null);
   const [deletingNewsId, setDeletingNewsId] = useState<string | null>(null);
   const [newsSubmitting, setNewsSubmitting] = useState(false);
+  const newsSubmittingRef = useRef(false);
   const [newsForm, setNewsForm] = useState<{
     title: string;
     date: string;
@@ -78,6 +79,7 @@ export const AdminContent: React.FC<AdminContentProps> = ({
   const [deskInfo, setDeskInfo] = useState<CoordinatorDeskInfo>(INITIAL_COORDINATOR_DESK);
   const [deskLoading, setDeskLoading] = useState(false);
   const [deskSaving, setDeskSaving] = useState(false);
+  const deskSavingRef = useRef(false);
   const [deskForm, setDeskForm] = useState<{
     note: string;
     coordinatorsText: string;
@@ -97,6 +99,7 @@ export const AdminContent: React.FC<AdminContentProps> = ({
   const [editingLink, setEditingLink] = useState<QuickLinkItem | null>(null);
   const [deletingLinkId, setDeletingLinkId] = useState<string | null>(null);
   const [linkSubmitting, setLinkSubmitting] = useState(false);
+  const linkSubmittingRef = useRef(false);
   const [linkForm, setLinkForm] = useState<{
     title: string;
     description: string;
@@ -122,6 +125,7 @@ export const AdminContent: React.FC<AdminContentProps> = ({
   const [editingPhoto, setEditingPhoto] = useState<GalleryItem | null>(null);
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | null>(null);
   const [photoSubmitting, setPhotoSubmitting] = useState(false);
+  const photoSubmittingRef = useRef(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [photoForm, setPhotoForm] = useState<{
     title: string;
@@ -241,8 +245,9 @@ export const AdminContent: React.FC<AdminContentProps> = ({
 
   const handleSaveNews = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newsForm.title.trim() || !newsForm.date.trim() || newsSubmitting) return;
+    if (!newsForm.title.trim() || !newsForm.date.trim() || newsSubmittingRef.current || newsSubmitting) return;
 
+    newsSubmittingRef.current = true;
     setNewsSubmitting(true);
     try {
       if (editingNews) {
@@ -268,12 +273,14 @@ export const AdminContent: React.FC<AdminContentProps> = ({
     } catch (err: any) {
       error(err?.message || 'Error saving news item.');
     } finally {
+      newsSubmittingRef.current = false;
       setNewsSubmitting(false);
     }
   };
 
   const handleDeleteNews = async (id: string) => {
-    if (newsSubmitting) return;
+    if (newsSubmittingRef.current || newsSubmitting) return;
+    newsSubmittingRef.current = true;
     setNewsSubmitting(true);
     try {
       const res = await ApiService.deleteNewsEvent(id);
@@ -287,6 +294,7 @@ export const AdminContent: React.FC<AdminContentProps> = ({
     } catch (err: any) {
       error(err?.message || 'Error deleting news.');
     } finally {
+      newsSubmittingRef.current = false;
       setNewsSubmitting(false);
     }
   };
@@ -296,13 +304,14 @@ export const AdminContent: React.FC<AdminContentProps> = ({
   // -------------------------------------------------------------
   const handleSaveDesk = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (deskSaving) return;
+    if (deskSavingRef.current || deskSaving) return;
 
     const coords = deskForm.coordinatorsText
       .split(',')
       .map((c) => c.trim())
       .filter(Boolean);
 
+    deskSavingRef.current = true;
     setDeskSaving(true);
     try {
       const res = await ApiService.updateCoordinatorDesk({
@@ -319,6 +328,7 @@ export const AdminContent: React.FC<AdminContentProps> = ({
     } catch (err: any) {
       error(err?.message || 'Error updating Coordinator Desk.');
     } finally {
+      deskSavingRef.current = false;
       setDeskSaving(false);
     }
   };
@@ -354,8 +364,9 @@ export const AdminContent: React.FC<AdminContentProps> = ({
 
   const handleSaveLink = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!linkForm.title.trim() || linkSubmitting) return;
+    if (!linkForm.title.trim() || linkSubmittingRef.current || linkSubmitting) return;
 
+    linkSubmittingRef.current = true;
     setLinkSubmitting(true);
     try {
       if (editingLink) {
@@ -381,12 +392,14 @@ export const AdminContent: React.FC<AdminContentProps> = ({
     } catch (err: any) {
       error(err?.message || 'Error saving quick link.');
     } finally {
+      linkSubmittingRef.current = false;
       setLinkSubmitting(false);
     }
   };
 
   const handleDeleteLink = async (id: string) => {
-    if (linkSubmitting) return;
+    if (linkSubmittingRef.current || linkSubmitting) return;
+    linkSubmittingRef.current = true;
     setLinkSubmitting(true);
     try {
       const res = await ApiService.deleteQuickLink(id);
@@ -400,6 +413,7 @@ export const AdminContent: React.FC<AdminContentProps> = ({
     } catch (err: any) {
       error(err?.message || 'Error deleting link.');
     } finally {
+      linkSubmittingRef.current = false;
       setLinkSubmitting(false);
     }
   };
@@ -445,8 +459,9 @@ export const AdminContent: React.FC<AdminContentProps> = ({
 
   const handleSavePhoto = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!photoForm.title.trim() || photoSubmitting) return;
+    if (!photoForm.title.trim() || photoSubmittingRef.current || photoSubmitting) return;
 
+    photoSubmittingRef.current = true;
     setPhotoSubmitting(true);
     try {
       if (editingPhoto) {
@@ -466,6 +481,7 @@ export const AdminContent: React.FC<AdminContentProps> = ({
       } else {
         if (!previewImage) {
           error('Please select an image to upload.');
+          photoSubmittingRef.current = false;
           setPhotoSubmitting(false);
           return;
         }
@@ -487,12 +503,14 @@ export const AdminContent: React.FC<AdminContentProps> = ({
     } catch (err: any) {
       error(err?.message || 'Error saving photo.');
     } finally {
+      photoSubmittingRef.current = false;
       setPhotoSubmitting(false);
     }
   };
 
   const handleDeletePhoto = async (id: string) => {
-    if (photoSubmitting) return;
+    if (photoSubmittingRef.current || photoSubmitting) return;
+    photoSubmittingRef.current = true;
     setPhotoSubmitting(true);
     try {
       const res = await ApiService.deleteGalleryItem(id);
@@ -506,6 +524,7 @@ export const AdminContent: React.FC<AdminContentProps> = ({
     } catch (err: any) {
       error(err?.message || 'Error deleting photo.');
     } finally {
+      photoSubmittingRef.current = false;
       setPhotoSubmitting(false);
     }
   };

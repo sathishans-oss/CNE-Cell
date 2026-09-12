@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   MapPin,
   PlusCircle,
@@ -30,12 +30,15 @@ export const AdminAreas: React.FC<AdminAreasProps> = () => {
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [newAreaName, setNewAreaName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
   // Edit Area Inline
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [savingEditId, setSavingEditId] = useState<string | null>(null);
+  const savingEditRef = useRef<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const togglingRef = useRef<string | null>(null);
 
   const { success, error } = useToast();
 
@@ -59,8 +62,9 @@ export const AdminAreas: React.FC<AdminAreasProps> = () => {
 
   const handleAddArea = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAreaName.trim()) return;
+    if (!newAreaName.trim() || submittingRef.current || isSubmitting) return;
 
+    submittingRef.current = true;
     setIsSubmitting(true);
     try {
       const res = await ApiService.addArea(newAreaName.trim());
@@ -75,12 +79,14 @@ export const AdminAreas: React.FC<AdminAreasProps> = () => {
     } catch (err: any) {
       error(err?.message || 'Error adding area.');
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };
 
   const handleToggleStatus = async (area: Area) => {
-    if (togglingId) return;
+    if (togglingRef.current || togglingId) return;
+    togglingRef.current = area.id;
     const newStatus = area.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     setTogglingId(area.id);
     try {
@@ -94,12 +100,14 @@ export const AdminAreas: React.FC<AdminAreasProps> = () => {
     } catch (err: any) {
       error(err?.message || 'Error updating area status.');
     } finally {
+      togglingRef.current = null;
       setTogglingId(null);
     }
   };
 
   const handleSaveEdit = async (area: Area) => {
-    if (!editName.trim() || savingEditId) return;
+    if (!editName.trim() || savingEditRef.current || savingEditId) return;
+    savingEditRef.current = area.id;
     setSavingEditId(area.id);
     try {
       const res = await ApiService.updateArea(area.name, editName.trim(), area.status);
@@ -114,6 +122,7 @@ export const AdminAreas: React.FC<AdminAreasProps> = () => {
     } catch (err: any) {
       error(err?.message || 'Error updating area name.');
     } finally {
+      savingEditRef.current = null;
       setSavingEditId(null);
     }
   };

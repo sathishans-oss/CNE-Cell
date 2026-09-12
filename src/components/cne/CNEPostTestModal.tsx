@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Award,
   X,
@@ -42,6 +42,7 @@ export const CNEPostTestModal: React.FC<CNEPostTestModalProps> = ({
   const [questions, setQuestions] = useState<CNEQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [submissionResult, setSubmissionResult] = useState<PostTestSubmissionResult | null>(null);
 
   // Guest/Manual employee ID input if unauthenticated
@@ -86,13 +87,13 @@ export const CNEPostTestModal: React.FC<CNEPostTestModalProps> = ({
   };
 
   const handleSelectOption = (questionId: string, optionKey: string) => {
-    if (isSubmitting || submissionResult) return;
+    if (submittingRef.current || isSubmitting || submissionResult) return;
     setAnswers((prev) => ({ ...prev, [questionId]: optionKey }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmitting || submissionResult) return;
+    if (submittingRef.current || isSubmitting || submissionResult) return;
 
     const targetEmpId = (user?.employeeId || empIdInput).trim();
     if (!targetEmpId) {
@@ -113,6 +114,7 @@ export const CNEPostTestModal: React.FC<CNEPostTestModalProps> = ({
       }
     }
 
+    submittingRef.current = true;
     setIsSubmitting(true);
     try {
       const res = await ApiService.submitPostTest({
@@ -132,6 +134,7 @@ export const CNEPostTestModal: React.FC<CNEPostTestModalProps> = ({
     } catch (e: any) {
       error(e?.message || 'Error occurred while submitting evaluation.');
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };

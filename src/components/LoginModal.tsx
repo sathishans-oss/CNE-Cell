@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { GraduationCap, Lock, User, AlertCircle, ArrowRight, HelpCircle, X } from 'lucide-react';
 import { ApiService } from '../services/api';
 import { SessionUser } from '../types';
@@ -20,6 +20,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [employeeId, setEmployeeId] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const loadingRef = useRef(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [showHelper, setShowHelper] = useState(false);
 
@@ -28,6 +29,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   if (!isOpen) return null;
 
   const performLogin = async (empId: string, pass: string) => {
+    if (loadingRef.current || loading) return;
+    loadingRef.current = true;
     setLoading(true);
     setErrorMsg('');
 
@@ -46,12 +49,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       setErrorMsg(msg);
       error(msg, 'Connection Error');
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loadingRef.current || loading) return;
     if (!employeeId.trim() || !password.trim()) {
       setErrorMsg('Please enter both your Employee ID and Password.');
       return;

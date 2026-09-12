@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CheckCircle, AlertTriangle, X, Loader2, Award, Users, Calendar } from 'lucide-react';
 import { UpcomingClass, CNEParticipantsSummary } from '../../types';
 import { ApiService } from '../../services/api';
@@ -24,6 +24,7 @@ export const CNEFinalizeModal: React.FC<CNEFinalizeModalProps> = ({
   const [actionType, setActionType] = useState<'FINALIZE' | 'CANCEL'>('FINALIZE');
   const [remarks, setRemarks] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
   const { success, error } = useToast();
 
@@ -46,8 +47,9 @@ export const CNEFinalizeModal: React.FC<CNEFinalizeModalProps> = ({
   };
 
   const handleFinalize = async () => {
-    if (isSubmitting || !isAuthorized) return;
+    if (submittingRef.current || isSubmitting || !isAuthorized) return;
 
+    submittingRef.current = true;
     setIsSubmitting(true);
     try {
       const res = await ApiService.finalizeCNE(cneId, remarks.trim());
@@ -61,18 +63,20 @@ export const CNEFinalizeModal: React.FC<CNEFinalizeModalProps> = ({
     } catch (e: any) {
       error(e?.message || 'Error occurred while finalizing CNE.');
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };
 
   const handleCancel = async () => {
-    if (isSubmitting || !isAuthorized) return;
+    if (submittingRef.current || isSubmitting || !isAuthorized) return;
 
     if (!remarks.trim()) {
       error('Please provide a reason for cancellation.');
       return;
     }
 
+    submittingRef.current = true;
     setIsSubmitting(true);
     try {
       const res = await ApiService.cancelCNE(cneId, remarks.trim());
@@ -86,6 +90,7 @@ export const CNEFinalizeModal: React.FC<CNEFinalizeModalProps> = ({
     } catch (e: any) {
       error(e?.message || 'Error occurred while cancelling CNE.');
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Users,
   X,
@@ -41,6 +41,7 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
   // Add Manual Participant State
   const [isAddingManual, setIsAddingManual] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [selectedEmpId, setSelectedEmpId] = useState('');
   const [empName, setEmpName] = useState('');
   const [empDesignation, setEmpDesignation] = useState('');
@@ -78,13 +79,14 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
 
   const handleAddManualAttendee = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmitting || !isAuthorized) return;
+    if (submittingRef.current || isSubmitting || !isAuthorized) return;
 
     if (!selectedEmpId.trim() && !empName.trim()) {
       warning('Please enter an Employee ID or Name.');
       return;
     }
 
+    submittingRef.current = true;
     setIsSubmitting(true);
     try {
       const res = await ApiService.addManualParticipant({
@@ -110,6 +112,7 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
     } catch (e: any) {
       error(e?.message || 'Error occurred while saving attendance.');
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };
