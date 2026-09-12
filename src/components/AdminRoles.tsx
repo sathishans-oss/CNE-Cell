@@ -274,28 +274,36 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
 
       if (rolesRes.success && rolesRes.data) {
         const map: { [empId: string]: OfficerRoleState } = {};
-        rolesRes.data.forEach((r) => {
-          if (r.employeeId) {
-            // Prefer assignedAreas when available; fall back to parsing the existing area string
+        rolesRes.data.forEach((r: any) => {
+          const empId = (r.employeeId || '').trim().toLowerCase();
+          if (empId) {
+            // Extract assignedAreas from array or parse from area / departmentarea / department / ward string
             let assignedAreas: string[] = [];
             if (Array.isArray(r.assignedAreas) && r.assignedAreas.length > 0) {
-              assignedAreas = r.assignedAreas.map((a) => String(a).trim()).filter(Boolean);
-            } else if (r.area && typeof r.area === 'string') {
-              assignedAreas = r.area
-                .split(/[,;\n]+/)
-                .map((s) => s.trim())
-                .filter(Boolean);
+              assignedAreas = r.assignedAreas.map((a: any) => String(a).trim()).filter(Boolean);
+            } else {
+              const rawAreaStr = r.area || r.assignedAreas || r.departmentarea || r.department || r.ward || '';
+              if (typeof rawAreaStr === 'string' && rawAreaStr.trim()) {
+                assignedAreas = rawAreaStr
+                  .split(/[,;\n]+/)
+                  .map((s) => s.trim())
+                  .filter(Boolean);
+              }
             }
 
-            // Only AREA_INCHARGE keeps assigned areas
-            if (r.role !== 'AREA_INCHARGE') {
-              assignedAreas = [];
+            // Deduplicate assigned wards
+            assignedAreas = Array.from(new Set(assignedAreas));
+
+            // Determine effective role: if assignedAreas exist and not ADMIN, ensure AREA_INCHARGE
+            let effectiveRole: UserRole = r.role || 'EMPLOYEE';
+            if (effectiveRole !== 'ADMIN' && assignedAreas.length > 0) {
+              effectiveRole = 'AREA_INCHARGE';
             }
 
             const areaString = assignedAreas.join(', ');
 
-            map[r.employeeId.toLowerCase()] = {
-              role: r.role,
+            map[empId] = {
+              role: effectiveRole,
               assignedAreas,
               area: areaString || r.area || ''
             };
@@ -310,12 +318,19 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
     }
   };
 
+  const handleSyncRoles = async () => {
+    try {
+      localStorage.removeItem('cne_cache_getRoles');
+    } catch {}
+    await loadRolesData();
+  };
+
   const handleRoleChange = async (
     empId: string,
     newRole: UserRole,
     targetAssignedAreas?: string[]
   ) => {
-    const normId = empId.toLowerCase();
+    const normId = empId.toLowerCase().trim();
     const prev: OfficerRoleState = rolesMap[normId] || {
       role: 'EMPLOYEE',
       assignedAreas: [],
@@ -323,19 +338,26 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
     };
 
     let nextAssignedAreas: string[] = [];
-    if (newRole === 'AREA_INCHARGE') {
-      if (targetAssignedAreas !== undefined) {
-        nextAssignedAreas = targetAssignedAreas.map((a) => a.trim()).filter(Boolean);
-      } else {
-        // Preserving existing assigned areas, or parsing from area if needed
-        nextAssignedAreas = prev.assignedAreas.length > 0
-          ? [...prev.assignedAreas]
-          : (prev.area ? prev.area.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean) : []);
-      }
+    if (newRole === 'ADMIN') {
+      nextAssignedAreas = [];
+    } else if (targetAssignedAreas !== undefined) {
+      nextAssignedAreas = targetAssignedAreas.map((a) => a.trim()).filter(Boolean);
+    } else if (newRole === 'AREA_INCHARGE') {
+      nextAssignedAreas = prev.assignedAreas.length > 0
+        ? [...prev.assignedAreas]
+        : (prev.area ? prev.area.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean) : []);
     } else {
-      // Switching to ADMIN or EMPLOYEE: clear assignedAreas completely
+      // Switching to EMPLOYEE without targetAssignedAreas: clear assignedAreas
       nextAssignedAreas = [];
     }
+
+    // Deduplicate
+    nextAssignedAreas = Array.from(new Set(nextAssignedAreas));
+
+    // If assigned areas exist and not ADMIN, effective role is AREA_INCHARGE
+    const effectiveRole: UserRole = (newRole !== 'ADMIN' && nextAssignedAreas.length > 0)
+      ? 'AREA_INCHARGE'
+      : newRole;
 
     const nextAreaString = nextAssignedAreas.join(', ');
 
@@ -343,16 +365,16 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
     const areasUnchanged =
       prev.assignedAreas.length === nextAssignedAreas.length &&
       prev.assignedAreas.every((a, i) => a === nextAssignedAreas[i]);
-    if (prev.role === newRole && areasUnchanged && targetAssignedAreas === undefined) return;
+    if (prev.role === effectiveRole && areasUnchanged && targetAssignedAreas === undefined) return;
     if (updatingEmpId) return;
 
     setUpdatingEmpId(empId);
     try {
-      const res = await ApiService.updateRole(empId, newRole, nextAssignedAreas);
+      const res = await ApiService.updateRole(empId, effectiveRole, nextAssignedAreas);
       if (res.success) {
         success(
-          `Role for ${empId} updated to ${newRole}${
-            newRole === 'AREA_INCHARGE' && nextAssignedAreas.length > 0
+          `Role for ${empId} updated to ${effectiveRole}${
+            effectiveRole === 'AREA_INCHARGE' && nextAssignedAreas.length > 0
               ? ` (${nextAreaString})`
               : ''
           }.`,
@@ -361,7 +383,7 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
         setRolesMap((prevMap) => ({
           ...prevMap,
           [normId]: {
-            role: newRole,
+            role: effectiveRole,
             assignedAreas: nextAssignedAreas,
             area: nextAreaString
           }
@@ -429,7 +451,7 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
         </div>
 
         <button
-          onClick={loadRolesData}
+          onClick={handleSyncRoles}
           disabled={loading}
           className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
         >
@@ -473,11 +495,11 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredOfficers.map((officer) => {
-                  const empId = (officer.employeeId || '').toLowerCase();
+                  const empId = (officer.employeeId || '').toLowerCase().trim();
                   const roleObj: OfficerRoleState = rolesMap[empId] || { role: 'EMPLOYEE', assignedAreas: [], area: '' };
                   const role: UserRole = roleObj.role;
                   const assignedAreas: string[] = roleObj.assignedAreas || [];
-                  const isCurrentLoggedUser = empId === (user.employeeId || '').toLowerCase();
+                  const isCurrentLoggedUser = empId === (user.employeeId || '').toLowerCase().trim();
                   const isResetting = resettingId === officer.employeeId;
 
                   return (
@@ -518,7 +540,7 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
                             <option value="ADMIN">ADMIN</option>
                           </select>
 
-                          {role === 'AREA_INCHARGE' && (
+                          {role !== 'ADMIN' && (
                             <AreaMultiSelect
                               employeeId={officer.employeeId}
                               assignedAreas={assignedAreas}

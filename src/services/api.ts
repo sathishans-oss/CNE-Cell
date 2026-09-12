@@ -410,7 +410,31 @@ export class ApiService {
   }
 
   static async getRoles(): Promise<ApiResponse<RoleMapping[]>> {
-    return this.executeAction<RoleMapping[]>('getRoles');
+    const res = await this.executeAction<RoleMapping[]>('getRoles');
+    if (res.success && Array.isArray(res.data)) {
+      res.data = res.data.map((r: any) => {
+        let assignedAreas: string[] = [];
+        if (Array.isArray(r.assignedAreas) && r.assignedAreas.length > 0) {
+          assignedAreas = r.assignedAreas.map((a: any) => String(a).trim()).filter(Boolean);
+        } else {
+          const raw = r.area || r.departmentarea || r.department || r.ward || '';
+          if (typeof raw === 'string' && raw.trim()) {
+            assignedAreas = raw.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
+          }
+        }
+        const cleanAreas = Array.from(new Set(assignedAreas));
+        const rawRole = (r.role || 'EMPLOYEE') as UserRole;
+        const effectiveRole: UserRole = rawRole !== 'ADMIN' && cleanAreas.length > 0 ? 'AREA_INCHARGE' : rawRole;
+        return {
+          ...r,
+          employeeId: String(r.employeeId || '').trim(),
+          role: effectiveRole,
+          assignedAreas: cleanAreas,
+          area: cleanAreas.join(', ') || r.area || ''
+        };
+      });
+    }
+    return res;
   }
 
   static async updateRole(
@@ -426,19 +450,28 @@ export class ApiService {
           ? assignedAreasOrArea.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean)
           : []);
 
-    // For ADMIN and EMPLOYEE, assignedAreas should be empty
-    const assignedAreas = role === 'AREA_INCHARGE' ? rawAreas : [];
+    // For ADMIN, assignedAreas should be empty; for non-admin, keep assigned areas
+    const assignedAreas = role === 'ADMIN' ? [] : rawAreas;
+    const effectiveRole: UserRole = role !== 'ADMIN' && assignedAreas.length > 0 ? 'AREA_INCHARGE' : role;
     const areaString = assignedAreas.join(', ');
 
-    return this.executeAction('updateRole', {
+    const res = await this.executeAction('updateRole', {
       employeeId,
-      role,
+      role: effectiveRole,
       assignedAreas,
       area: areaString,
       department: areaString,
       name,
       designation
     });
+
+    if (res.success) {
+      try {
+        localStorage.removeItem('cne_cache_getRoles');
+      } catch {}
+    }
+
+    return res;
   }
 
   /**

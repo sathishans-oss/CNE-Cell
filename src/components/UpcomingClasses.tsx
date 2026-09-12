@@ -82,6 +82,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   const [newMaxParticipants, setNewMaxParticipants] = useState(40);
   const [areasList, setAreasList] = useState<string[]>([]);
   const [officersList, setOfficersList] = useState<any[]>([]);
+  const [isResourcePersonsLoading, setIsResourcePersonsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Part 2 Active Modals
@@ -174,27 +175,56 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
 
   const loadData = async (): Promise<UpcomingClass[] | undefined> => {
     setLoading(true);
+    if (officersList.length === 0) {
+      setIsResourcePersonsLoading(true);
+    }
     try {
       const [clsRes, areasRes, officersRes] = await Promise.all([
         ApiService.getUpcomingClasses(),
         ApiService.getAreas(),
-        isAdmin ? ApiService.getOfficersDropdown() : Promise.resolve({ success: true, data: [] })
+        user ? ApiService.getOfficersDropdown() : Promise.resolve({ success: true, data: [] })
       ]);
 
       if (clsRes.success && clsRes.data) {
         setClasses(clsRes.data);
-        return clsRes.data;
       }
       if (areasRes.success && areasRes.data) {
         setAreasList(areasRes.data.filter((a) => a.status === 'ACTIVE').map((a) => a.name));
       }
-      if (officersRes.success && officersRes.data) setOfficersList(officersRes.data);
+      if (officersRes.success && officersRes.data) {
+        setOfficersList(officersRes.data);
+      }
+      return clsRes.data;
     } catch (e: any) {
       error(e?.message || 'Failed to load CNE schedule.');
     } finally {
       setLoading(false);
+      setIsResourcePersonsLoading(false);
     }
   };
+
+  // On-demand fetch of officers when Central CNE Add or Edit modal opens if not yet loaded
+  useEffect(() => {
+    if ((isAddClassOpen || Boolean(editingCne)) && officersList.length === 0 && !isResourcePersonsLoading) {
+      let cancelled = false;
+      setIsResourcePersonsLoading(true);
+      ApiService.getOfficersDropdown()
+        .then((res) => {
+          if (!cancelled && res.success && res.data) {
+            setOfficersList(res.data);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) {
+            setIsResourcePersonsLoading(false);
+          }
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+  }, [isAddClassOpen, editingCne, officersList.length, isResourcePersonsLoading]);
 
   const handleChildModalUpdated = async (targetCneId?: string) => {
     const cneId = targetCneId || selectedDetailCne?.cneId || selectedDetailCne?.classId;
@@ -411,6 +441,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
         setRpSearchQuery('');
         setNewExternalRpList([]);
         setNewExternalRpInput('');
+        setNewMode('Lecture Cum Discussion');
         loadData();
       } else {
         error(res.message || 'Failed to schedule CNE.');
@@ -862,7 +893,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900">
-                    Schedule New CNE
+                    Schedule Central CNE
                   </h3>
                   <p className="text-xs text-slate-500">
                     Publish training session to the institutional CNE Schedule
@@ -916,6 +947,24 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                         {areasList.map((a) => (
                           <option key={a} value={a}>{a}</option>
                         ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                        Mode of Teaching
+                      </label>
+                      <select
+                        value={newMode}
+                        onChange={(e) => setNewMode(e.target.value)}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                      >
+                        <option value="Lecture Cum Discussion">Lecture Cum Discussion</option>
+                        <option value="Demonstration">Demonstration</option>
+                        <option value="Hands-on Training">Hands-on Training</option>
+                        <option value="Workshop">Workshop</option>
+                        <option value="Case Study Presentation">Case Study Presentation</option>
+                        <option value="Simulation">Simulation</option>
                       </select>
                     </div>
 
@@ -1065,8 +1114,11 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                     {/* Internal Resource Persons Multi-Select */}
                     <div className="space-y-2 flex-1 flex flex-col">
                       <div className="flex items-center justify-between">
-                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
-                          Internal Faculty (AIIMS Staff)
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                          <span>Internal Faculty (AIIMS Staff)</span>
+                          {isResourcePersonsLoading && (
+                            <Loader2 className="w-3 h-3 text-teal-600 animate-spin" />
+                          )}
                         </label>
                       </div>
 
@@ -1095,17 +1147,28 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                       )}
 
                       {/* Search input for officers */}
-                      <input
-                        type="text"
-                        placeholder="Filter officers by name or ID..."
-                        value={rpSearchQuery}
-                        onChange={(e) => setRpSearchQuery(e.target.value)}
-                        className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none"
-                      />
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder={isResourcePersonsLoading ? "Loading Resource Persons..." : "Filter officers by name or ID..."}
+                          disabled={isResourcePersonsLoading}
+                          value={rpSearchQuery}
+                          onChange={(e) => setRpSearchQuery(e.target.value)}
+                          className="w-full p-2 pr-8 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                        />
+                        {isResourcePersonsLoading && (
+                          <Loader2 className="w-3.5 h-3.5 text-teal-600 animate-spin absolute right-2.5 top-2.5" />
+                        )}
+                      </div>
 
                       {/* Officers Dropdown / Selection List */}
                       <div className="max-h-28 overflow-y-auto border border-slate-200 rounded-lg bg-white divide-y divide-slate-100 flex-1">
-                        {filteredRpOfficers.length === 0 ? (
+                        {isResourcePersonsLoading ? (
+                          <div className="p-3 text-center text-xs text-slate-500 flex items-center justify-center gap-1.5">
+                            <Loader2 className="w-3.5 h-3.5 text-teal-600 animate-spin" />
+                            <span>Loading Resource Persons...</span>
+                          </div>
+                        ) : filteredRpOfficers.length === 0 ? (
                           <div className="p-2 text-center text-xs text-slate-400">No officers found</div>
                         ) : (
                           filteredRpOfficers.slice(0, 50).map((officer) => {
@@ -1200,10 +1263,10 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                   {isSubmitting ? (
                     <>
                       <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
-                      <span>Publishing...</span>
+                      <span>Publishing Schedule...</span>
                     </>
                   ) : (
-                    <span>Schedule New CNE</span>
+                    <span>Publish Schedule</span>
                   )}
                 </button>
               </div>
@@ -1936,20 +1999,36 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                       </span>
                     </h4>
 
-                    {officersList.length > 0 && (
-                      <div className="space-y-2 flex-1 flex flex-col">
-                        <span className="text-[11px] font-semibold text-slate-600 block">
-                          Internal Staff (AIIMS Faculty):
-                        </span>
+                    <div className="space-y-2 flex-1 flex flex-col">
+                      <span className="text-[11px] font-semibold text-slate-600 flex items-center gap-1.5">
+                        <span>Internal Staff (AIIMS Faculty):</span>
+                        {isResourcePersonsLoading && (
+                          <Loader2 className="w-3 h-3 text-amber-600 animate-spin" />
+                        )}
+                      </span>
+                      <div className="relative">
                         <input
                           type="text"
-                          placeholder="Search officer by name or ID..."
+                          placeholder={isResourcePersonsLoading ? "Loading Resource Persons..." : "Search officer by name or ID..."}
+                          disabled={isResourcePersonsLoading}
                           value={editRpSearchQuery}
                           onChange={(e) => setEditRpSearchQuery(e.target.value)}
-                          className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                          className="w-full px-2.5 py-1.5 pr-8 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
                         />
-                        <div className="max-h-28 overflow-y-auto space-y-1 bg-white border border-slate-200 rounded-lg p-2 flex-1">
-                          {filteredEditRpOfficers.slice(0, 40).map((o) => {
+                        {isResourcePersonsLoading && (
+                          <Loader2 className="w-3.5 h-3.5 text-amber-600 animate-spin absolute right-2.5 top-2" />
+                        )}
+                      </div>
+                      <div className="max-h-28 overflow-y-auto space-y-1 bg-white border border-slate-200 rounded-lg p-2 flex-1">
+                        {isResourcePersonsLoading ? (
+                          <div className="p-3 text-center text-xs text-slate-500 flex items-center justify-center gap-1.5">
+                            <Loader2 className="w-3.5 h-3.5 text-amber-600 animate-spin" />
+                            <span>Loading Resource Persons...</span>
+                          </div>
+                        ) : filteredEditRpOfficers.length === 0 ? (
+                          <div className="p-2 text-center text-xs text-slate-400">No officers found</div>
+                        ) : (
+                          filteredEditRpOfficers.slice(0, 40).map((o) => {
                             const isSelected = editSelectedRpEmpIds.includes(o.employeeId);
                             return (
                               <div
@@ -1970,10 +2049,10 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                                 />
                               </div>
                             );
-                          })}
-                        </div>
+                          })
+                        )}
                       </div>
-                    )}
+                    </div>
 
                     <div className="pt-2 border-t border-slate-200 space-y-2">
                       <span className="text-[11px] font-semibold text-slate-600 block">

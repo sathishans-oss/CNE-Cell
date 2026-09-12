@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Calendar, Clock, MapPin, User, BookOpen, AlertCircle, Loader2, X } from 'lucide-react';
+import { Plus, Trash2, Calendar, Clock, MapPin, User, BookOpen, AlertCircle, Loader2, X, PlusCircle } from 'lucide-react';
 import { DepartmentalScheduleRow, Employee, SessionUser } from '../../types';
 import { ApiService } from '../../services/api';
 import { useToast } from '../Toast';
@@ -54,14 +54,49 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
   const isAreaIncharge = user?.role === 'AREA_INCHARGE';
   const assignedAreas = getUserAssignedAreas(user);
   const defaultArea = (isAreaIncharge && assignedAreas.length > 0) ? assignedAreas[0] : (areasList[0] || '');
+  const todayStr = new Date().toISOString().split('T')[0];
 
   // Initially show exactly 1 blank CNE schedule row
   const [rows, setRows] = useState<DepartmentalScheduleRow[]>([
     createInitialRow(defaultArea)
   ]);
+  const [internalOfficers, setInternalOfficers] = useState<Employee[]>(officersList || []);
+  const [isResourcePersonsLoading, setIsResourcePersonsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [extRpInputMap, setExtRpInputMap] = useState<Record<string, string>>({});
   const [rpSearchMap, setRpSearchMap] = useState<Record<string, string>>({});
+
+  // Sync internal officers when prop updates
+  React.useEffect(() => {
+    if (officersList && officersList.length > 0) {
+      setInternalOfficers(officersList);
+    }
+  }, [officersList]);
+
+  // On-demand fetch of internal officers if modal is opened with empty list
+  React.useEffect(() => {
+    if (isOpen && (!officersList || officersList.length === 0) && internalOfficers.length === 0 && !isResourcePersonsLoading) {
+      let cancelled = false;
+      setIsResourcePersonsLoading(true);
+      ApiService.getOfficersDropdown()
+        .then((res) => {
+          if (!cancelled && res.success && res.data) {
+            setInternalOfficers(res.data);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) {
+            setIsResourcePersonsLoading(false);
+          }
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+  }, [isOpen, officersList, internalOfficers.length, isResourcePersonsLoading]);
+
+  const effectiveOfficers = (officersList && officersList.length > 0) ? officersList : internalOfficers;
 
   // Reset to exactly 1 blank schedule row whenever modal is opened
   React.useEffect(() => {
@@ -100,7 +135,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
         nextIds = [...currentIds, empId];
       }
       const rpNames = nextIds.map((id) => {
-        const off = officersList.find((o) => o.employeeId === id);
+        const off = effectiveOfficers.find((o) => o.employeeId === id);
         return off ? off.name : id;
       });
       updated[rowIndex] = {
@@ -257,28 +292,32 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white w-[92vw] max-w-[1440px] rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh]">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
+      <div className="bg-white rounded-2xl w-[92vw] max-w-[1440px] max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 relative overflow-hidden">
         {/* Header */}
-        <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                Batch Scheduler
-              </span>
-              <h2 className="text-base font-bold">Departmental CNE Schedule</h2>
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/70">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+              <PlusCircle className="w-5 h-5" />
             </div>
-            <p className="text-xs text-slate-300 mt-1">
-              {isAreaIncharge
-                ? `Schedule multiple departmental CNE classes for ${user?.assignedArea || 'your department'}.`
-                : 'Schedule multiple departmental continuing nursing education workshops simultaneously.'}
-            </p>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">
+                Departmental CNE Schedule
+              </h3>
+              <p className="text-xs text-slate-500">
+                {isAreaIncharge
+                  ? `Schedule departmental CNE classes for ${user?.assignedArea || 'your department'}`
+                  : 'Schedule departmental continuing nursing education workshops'}
+              </p>
+            </div>
           </div>
+
           <button
             id="btn-close-departmental-modal"
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+            disabled={isSubmitting}
+            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-40 cursor-pointer transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -286,7 +325,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
 
         {/* Scrollable Form Body */}
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
-          <div className="p-6 overflow-y-auto space-y-4 flex-1 bg-slate-50">
+          <div className="p-6 overflow-y-auto flex-1 space-y-5 text-xs">
             {rows.map((row, idx) => {
               const fromParts = parseDateTimeParts(row.date, '09:00');
               const toParts = parseDateTimeParts(row.toDate, '10:30');
@@ -294,325 +333,368 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                 ? row.resourcePersonEmpIds
                 : (row.resourcePersonEmpId ? row.resourcePersonEmpId.split(',').map((s) => s.trim()).filter(Boolean) : []);
               const search = (rpSearchMap[row.id] || '').toLowerCase().trim();
-              const filteredOfficers = officersList.filter(
+              const filteredOfficers = effectiveOfficers.filter(
                 (o) => !search || o.employeeId.toLowerCase().includes(search) || o.name.toLowerCase().includes(search)
               );
 
               return (
                 <div
                   key={row.id}
-                  className="bg-white p-4.5 rounded-xl border border-slate-200 shadow-xs space-y-3"
+                  className={rows.length > 1 ? 'p-4 rounded-2xl border border-slate-200 bg-white shadow-xs space-y-3' : 'space-y-3'}
                 >
-                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold flex items-center justify-center">
-                      {idx + 1}
-                    </span>
-                    <span className="text-xs font-bold text-slate-800">
-                      Departmental CNE #{idx + 1}
-                    </span>
-                  </div>
                   {rows.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveRow(idx)}
-                      className="text-rose-600 hover:text-rose-800 text-xs flex items-center gap-1 font-semibold cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Remove Item</span>
-                    </button>
-                  )}
-                </div>
-
-                {/* Horizontal Grid of Fields */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                  {/* Column 1: Topic & Ward */}
-                  <div className="space-y-2.5">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        CNE Topic <span className="text-rose-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="e.g. Neonatal Resuscitation Protocols"
-                        value={row.topic}
-                        onChange={(e) => handleFieldChange(idx, 'topic', e.target.value)}
-                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs focus:ring-1 focus:ring-emerald-500"
-                      />
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center justify-center">
+                          {idx + 1}
+                        </span>
+                        <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                          Departmental Session #{idx + 1}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveRow(idx)}
+                        className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2 py-1 rounded-lg text-xs flex items-center gap-1 font-semibold cursor-pointer transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remove Item</span>
+                      </button>
                     </div>
+                  )}
 
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        Department / Ward <span className="text-rose-500">*</span>
-                      </label>
-                      {isAreaIncharge ? (
-                        assignedAreas.length === 1 ? (
-                          <input
-                            type="text"
-                            disabled
-                            value={assignedAreas[0]}
-                            className="w-full px-2.5 py-1.5 text-xs bg-slate-100 text-slate-700 border border-slate-300 rounded-lg cursor-not-allowed font-medium"
-                          />
-                        ) : assignedAreas.length > 1 ? (
+                  {/* 3-Column Coordinated Cards: CNE Details | Date & Duration | Resource Persons */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                    {/* Column 1: CNE Details */}
+                    <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200 flex flex-col">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-900 border-b border-emerald-100 pb-2 flex items-center gap-1.5">
+                        <span>1. CNE Details</span>
+                      </h4>
+
+                      {/* 1. CNE Topic * */}
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                          CNE Topic <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="e.g. Infection Control & Hand Hygiene Protocols"
+                          value={row.topic}
+                          onChange={(e) => handleFieldChange(idx, 'topic', e.target.value)}
+                          className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                        />
+                      </div>
+
+                      {/* 2. Department / Ward * */}
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                          Department / Ward <span className="text-rose-500">*</span>
+                        </label>
+                        {isAreaIncharge ? (
+                          assignedAreas.length === 1 ? (
+                            <div className="relative">
+                              <input
+                                type="text"
+                                disabled
+                                value={assignedAreas[0]}
+                                className="w-full p-2.5 bg-slate-100 text-slate-600 border border-slate-200 rounded-lg text-xs font-semibold cursor-not-allowed"
+                              />
+                              <span className="absolute right-2.5 top-2.5 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                                Locked to Your Ward
+                              </span>
+                            </div>
+                          ) : assignedAreas.length > 1 ? (
+                            <select
+                              required
+                              value={row.area}
+                              onChange={(e) => handleFieldChange(idx, 'area', e.target.value)}
+                              className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none text-emerald-900 font-semibold"
+                            >
+                              <option value="">Select from Your Assigned Wards</option>
+                              {assignedAreas.map((a) => (
+                                <option key={a} value={a}>
+                                  {a}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div className="relative">
+                              <input
+                                type="text"
+                                disabled
+                                value={user?.assignedArea || 'No Ward Assigned'}
+                                className="w-full p-2.5 bg-slate-100 text-slate-600 border border-slate-200 rounded-lg text-xs font-semibold cursor-not-allowed"
+                              />
+                              <span className="absolute right-2.5 top-2.5 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                                Locked
+                              </span>
+                            </div>
+                          )
+                        ) : (
                           <select
                             required
                             value={row.area}
                             onChange={(e) => handleFieldChange(idx, 'area', e.target.value)}
-                            className="w-full px-2.5 py-1.5 text-xs bg-white border border-teal-300 rounded-lg shadow-xs text-teal-900 font-semibold focus:ring-1 focus:ring-teal-500"
+                            className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                           >
-                            <option value="">Select from Your Assigned Wards</option>
-                            {assignedAreas.map((a) => (
+                            <option value="">Select Department / Ward...</option>
+                            {areasList.map((a) => (
                               <option key={a} value={a}>
                                 {a}
                               </option>
                             ))}
                           </select>
-                        ) : (
+                        )}
+                      </div>
+
+                      {/* 3. Teaching Mode */}
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                          Teaching Mode
+                        </label>
+                        <select
+                          value={row.modeOfTeaching}
+                          onChange={(e) => handleFieldChange(idx, 'modeOfTeaching', e.target.value)}
+                          className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                        >
+                          <option value="Lecture Cum Discussion">Lecture Cum Discussion</option>
+                          <option value="Demonstration">Demonstration</option>
+                          <option value="Hands-on Training">Hands-on Training</option>
+                          <option value="Workshop">Workshop</option>
+                          <option value="Case Study Presentation">Case Study Presentation</option>
+                          <option value="Simulation">Simulation</option>
+                        </select>
+                      </div>
+
+                      {/* 4. Description / Objectives */}
+                      <div className="flex-1 flex flex-col">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
+                          Description / Objectives
+                        </label>
+                        <textarea
+                          rows={3}
+                          placeholder="Outline clinical objectives, skills covered, or ward preparations..."
+                          value={row.description || ''}
+                          onChange={(e) => handleFieldChange(idx, 'description', e.target.value)}
+                          className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none flex-1 min-h-[72px]"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Column 2: Date & Duration */}
+                    <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200 flex flex-col">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-teal-900 border-b border-teal-100 pb-2 flex items-center gap-1.5">
+                        <span>2. Date & Schedule</span>
+                      </h4>
+
+                      <div className="space-y-3">
+                        {/* 1. Date Controls */}
+                        <CneDateTimeFields
+                          idPrefix={`dept-sched-${idx}`}
+                          fromDate={fromParts.date}
+                          fromTime={fromParts.time}
+                          toDate={toParts.date}
+                          toTime={toParts.time}
+                          minDate={todayStr}
+                          compact={false}
+                          accentColor="emerald"
+                          onChange={({ fullFrom, fullTo, calculatedDuration }) => {
+                            setRows((prev) => {
+                              const updated = [...prev];
+                              updated[idx] = {
+                                ...updated[idx],
+                                date: fullFrom,
+                                toDate: fullTo,
+                                duration: calculatedDuration !== '00:00:00' ? calculatedDuration : updated[idx].duration
+                              };
+                              return updated;
+                            });
+                          }}
+                        />
+
+                        {/* 2. Duration */}
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                              Duration (HH:MM:SS) <span className="text-rose-500">*</span>
+                            </label>
+                            <span className="text-[10px] text-teal-700 font-semibold">Auto-calculated • Editable</span>
+                          </div>
                           <input
                             type="text"
-                            disabled
-                            value={user?.assignedArea || 'No Ward Assigned'}
-                            className="w-full px-2.5 py-1.5 text-xs bg-slate-100 text-slate-700 border border-slate-300 rounded-lg cursor-not-allowed font-medium"
+                            required
+                            placeholder="00:00:00"
+                            value={row.duration}
+                            onChange={(e) => handleFieldChange(idx, 'duration', e.target.value)}
+                            className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-teal-500 focus:outline-none"
                           />
-                        )
-                      ) : (
-                        <select
-                          required
-                          value={row.area}
-                          onChange={(e) => handleFieldChange(idx, 'area', e.target.value)}
-                          className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
-                        >
-                          <option value="">Select Department</option>
-                          {areasList.map((a) => (
-                            <option key={a} value={a}>
-                              {a}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Column 2: Dates & Duration */}
-                  <div className="space-y-2.5">
-                    <CneDateTimeFields
-                      idPrefix={`dept-sched-${idx}`}
-                      fromDate={fromParts.date}
-                      fromTime={fromParts.time}
-                      toDate={toParts.date}
-                      toTime={toParts.time}
-                      minDate={new Date().toISOString().split('T')[0]}
-                      compact={true}
-                      accentColor="emerald"
-                      onChange={({ fullFrom, fullTo, calculatedDuration }) => {
-                        setRows((prev) => {
-                          const updated = [...prev];
-                          updated[idx] = {
-                            ...updated[idx],
-                            date: fullFrom,
-                            toDate: fullTo,
-                            duration: calculatedDuration !== '00:00:00' ? calculatedDuration : updated[idx].duration
-                          };
-                          return updated;
-                        });
-                      }}
-                    />
-
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="block text-[11px] font-bold text-slate-700">
-                          Duration (HH:MM:SS) <span className="text-rose-500">*</span>
-                        </label>
-                        <span className="text-[9px] text-emerald-700 font-semibold">Auto-calc</span>
+                          <p className="text-[10px] text-slate-500 mt-1">
+                            Calculated from From/To dates. Max 8 hours per calendar day. Format: HH:MM:SS
+                          </p>
+                        </div>
                       </div>
-                      <input
-                        type="text"
-                        required
-                        placeholder="00:00:00"
-                        value={row.duration}
-                        onChange={(e) => handleFieldChange(idx, 'duration', e.target.value)}
-                        className="w-full px-2 py-1.5 text-xs font-mono bg-white border border-slate-300 rounded-lg shadow-xs focus:ring-1 focus:ring-emerald-500"
-                      />
-                      <p className="text-[9px] text-slate-500 mt-0.5">Max 8 hrs/calendar day</p>
-                    </div>
-                  </div>
-
-                  {/* Column 3: Mode & Description */}
-                  <div className="space-y-2.5">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        Teaching Mode
-                      </label>
-                      <select
-                        value={row.modeOfTeaching}
-                        onChange={(e) => handleFieldChange(idx, 'modeOfTeaching', e.target.value)}
-                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
-                      >
-                        <option value="Lecture Cum Discussion">Lecture Cum Discussion</option>
-                        <option value="Demonstration">Demonstration</option>
-                        <option value="Hands-on Training">Hands-on Training</option>
-                        <option value="Workshop">Workshop</option>
-                        <option value="Case Study Presentation">Case Study Presentation</option>
-                        <option value="Simulation">Simulation</option>
-                      </select>
                     </div>
 
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        Description / Objectives
-                      </label>
-                      <textarea
-                        rows={3}
-                        placeholder="Brief summary or clinical objectives"
-                        value={row.description || ''}
-                        onChange={(e) => handleFieldChange(idx, 'description', e.target.value)}
-                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs resize-none"
-                      />
-                    </div>
-                  </div>
+                    {/* Column 3: Resource Persons */}
+                    <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200 flex flex-col">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-cyan-900 border-b border-cyan-100 pb-2 flex items-center justify-between">
+                        <span>3. Resource Persons</span>
+                        <span className="text-[10px] text-slate-500 font-semibold lowercase">
+                          {selectedRowRpIds.length + (row.externalResourcePersons?.length || 0)} selected
+                        </span>
+                      </h4>
 
-                  {/* Column 4: Faculty & Resource Persons */}
-                  <div className="space-y-2.5">
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="block text-[11px] font-bold text-slate-700">
-                          Internal Resource Persons
-                        </label>
+                      {/* 1. Internal Resource Persons */}
+                      <div className="space-y-2 flex-1 flex flex-col">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                            <span>Internal Faculty (AIIMS Staff)</span>
+                            {isResourcePersonsLoading && (
+                              <Loader2 className="w-3 h-3 text-cyan-600 animate-spin" />
+                            )}
+                          </label>
+                        </div>
+
+                        {/* Selected RP Tags */}
                         {selectedRowRpIds.length > 0 && (
-                          <span className="text-[10px] text-emerald-700 font-semibold">
-                            {selectedRowRpIds.length} Selected
-                          </span>
+                          <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1.5 bg-white rounded-lg border border-slate-200">
+                            {selectedRowRpIds.map((empId) => {
+                              const officer = effectiveOfficers.find((o) => o.employeeId === empId);
+                              return (
+                                <span
+                                  key={empId}
+                                  className="inline-flex items-center gap-1 text-[11px] font-medium bg-emerald-50 text-emerald-900 px-2 py-0.5 rounded-md border border-emerald-200"
+                                >
+                                  <span>{empId} - {officer ? officer.name : empId}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleRowRpSelection(idx, empId)}
+                                    className="hover:text-rose-600 cursor-pointer"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </span>
+                              );
+                            })}
+                          </div>
                         )}
+
+                        {/* Search / Filter input */}
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder={isResourcePersonsLoading ? "Loading Resource Persons..." : "Filter officers by name or ID..."}
+                            disabled={isResourcePersonsLoading}
+                            value={rpSearchMap[row.id] || ''}
+                            onChange={(e) =>
+                              setRpSearchMap((prev) => ({ ...prev, [row.id]: e.target.value }))
+                            }
+                            className="w-full p-2 pr-8 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-cyan-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                          />
+                          {isResourcePersonsLoading && (
+                            <Loader2 className="w-3.5 h-3.5 text-cyan-600 animate-spin absolute right-2.5 top-2.5" />
+                          )}
+                        </div>
+
+                        {/* Officers list dropdown / box */}
+                        <div className="max-h-28 overflow-y-auto border border-slate-200 rounded-lg bg-white divide-y divide-slate-100 flex-1">
+                          {isResourcePersonsLoading ? (
+                            <div className="p-3 text-center text-xs text-slate-500 flex items-center justify-center gap-1.5">
+                              <Loader2 className="w-3.5 h-3.5 text-cyan-600 animate-spin" />
+                              <span>Loading Resource Persons...</span>
+                            </div>
+                          ) : filteredOfficers.length === 0 ? (
+                            <div className="p-2.5 text-center text-xs text-slate-400">No officers found</div>
+                          ) : (
+                            filteredOfficers.slice(0, 50).map((officer) => {
+                              const isSelected = selectedRowRpIds.includes(officer.employeeId);
+                              return (
+                                <div
+                                  key={officer.employeeId}
+                                  onClick={() => toggleRowRpSelection(idx, officer.employeeId)}
+                                  className={`flex items-center justify-between p-1.5 text-xs cursor-pointer transition-colors ${
+                                    isSelected ? 'bg-emerald-50 text-emerald-900 font-semibold' : 'hover:bg-slate-50 text-slate-700'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 truncate">
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => {}}
+                                      className="rounded text-emerald-600 pointer-events-none"
+                                    />
+                                    <span className="truncate">
+                                      {officer.employeeId} - {officer.name}
+                                    </span>
+                                  </div>
+                                  {isSelected && <span className="text-[10px] text-emerald-600 font-bold shrink-0">Selected</span>}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
                       </div>
 
-                      {/* Selected RP Tags */}
-                      {selectedRowRpIds.length > 0 && (
-                        <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto p-1 mb-1.5 bg-emerald-50/50 rounded-lg border border-emerald-100">
-                          {selectedRowRpIds.map((empId) => {
-                            const officer = officersList.find((o) => o.employeeId === empId);
-                            return (
+                      {/* 2. External Resource Person */}
+                      <div className="pt-2.5 border-t border-slate-200 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                            External Resource Person (Guest Faculty)
+                          </label>
+                        </div>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            placeholder="e.g. Dr. A. Sen (Visiting Faculty)..."
+                            value={extRpInputMap[row.id] || ''}
+                            onChange={(e) =>
+                              setExtRpInputMap((prev) => ({ ...prev, [row.id]: e.target.value }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAddExternalRp(row.id, idx);
+                              }
+                            }}
+                            className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleAddExternalRp(row.id, idx)}
+                            className="px-3 py-1.5 bg-cyan-100 hover:bg-cyan-200 text-cyan-900 font-semibold rounded-lg text-xs cursor-pointer transition-colors shrink-0"
+                          >
+                            + Add
+                          </button>
+                        </div>
+                        {row.externalResourcePersons && row.externalResourcePersons.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
+                            {row.externalResourcePersons.map((name, rpIdx) => (
                               <span
-                                key={empId}
-                                className="inline-flex items-center gap-1 text-[10px] font-medium bg-white text-emerald-900 px-1.5 py-0.5 rounded border border-emerald-200 shadow-2xs"
+                                key={rpIdx}
+                                className="inline-flex items-center gap-1 text-[11px] font-medium bg-amber-50 text-amber-900 px-2 py-0.5 rounded-md border border-amber-200"
                               >
-                                <span className="truncate max-w-[130px]">{empId} - {officer ? officer.name : ''}</span>
+                                <span>{name} (External)</span>
                                 <button
                                   type="button"
-                                  onClick={() => toggleRowRpSelection(idx, empId)}
-                                  className="text-emerald-500 hover:text-rose-600 cursor-pointer"
+                                  onClick={() => handleRemoveExternalRp(idx, rpIdx)}
+                                  className="hover:text-rose-600 cursor-pointer"
                                 >
-                                  <X className="w-2.5 h-2.5" />
+                                  <X className="w-3 h-3" />
                                 </button>
                               </span>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      {/* Search / Filter input */}
-                      <input
-                        type="text"
-                        placeholder="Filter officers by name or ID..."
-                        value={rpSearchMap[row.id] || ''}
-                        onChange={(e) =>
-                          setRpSearchMap((prev) => ({ ...prev, [row.id]: e.target.value }))
-                        }
-                        className="w-full px-2 py-1 text-xs bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 focus:outline-none mb-1"
-                      />
-
-                      {/* Officers list dropdown / box */}
-                      <div className="max-h-24 overflow-y-auto border border-slate-200 rounded-lg bg-white divide-y divide-slate-100">
-                        {filteredOfficers.length === 0 ? (
-                          <div className="p-2 text-center text-[10px] text-slate-400">No officers found</div>
-                        ) : (
-                          filteredOfficers.slice(0, 30).map((officer) => {
-                            const isSelected = selectedRowRpIds.includes(officer.employeeId);
-                            return (
-                              <div
-                                key={officer.employeeId}
-                                onClick={() => toggleRowRpSelection(idx, officer.employeeId)}
-                                className={`flex items-center justify-between p-1 text-[11px] cursor-pointer transition-colors ${
-                                  isSelected ? 'bg-emerald-50 text-emerald-900 font-semibold' : 'hover:bg-slate-50 text-slate-700'
-                                }`}
-                              >
-                                <div className="flex items-center gap-1.5 truncate">
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={() => {}}
-                                    className="rounded text-emerald-600 pointer-events-none w-3 h-3"
-                                  />
-                                  <span className="truncate">
-                                    {officer.employeeId} - {officer.name}
-                                  </span>
-                                </div>
-                                {isSelected && (
-                                  <span className="text-[9px] text-emerald-600 font-bold shrink-0">Selected</span>
-                                )}
-                              </div>
-                            );
-                          })
+                            ))}
+                          </div>
                         )}
                       </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        External Resource Person
-                      </label>
-                      <div className="flex gap-1.5">
-                        <input
-                          type="text"
-                          placeholder="Add guest speaker"
-                          value={extRpInputMap[row.id] || ''}
-                          onChange={(e) =>
-                            setExtRpInputMap((prev) => ({ ...prev, [row.id]: e.target.value }))
-                          }
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleAddExternalRp(row.id, idx);
-                            }
-                          }}
-                          className="flex-1 px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg shadow-xs"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleAddExternalRp(row.id, idx)}
-                          className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
-                        >
-                          Add
-                        </button>
-                      </div>
-                      {row.externalResourcePersons && row.externalResourcePersons.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1.5">
-                          {row.externalResourcePersons.map((name, rpIdx) => (
-                            <span
-                              key={rpIdx}
-                              className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded text-[10px] font-medium"
-                            >
-                              <span>{name}</span>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveExternalRp(idx, rpIdx)}
-                                className="text-emerald-500 hover:text-emerald-800"
-                              >
-                                &times;
-                              </button>
-                            </span>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
-              </div>
               );
             })}
 
             {/* Add Row Button */}
-            <div className="flex justify-start">
+            <div className="flex justify-start pt-1">
               <button
                 id="btn-add-departmental-row"
                 type="button"
@@ -620,25 +702,30 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                 className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer shadow-xs"
               >
                 <Plus className="w-4 h-4 text-emerald-600" />
-                <span>add another Schedule</span>
+                <span>Add Another Schedule</span>
               </button>
             </div>
           </div>
 
-          {/* Footer Bar */}
-          <div className="px-6 py-3.5 bg-white border-t border-slate-200 flex items-center justify-between shrink-0">
-            <span className="text-xs text-slate-500 font-medium">
-              {rows.length} departmental schedule row{rows.length > 1 ? 's' : ''} ready to submit
-            </span>
+          {/* Sticky Footer */}
+          <div className="px-6 py-3.5 border-t border-slate-200 flex items-center justify-between bg-slate-50/70 shrink-0">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
             <button
               id="btn-submit-departmental-schedule"
               type="submit"
               disabled={isSubmitting}
-              className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs disabled:opacity-60"
+              className="flex items-center gap-1.5 px-5 py-2 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 disabled:opacity-50 cursor-pointer transition-colors shadow-xs"
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
                   <span>Publishing Schedule...</span>
                 </>
               ) : (

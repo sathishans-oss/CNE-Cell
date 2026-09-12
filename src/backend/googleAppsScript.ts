@@ -336,10 +336,11 @@ function handleRequest(e, method) {
         output = handleGetDashboardStats(params, session);
         break;
         
-      // Administrative Endpoints (Strictly requireAdmin verified)
       case 'getOfficersDropdown':
-        output = handleAdminAction(params, session, handleGetOfficersDropdown, 'GET_OFFICERS_DROPDOWN');
+        output = handleGetOfficersDropdown(params, session);
         break;
+
+      // Administrative Endpoints (Strictly requireAdmin verified)
       case 'addArea':
         output = handleAdminAction(params, session, handleAddArea, 'ADD_AREA');
         break;
@@ -685,7 +686,10 @@ function getUserRoleInfo(employeeId) {
             if (areaCol !== -1 && data[r][areaCol]) {
               var rawArea = String(data[r][areaCol]).trim();
               result.assignedArea = rawArea;
-              result.assignedAreas = rawArea ? rawArea.split(/[,;\\n]+/).map(function(s) { return s.trim(); }).filter(Boolean) : [];
+              result.assignedAreas = rawArea ? rawArea.split(/[,;\n]+/).map(function(s) { return s.trim(); }).filter(Boolean) : [];
+              if (result.role !== 'ADMIN' && result.assignedAreas.length > 0) {
+                result.role = 'AREA_INCHARGE';
+              }
             }
             return result;
           }
@@ -1180,8 +1184,13 @@ function findOfficerById(employeeId) {
  * Officers Dropdown (Admin Only, Sanitized: ONLY employeeId, name, designation returned)
  */
 function handleGetOfficersDropdown(params, session) {
-  var adminError = requireAdmin(session);
-  if (adminError) return adminError;
+  if (!session) {
+    return {
+      success: false,
+      errorCode: 'UNAUTHORIZED',
+      message: 'Authentication required. Please sign in.'
+    };
+  }
 
   var sheet;
   try {
@@ -3501,28 +3510,114 @@ function handleGetRoles(params, session) {
 
   var sheet = getOrCreateSheet('Role');
   var data = sheet.getDataRange().getValues();
+  if (data.length < 2) {
+    return { success: true, data: [] };
+  }
   var colMap = getHeaderMap(sheet);
+  var headers = data[0];
+
+  // Resiliently locate Employee ID column
+  var empIdCol = -1;
+  var possibleEmpKeys = ['employeeidno', 'employeeid', 'empid', 'id', 'officerid'];
+  for (var k = 0; k < possibleEmpKeys.length; k++) {
+    if (colMap[possibleEmpKeys[k]] !== undefined) {
+      empIdCol = colMap[possibleEmpKeys[k]];
+      break;
+    }
+  }
+  if (empIdCol === -1) {
+    for (var c = 0; c < headers.length; c++) {
+      var h = String(headers[c] || '').toLowerCase();
+      if (h.indexOf('emp') !== -1 && h.indexOf('id') !== -1) {
+        empIdCol = c;
+        break;
+      }
+    }
+  }
+  if (empIdCol === -1) empIdCol = 0;
+
+  // Resiliently locate Name column
+  var nameCol = -1;
+  var possibleNameKeys = ['nameoftheofficers', 'name', 'officername', 'employeename'];
+  for (var k = 0; k < possibleNameKeys.length; k++) {
+    if (colMap[possibleNameKeys[k]] !== undefined) {
+      nameCol = colMap[possibleNameKeys[k]];
+      break;
+    }
+  }
+  if (nameCol === -1) nameCol = 1;
+
+  // Resiliently locate Designation column
+  var desigCol = -1;
+  if (colMap['designation'] !== undefined) desigCol = colMap['designation'];
+  else if (colMap['desig'] !== undefined) desigCol = colMap['desig'];
+  if (desigCol === -1) desigCol = 2;
+
+  // Resiliently locate Role column
+  var roleCol = -1;
+  if (colMap['role'] !== undefined) roleCol = colMap['role'];
+  else if (colMap['assignedrole'] !== undefined) roleCol = colMap['assignedrole'];
+  else if (colMap['userrole'] !== undefined) roleCol = colMap['userrole'];
+  if (roleCol === -1) {
+    for (var c = 0; c < headers.length; c++) {
+      var h = String(headers[c] || '').toLowerCase();
+      if (h.indexOf('role') !== -1) {
+        roleCol = c;
+        break;
+      }
+    }
+  }
+  if (roleCol === -1) roleCol = 3;
+
+  // Resiliently locate Area / Department / Ward column
+  var areaCol = -1;
+  var possibleAreaKeys = [
+    'departmentarea', 'area', 'department', 'ward', 'wardarea',
+    'assignedareas', 'assignedarea', 'assignedwards', 'assignedward',
+    'departmentward', 'wards', 'areas', 'clinicalarea', 'clinicalareas'
+  ];
+  for (var k = 0; k < possibleAreaKeys.length; k++) {
+    if (colMap[possibleAreaKeys[k]] !== undefined) {
+      areaCol = colMap[possibleAreaKeys[k]];
+      break;
+    }
+  }
+  if (areaCol === -1) {
+    for (var c = 0; c < headers.length; c++) {
+      var h = String(headers[c] || '').toLowerCase();
+      if (h.indexOf('area') !== -1 || h.indexOf('dept') !== -1 || h.indexOf('ward') !== -1) {
+        areaCol = c;
+        break;
+      }
+    }
+  }
+  if (areaCol === -1) areaCol = 4;
+
   var roles = [];
-  
   for (var r = 1; r < data.length; r++) {
-    var empId = String(data[r][colMap['employeeidno'] !== undefined ? colMap['employeeidno'] : 0] || '').trim();
+    var empId = normalizeEmpId(data[r][empIdCol]);
     if (empId) {
-      var rawRole = String(data[r][colMap['role'] !== undefined ? colMap['role'] : 3] || 'EMPLOYEE').toUpperCase().trim();
+      var rawArea = areaCol !== -1 ? String(data[r][areaCol] || '').trim() : '';
+      var assignedAreas = rawArea
+        ? rawArea.split(/[,;\n]+/).map(function(s) { return String(s).trim(); }).filter(Boolean)
+        : [];
+      
+      var rawRole = String(data[r][roleCol] || 'EMPLOYEE').toUpperCase().trim();
       var normalizedRole = 'EMPLOYEE';
       if (rawRole.indexOf('ADMIN') !== -1) {
         normalizedRole = 'ADMIN';
-      } else if (rawRole.indexOf('INCHARGE') !== -1) {
+      } else if (rawRole.indexOf('INCHARGE') !== -1 || assignedAreas.length > 0) {
         normalizedRole = 'AREA_INCHARGE';
       }
-      var area = colMap['departmentarea'] !== undefined ? String(data[r][colMap['departmentarea']] || '').trim() : '';
-      var assignedAreas = area ? area.split(/[,;\\n]+/).map(function(s) { return s.trim(); }).filter(Boolean) : [];
 
       roles.push({
         employeeId: empId,
-        name: String(data[r][colMap['nameoftheofficers'] !== undefined ? colMap['nameoftheofficers'] : 1] || ''),
-        designation: String(data[r][colMap['designation'] !== undefined ? colMap['designation'] : 2] || ''),
+        name: String(data[r][nameCol] || ''),
+        designation: String(data[r][desigCol] || ''),
         role: normalizedRole,
-        area: area,
+        area: rawArea,
+        departmentarea: rawArea,
+        department: rawArea,
         assignedAreas: assignedAreas
       });
     }
@@ -3551,6 +3646,11 @@ function handleUpdateRole(params, session) {
   }
   var area = sanitizeCellInput(rawArea);
   
+  // If assigned areas exist and not ADMIN, targetRole is AREA_INCHARGE
+  if (targetRole !== 'ADMIN' && area) {
+    targetRole = 'AREA_INCHARGE';
+  }
+  
   var lock = LockService.getScriptLock();
   try {
     lock.waitLock(10000);
@@ -3562,13 +3662,74 @@ function handleUpdateRole(params, session) {
     var sheet = getOrCreateSheet('Role');
     var data = sheet.getDataRange().getValues();
     var colMap = getHeaderMap(sheet);
+    var headers = data.length > 0 ? data[0] : [];
     var adminCount = 0;
     var targetRow = -1;
     var currentRole = 'EMPLOYEE';
+
+    // Resiliently locate Employee ID column
+    var empIdCol = -1;
+    var possibleEmpKeys = ['employeeidno', 'employeeid', 'empid', 'id', 'officerid'];
+    for (var k = 0; k < possibleEmpKeys.length; k++) {
+      if (colMap[possibleEmpKeys[k]] !== undefined) {
+        empIdCol = colMap[possibleEmpKeys[k]];
+        break;
+      }
+    }
+    if (empIdCol === -1) {
+      for (var c = 0; c < headers.length; c++) {
+        var h = String(headers[c] || '').toLowerCase();
+        if (h.indexOf('emp') !== -1 && h.indexOf('id') !== -1) {
+          empIdCol = c;
+          break;
+        }
+      }
+    }
+    if (empIdCol === -1) empIdCol = 0;
+
+    // Resiliently locate Role column
+    var roleCol = -1;
+    if (colMap['role'] !== undefined) roleCol = colMap['role'];
+    else if (colMap['assignedrole'] !== undefined) roleCol = colMap['assignedrole'];
+    else if (colMap['userrole'] !== undefined) roleCol = colMap['userrole'];
+    if (roleCol === -1) {
+      for (var c = 0; c < headers.length; c++) {
+        var h = String(headers[c] || '').toLowerCase();
+        if (h.indexOf('role') !== -1) {
+          roleCol = c;
+          break;
+        }
+      }
+    }
+    if (roleCol === -1) roleCol = 3;
+
+    // Resiliently locate Area / Department / Ward column
+    var areaCol = -1;
+    var possibleAreaKeys = [
+      'departmentarea', 'area', 'department', 'ward', 'wardarea',
+      'assignedareas', 'assignedarea', 'assignedwards', 'assignedward',
+      'departmentward', 'wards', 'areas', 'clinicalarea', 'clinicalareas'
+    ];
+    for (var k = 0; k < possibleAreaKeys.length; k++) {
+      if (colMap[possibleAreaKeys[k]] !== undefined) {
+        areaCol = colMap[possibleAreaKeys[k]];
+        break;
+      }
+    }
+    if (areaCol === -1) {
+      for (var c = 0; c < headers.length; c++) {
+        var h = String(headers[c] || '').toLowerCase();
+        if (h.indexOf('area') !== -1 || h.indexOf('dept') !== -1 || h.indexOf('ward') !== -1) {
+          areaCol = c;
+          break;
+        }
+      }
+    }
+    if (areaCol === -1) areaCol = 4;
     
     for (var r = 1; r < data.length; r++) {
-      var rowEmpId = normalizeEmpId(data[r][colMap['employeeidno'] !== undefined ? colMap['employeeidno'] : 0]);
-      var rVal = String(data[r][colMap['role'] !== undefined ? colMap['role'] : 3] || 'EMPLOYEE').toUpperCase().trim();
+      var rowEmpId = normalizeEmpId(data[r][empIdCol]);
+      var rVal = String(data[r][roleCol] || 'EMPLOYEE').toUpperCase().trim();
       if (rVal.indexOf('ADMIN') !== -1) {
         adminCount++;
       }
@@ -3586,17 +3747,25 @@ function handleUpdateRole(params, session) {
       };
     }
     
-    var roleCol = (colMap['role'] !== undefined ? colMap['role'] : 3) + 1;
-    var areaCol = (colMap['departmentarea'] !== undefined ? colMap['departmentarea'] : 4) + 1;
+    var roleColNumber = roleCol + 1;
+    var areaColNumber = areaCol + 1;
 
     if (targetRow > 0) {
-      sheet.getRange(targetRow, roleCol).setValue(targetRole);
-      sheet.getRange(targetRow, areaCol).setValue(area);
+      sheet.getRange(targetRow, roleColNumber).setValue(targetRole);
+      sheet.getRange(targetRow, areaColNumber).setValue(area);
     } else {
       var officer = findOfficerById(employeeId);
       var name = officer ? officer.name : (params.name || '');
       var desig = officer ? officer.designation : (params.designation || '');
-      sheet.appendRow([employeeId, name, desig, targetRole, area]);
+      var maxCol = Math.max(5, areaColNumber, roleColNumber);
+      var newRow = [];
+      for (var i = 0; i < maxCol; i++) newRow.push('');
+      newRow[empIdCol] = employeeId;
+      newRow[colMap['nameoftheofficers'] !== undefined ? colMap['nameoftheofficers'] : 1] = name;
+      newRow[colMap['designation'] !== undefined ? colMap['designation'] : 2] = desig;
+      newRow[roleCol] = targetRole;
+      newRow[areaCol] = area;
+      sheet.appendRow(newRow);
     }
     
     logAuditAction('UPDATE_ROLE', session.employeeId, 'Set role for ' + employeeId + ' -> ' + targetRole + (area ? ' (Area: ' + area + ')' : ''), 'SUCCESS');
