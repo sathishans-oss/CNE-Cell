@@ -46,6 +46,7 @@ import { CNEPostTestModal } from './cne/CNEPostTestModal';
 import { CNEFinalizeModal } from './cne/CNEFinalizeModal';
 import { DepartmentalScheduleModal } from './cne/DepartmentalScheduleModal';
 import { ConfirmDatePicker } from './cne/ConfirmDatePicker';
+import { loadOfficersSingleFlight, getCachedOfficers } from '../services/officerLoader';
 
 interface UpcomingClassesProps {
   user: SessionUser | null;
@@ -81,7 +82,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   const [newDescription, setNewDescription] = useState('');
   const [newMaxParticipants, setNewMaxParticipants] = useState(40);
   const [areasList, setAreasList] = useState<string[]>([]);
-  const [officersList, setOfficersList] = useState<any[]>([]);
+  const [officersList, setOfficersList] = useState<any[]>(() => getCachedOfficers() || []);
   const [isResourcePersonsLoading, setIsResourcePersonsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
@@ -181,10 +182,10 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
       setIsResourcePersonsLoading(true);
     }
     try {
-      const [clsRes, areasRes, officersRes] = await Promise.all([
+      const [clsRes, areasRes, officers] = await Promise.all([
         ApiService.getUpcomingClasses(),
         ApiService.getAreas(),
-        user ? ApiService.getOfficersDropdown() : Promise.resolve({ success: true, data: [] })
+        user ? loadOfficersSingleFlight() : Promise.resolve([])
       ]);
 
       if (clsRes.success && clsRes.data) {
@@ -193,8 +194,8 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
       if (areasRes.success && areasRes.data) {
         setAreasList(areasRes.data.filter((a) => a.status === 'ACTIVE').map((a) => a.name));
       }
-      if (officersRes.success && officersRes.data) {
-        setOfficersList(officersRes.data);
+      if (officers && officers.length > 0) {
+        setOfficersList(officers);
       }
       return clsRes.data;
     } catch (e: any) {
@@ -210,10 +211,10 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
     if ((isAddClassOpen || Boolean(editingCne)) && officersList.length === 0 && !isResourcePersonsLoading) {
       let cancelled = false;
       setIsResourcePersonsLoading(true);
-      ApiService.getOfficersDropdown()
-        .then((res) => {
-          if (!cancelled && res.success && res.data) {
-            setOfficersList(res.data);
+      loadOfficersSingleFlight()
+        .then((officers) => {
+          if (!cancelled && officers && officers.length > 0) {
+            setOfficersList(officers);
           }
         })
         .catch(() => {})
@@ -1123,7 +1124,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                     <div className="space-y-2 flex-1 flex flex-col">
                       <div className="flex items-center justify-between">
                         <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                          <span>Internal Faculty (AIIMS Staff)</span>
+                          <span>Internal Faculty</span>
                           {isResourcePersonsLoading && (
                             <Loader2 className="w-3 h-3 text-teal-600 animate-spin" />
                           )}
@@ -1212,7 +1213,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                     <div className="pt-2 border-t border-slate-200 space-y-2">
                       <div className="flex items-center justify-between">
                         <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
-                          External Resource Persons (Guest Faculty)
+                          External Resource Persons
                         </label>
                       </div>
                       <div className="flex gap-2">
@@ -2009,7 +2010,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
 
                     <div className="space-y-2 flex-1 flex flex-col">
                       <span className="text-[11px] font-semibold text-slate-600 flex items-center gap-1.5">
-                        <span>Internal Staff (AIIMS Faculty):</span>
+                        <span>Internal Faculty:</span>
                         {isResourcePersonsLoading && (
                           <Loader2 className="w-3 h-3 text-amber-600 animate-spin" />
                         )}
@@ -2064,7 +2065,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
 
                     <div className="pt-2 border-t border-slate-200 space-y-2">
                       <span className="text-[11px] font-semibold text-slate-600 block">
-                        External Resource Persons (Optional):
+                        External Resource Persons:
                       </span>
                       <div className="flex gap-1.5">
                         <input
@@ -2204,6 +2205,8 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
           user={user}
           areasList={areasList}
           officersList={officersList}
+          isOfficersLoading={isResourcePersonsLoading}
+          onOfficersLoaded={(fresh) => setOfficersList(fresh)}
           onSuccess={loadData}
         />
       )}
