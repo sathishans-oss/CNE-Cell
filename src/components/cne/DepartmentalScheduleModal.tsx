@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Plus, Trash2, Calendar, Clock, MapPin, User, BookOpen, AlertCircle, Loader2, X, PlusCircle } from 'lucide-react';
 import { DepartmentalScheduleRow, Employee, SessionUser } from '../../types';
 import { ApiService } from '../../services/api';
+import { getCachedOfficers, loadOfficersSingleFlight, isOfficersInFlight } from '../../services/officerLoader';
 import { useToast } from '../Toast';
 import { getUserAssignedAreas, calculateCneDuration, validateCneDuration } from '../../utils';
 import { CneDateTimeFields } from './CneDateTimeFields';
@@ -21,6 +22,8 @@ interface DepartmentalScheduleModalProps {
   user: SessionUser | null;
   areasList: string[];
   officersList: Employee[];
+  isOfficersLoading?: boolean;
+  onOfficersLoaded?: (officers: Employee[]) => void;
   onSuccess: () => void;
 }
 
@@ -47,6 +50,8 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
   user,
   areasList,
   officersList,
+  isOfficersLoading: isOfficersLoadingProp,
+  onOfficersLoaded,
   onSuccess
 }) => {
   const { success, error } = useToast();
@@ -60,8 +65,14 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
   const [rows, setRows] = useState<DepartmentalScheduleRow[]>([
     createInitialRow(defaultArea)
   ]);
-  const [internalOfficers, setInternalOfficers] = useState<Employee[]>(officersList || []);
-  const [isResourcePersonsLoading, setIsResourcePersonsLoading] = useState(false);
+  const [internalOfficers, setInternalOfficers] = useState<Employee[]>(() => {
+    if (officersList && officersList.length > 0) return officersList;
+    return getCachedOfficers() || [];
+  });
+  const [isResourcePersonsLoading, setIsResourcePersonsLoading] = useState<boolean>(() => {
+    if ((officersList && officersList.length > 0) || getCachedOfficers()) return false;
+    return isOfficersLoadingProp ?? isOfficersInFlight();
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const [extRpInputMap, setExtRpInputMap] = useState<Record<string, string>>({});
@@ -71,33 +82,59 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
   React.useEffect(() => {
     if (officersList && officersList.length > 0) {
       setInternalOfficers(officersList);
+      setIsResourcePersonsLoading(false);
     }
   }, [officersList]);
 
-  // On-demand fetch of internal officers if modal is opened with empty list
+  // Sync loading state if passed from parent
   React.useEffect(() => {
-    if (isOpen && (!officersList || officersList.length === 0) && internalOfficers.length === 0 && !isResourcePersonsLoading) {
-      let cancelled = false;
-      setIsResourcePersonsLoading(true);
-      ApiService.getOfficersDropdown()
-        .then((res) => {
-          if (!cancelled && res.success && res.data) {
-            setInternalOfficers(res.data);
-          }
-        })
-        .catch(() => {})
-        .finally(() => {
-          if (!cancelled) {
-            setIsResourcePersonsLoading(false);
-          }
-        });
-      return () => {
-        cancelled = true;
-      };
+    if (isOfficersLoadingProp !== undefined && (!officersList || officersList.length === 0) && !getCachedOfficers()) {
+      setIsResourcePersonsLoading(isOfficersLoadingProp);
     }
-  }, [isOpen, officersList, internalOfficers.length, isResourcePersonsLoading]);
+  }, [isOfficersLoadingProp, officersList]);
 
-  const effectiveOfficers = (officersList && officersList.length > 0) ? officersList : internalOfficers;
+  // Load internal officers using shared single-flight loader if not yet available
+  React.useEffect(() => {
+    if (!isOpen) return;
+
+    const cached = getCachedOfficers();
+    if (cached && cached.length > 0) {
+      setInternalOfficers(cached);
+      setIsResourcePersonsLoading(false);
+      return;
+    }
+
+    if (officersList && officersList.length > 0) {
+      setInternalOfficers(officersList);
+      setIsResourcePersonsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsResourcePersonsLoading(true);
+    loadOfficersSingleFlight()
+      .then((officers) => {
+        if (!cancelled && officers && officers.length > 0) {
+          setInternalOfficers(officers);
+          if (onOfficersLoaded) {
+            onOfficersLoaded(officers);
+          }
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsResourcePersonsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, officersList, onOfficersLoaded]);
+
+  const effectiveOfficers = (officersList && officersList.length > 0)
+    ? officersList
+    : (internalOfficers.length > 0 ? internalOfficers : (getCachedOfficers() || []));
 
   // Reset to exactly 1 blank schedule row whenever modal is opened
   React.useEffect(() => {
@@ -553,7 +590,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                       <div className="space-y-2 flex-1 flex flex-col">
                         <div className="flex items-center justify-between">
                           <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                            <span>Internal Faculty (AIIMS Staff)</span>
+                            <span>Internal Faculty</span>
                             {isResourcePersonsLoading && (
                               <Loader2 className="w-3 h-3 text-cyan-600 animate-spin" />
                             )}
@@ -644,7 +681,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                       <div className="pt-2.5 border-t border-slate-200 space-y-2">
                         <div className="flex items-center justify-between">
                           <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
-                            External Resource Person (Guest Faculty)
+                            External Resource Person
                           </label>
                         </div>
                         <div className="flex gap-2">
@@ -712,15 +749,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
           </div>
 
           {/* Sticky Footer */}
-          <div className="px-6 py-3.5 border-t border-slate-200 flex items-center justify-between bg-slate-50/70 shrink-0">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
+          <div className="px-6 py-3.5 border-t border-slate-200 flex items-center justify-end bg-slate-50/70 shrink-0">
             <button
               id="btn-submit-departmental-schedule"
               type="submit"
