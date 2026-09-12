@@ -8,7 +8,17 @@ let inFlightOfficersPromise: Promise<Employee[]> | null = null;
  * Returns currently cached officers master list if available, or null.
  */
 export function getCachedOfficers(): Employee[] | null {
-  return cachedOfficers && cachedOfficers.length > 0 ? cachedOfficers : null;
+  if (cachedOfficers && cachedOfficers.length > 0) {
+    return cachedOfficers;
+  }
+  try {
+    const local = ApiService.getCachedData<Employee[]>('getOfficersDropdown');
+    if (local && Array.isArray(local) && local.length > 0) {
+      cachedOfficers = local;
+      return cachedOfficers;
+    }
+  } catch {}
+  return null;
 }
 
 /**

@@ -30,6 +30,7 @@ import {
   validateCneDuration
 } from '../utils';
 import { CneDateTimeFields } from './cne/CneDateTimeFields';
+import { loadOfficersSingleFlight, getCachedOfficers } from '../services/officerLoader';
 
 function parseDateTimeParts(dateTimeStr?: string, defaultTime: string = '09:00') {
   if (!dateTimeStr) return { date: '', time: defaultTime };
@@ -49,10 +50,10 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
   user,
   isOpenAddModalDefault = false
 }) => {
-  const [records, setRecords] = useState<CNERecord[]>([]);
-  const [areas, setAreas] = useState<Area[]>([]);
-  const [officers, setOfficers] = useState<Employee[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [records, setRecords] = useState<CNERecord[]>(() => ApiService.getCachedData<CNERecord[]>('getCNERecords') || []);
+  const [areas, setAreas] = useState<Area[]>(() => ApiService.getCachedData<Area[]>('getAreas') || []);
+  const [officers, setOfficers] = useState<Employee[]>(() => getCachedOfficers() || []);
+  const [loading, setLoading] = useState(() => (ApiService.getCachedData<CNERecord[]>('getCNERecords') ? false : true));
 
   // Filters & Search
   const [searchTerm, setSearchTerm] = useState('');
@@ -161,17 +162,19 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
   }, []);
 
   const loadAllData = async () => {
-    setLoading(true);
+    if (records.length === 0) {
+      setLoading(true);
+    }
     try {
-      const [recordsRes, areasRes, officersRes] = await Promise.all([
+      const [recordsRes, areasRes, officersList] = await Promise.all([
         ApiService.getCNERecords(),
         ApiService.getAreas(),
-        ApiService.getOfficersDropdown()
+        loadOfficersSingleFlight()
       ]);
 
       if (recordsRes.success && recordsRes.data) setRecords(recordsRes.data);
       if (areasRes.success && areasRes.data) setAreas(areasRes.data);
-      if (officersRes.success && officersRes.data) setOfficers(officersRes.data);
+      if (officersList && officersList.length > 0) setOfficers(officersList);
     } catch (e: any) {
       error(e?.message || 'Error loading CNE master data.');
     } finally {
