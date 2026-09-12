@@ -54,6 +54,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
   const [areas, setAreas] = useState<Area[]>(() => ApiService.getCachedData<Area[]>('getAreas') || []);
   const [officers, setOfficers] = useState<Employee[]>(() => getCachedOfficers() || []);
   const [loading, setLoading] = useState(() => (ApiService.getCachedData<CNERecord[]>('getCNERecords') ? false : true));
+  const [isOfficersLoading, setIsOfficersLoading] = useState(false);
 
   // Filters & Search
   const [searchTerm, setSearchTerm] = useState('');
@@ -161,20 +162,50 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
     loadAllData();
   }, []);
 
+  // On-demand fetch of officers when Add CNE or Edit CNE modal opens if not yet loaded
+  useEffect(() => {
+    if ((isAddModalOpen || Boolean(editingRecord)) && officers.length === 0 && !isOfficersLoading) {
+      let cancelled = false;
+      setIsOfficersLoading(true);
+      loadOfficersSingleFlight()
+        .then((officersList) => {
+          if (!cancelled && officersList && officersList.length > 0) {
+            setOfficers(officersList);
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) {
+            setIsOfficersLoading(false);
+          }
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+  }, [isAddModalOpen, editingRecord, officers.length, isOfficersLoading]);
+
   const loadAllData = async () => {
     if (records.length === 0) {
       setLoading(true);
     }
     try {
-      const [recordsRes, areasRes, officersList] = await Promise.all([
+      const [recordsRes, areasRes] = await Promise.all([
         ApiService.getCNERecords(),
-        ApiService.getAreas(),
-        loadOfficersSingleFlight()
+        ApiService.getAreas()
       ]);
 
       if (recordsRes.success && recordsRes.data) setRecords(recordsRes.data);
       if (areasRes.success && areasRes.data) setAreas(areasRes.data);
-      if (officersList && officersList.length > 0) setOfficers(officersList);
+
+      // Asynchronously load officers in the background without blocking Data Master rendering
+      loadOfficersSingleFlight()
+        .then((officersList) => {
+          if (officersList && officersList.length > 0) {
+            setOfficers(officersList);
+          }
+        })
+        .catch(() => {});
     } catch (e: any) {
       error(e?.message || 'Error loading CNE master data.');
     } finally {
@@ -1194,31 +1225,37 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
 
                       {/* RP Selection List */}
                       <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white flex-1">
-                        {filteredRpOptions.slice(0, 50).map((o) => {
-                          const isSelected = selectedRpEmpIds.includes(o.employeeId);
-                          return (
-                            <div
-                              key={o.employeeId}
-                              onClick={() => toggleRpSelection(o.employeeId)}
-                              className={`p-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer text-xs ${
-                                isSelected ? 'bg-purple-50/60 font-semibold' : ''
-                              }`}
-                            >
-                              <div className="truncate mr-2">
-                                <span className="font-mono text-slate-600">{o.employeeId}</span>
-                                <span className="mx-1.5">•</span>
-                                <span className="text-slate-900">{o.name}</span>
-                                <span className="text-slate-400 text-[10px] ml-1">({o.designation})</span>
+                        {isOfficersLoading && filteredRpOptions.length === 0 ? (
+                          <div className="p-3 text-center text-xs text-slate-500">Loading roster directory...</div>
+                        ) : filteredRpOptions.length === 0 ? (
+                          <div className="p-3 text-center text-xs text-slate-400">No officers found</div>
+                        ) : (
+                          filteredRpOptions.slice(0, 50).map((o) => {
+                            const isSelected = selectedRpEmpIds.includes(o.employeeId);
+                            return (
+                              <div
+                                key={o.employeeId}
+                                onClick={() => toggleRpSelection(o.employeeId)}
+                                className={`p-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer text-xs ${
+                                  isSelected ? 'bg-purple-50/60 font-semibold' : ''
+                                }`}
+                              >
+                                <div className="truncate mr-2">
+                                  <span className="font-mono text-slate-600">{o.employeeId}</span>
+                                  <span className="mx-1.5">•</span>
+                                  <span className="text-slate-900">{o.name}</span>
+                                  <span className="text-slate-400 text-[10px] ml-1">({o.designation})</span>
+                                </div>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => {}}
+                                  className="rounded text-purple-600 focus:ring-purple-500 pointer-events-none shrink-0"
+                                />
                               </div>
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => {}}
-                                className="rounded text-purple-600 focus:ring-purple-500 pointer-events-none shrink-0"
-                              />
-                            </div>
-                          );
-                        })}
+                            );
+                          })
+                        )}
                       </div>
                     </div>
 
@@ -1328,31 +1365,37 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
 
                       {/* Staff Selection List */}
                       <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white flex-1">
-                        {filteredStaffOptions.slice(0, 50).map((o) => {
-                          const isSelected = selectedStaffIds.includes(o.employeeId);
-                          return (
-                            <div
-                              key={o.employeeId}
-                              onClick={() => toggleStaffSelection(o.employeeId)}
-                              className={`p-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer text-xs ${
-                                isSelected ? 'bg-emerald-50/60 font-semibold' : ''
-                              }`}
-                            >
-                              <div className="truncate mr-2">
-                                <span className="font-mono text-slate-600">{o.employeeId}</span>
-                                <span className="mx-1.5">•</span>
-                                <span className="text-slate-900">{o.name}</span>
-                                <span className="text-slate-400 text-[10px] ml-1">({o.designation})</span>
+                        {isOfficersLoading && filteredStaffOptions.length === 0 ? (
+                          <div className="p-3 text-center text-xs text-slate-500">Loading roster directory...</div>
+                        ) : filteredStaffOptions.length === 0 ? (
+                          <div className="p-3 text-center text-xs text-slate-400">No officers found</div>
+                        ) : (
+                          filteredStaffOptions.slice(0, 50).map((o) => {
+                            const isSelected = selectedStaffIds.includes(o.employeeId);
+                            return (
+                              <div
+                                key={o.employeeId}
+                                onClick={() => toggleStaffSelection(o.employeeId)}
+                                className={`p-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer text-xs ${
+                                  isSelected ? 'bg-emerald-50/60 font-semibold' : ''
+                                }`}
+                              >
+                                <div className="truncate mr-2">
+                                  <span className="font-mono text-slate-600">{o.employeeId}</span>
+                                  <span className="mx-1.5">•</span>
+                                  <span className="text-slate-900">{o.name}</span>
+                                  <span className="text-slate-400 text-[10px] ml-1">({o.designation})</span>
+                                </div>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => {}}
+                                  className="rounded text-emerald-600 focus:ring-emerald-500 pointer-events-none shrink-0"
+                                />
                               </div>
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => {}}
-                                className="rounded text-emerald-600 focus:ring-emerald-500 pointer-events-none shrink-0"
-                              />
-                            </div>
-                          );
-                        })}
+                            );
+                          })
+                        )}
                       </div>
                     </div>
 
@@ -1650,31 +1693,37 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
 
                       {/* RP Selection List */}
                       <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white flex-1">
-                        {filteredEditRpOptions.slice(0, 50).map((o) => {
-                          const isSelected = editRpEmpIds.includes(o.employeeId);
-                          return (
-                            <div
-                              key={o.employeeId}
-                              onClick={() => toggleEditRpSelection(o.employeeId)}
-                              className={`p-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer text-xs ${
-                                isSelected ? 'bg-purple-50/60 font-semibold' : ''
-                              }`}
-                            >
-                              <div className="truncate mr-2">
-                                <span className="font-mono text-slate-600">{o.employeeId}</span>
-                                <span className="mx-1.5">•</span>
-                                <span className="text-slate-900">{o.name}</span>
-                                <span className="text-slate-400 text-[10px] ml-1">({o.designation})</span>
+                        {isOfficersLoading && filteredEditRpOptions.length === 0 ? (
+                          <div className="p-3 text-center text-xs text-slate-500">Loading roster directory...</div>
+                        ) : filteredEditRpOptions.length === 0 ? (
+                          <div className="p-3 text-center text-xs text-slate-400">No officers found</div>
+                        ) : (
+                          filteredEditRpOptions.slice(0, 50).map((o) => {
+                            const isSelected = editRpEmpIds.includes(o.employeeId);
+                            return (
+                              <div
+                                key={o.employeeId}
+                                onClick={() => toggleEditRpSelection(o.employeeId)}
+                                className={`p-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer text-xs ${
+                                  isSelected ? 'bg-purple-50/60 font-semibold' : ''
+                                }`}
+                              >
+                                <div className="truncate mr-2">
+                                  <span className="font-mono text-slate-600">{o.employeeId}</span>
+                                  <span className="mx-1.5">•</span>
+                                  <span className="text-slate-900">{o.name}</span>
+                                  <span className="text-slate-400 text-[10px] ml-1">({o.designation})</span>
+                                </div>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => {}}
+                                  className="rounded text-purple-600 focus:ring-purple-500 pointer-events-none shrink-0"
+                                />
                               </div>
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => {}}
-                                className="rounded text-purple-600 focus:ring-purple-500 pointer-events-none shrink-0"
-                              />
-                            </div>
-                          );
-                        })}
+                            );
+                          })
+                        )}
                       </div>
                     </div>
 
@@ -1784,31 +1833,37 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
 
                       {/* Staff Selection List */}
                       <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white flex-1">
-                        {filteredEditStaffOptions.slice(0, 50).map((o) => {
-                          const isSelected = editStaffIds.includes(o.employeeId);
-                          return (
-                            <div
-                              key={o.employeeId}
-                              onClick={() => toggleEditStaffSelection(o.employeeId)}
-                              className={`p-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer text-xs ${
-                                isSelected ? 'bg-emerald-50/60 font-semibold' : ''
-                              }`}
-                            >
-                              <div className="truncate mr-2">
-                                <span className="font-mono text-slate-600">{o.employeeId}</span>
-                                <span className="mx-1.5">•</span>
-                                <span className="text-slate-900">{o.name}</span>
-                                <span className="text-slate-400 text-[10px] ml-1">({o.designation})</span>
+                        {isOfficersLoading && filteredEditStaffOptions.length === 0 ? (
+                          <div className="p-3 text-center text-xs text-slate-500">Loading roster directory...</div>
+                        ) : filteredEditStaffOptions.length === 0 ? (
+                          <div className="p-3 text-center text-xs text-slate-400">No officers found</div>
+                        ) : (
+                          filteredEditStaffOptions.slice(0, 50).map((o) => {
+                            const isSelected = editStaffIds.includes(o.employeeId);
+                            return (
+                              <div
+                                key={o.employeeId}
+                                onClick={() => toggleEditStaffSelection(o.employeeId)}
+                                className={`p-2 flex items-center justify-between hover:bg-slate-50 cursor-pointer text-xs ${
+                                  isSelected ? 'bg-emerald-50/60 font-semibold' : ''
+                                }`}
+                              >
+                                <div className="truncate mr-2">
+                                  <span className="font-mono text-slate-600">{o.employeeId}</span>
+                                  <span className="mx-1.5">•</span>
+                                  <span className="text-slate-900">{o.name}</span>
+                                  <span className="text-slate-400 text-[10px] ml-1">({o.designation})</span>
+                                </div>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => {}}
+                                  className="rounded text-emerald-600 focus:ring-emerald-500 pointer-events-none shrink-0"
+                                />
                               </div>
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => {}}
-                                className="rounded text-emerald-600 focus:ring-emerald-500 pointer-events-none shrink-0"
-                              />
-                            </div>
-                          );
-                        })}
+                            );
+                          })
+                        )}
                       </div>
                     </div>
 

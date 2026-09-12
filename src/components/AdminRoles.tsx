@@ -16,6 +16,7 @@ import {
 import { Employee, RoleConfig, SessionUser, UserRole } from '../types';
 import { ApiService } from '../services/api';
 import { useToast } from './Toast';
+import { getCachedOfficers, loadOfficersSingleFlight } from '../services/officerLoader';
 
 interface AdminRolesProps {
   user: SessionUser;
@@ -222,7 +223,7 @@ const AreaMultiSelect: React.FC<AreaMultiSelectProps> = ({
 };
 
 export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
-  const [officers, setOfficers] = useState<Employee[]>([]);
+  const [officers, setOfficers] = useState<Employee[]>(() => getCachedOfficers() || []);
   const [rolesMap, setRolesMap] = useState<{ [empId: string]: OfficerRoleState }>({});
   const [areasList, setAreasList] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -244,16 +245,20 @@ export const AdminRoles: React.FC<AdminRolesProps> = ({ user }) => {
 
   const loadRolesData = async () => {
     setLoading(true);
+    // Non-blocking background officer directory loading
+    loadOfficersSingleFlight()
+      .then((officersData) => {
+        if (officersData && officersData.length > 0) {
+          setOfficers(officersData);
+        }
+      })
+      .catch(() => {});
+
     try {
-      const [officersRes, rolesRes, areasRes] = await Promise.all([
-        ApiService.getOfficersDropdown(),
+      const [rolesRes, areasRes] = await Promise.all([
         ApiService.getRoles(),
         ApiService.getAreas()
       ]);
-
-      if (officersRes.success && officersRes.data) {
-        setOfficers(officersRes.data);
-      }
 
       if (areasRes.success && areasRes.data) {
         setAreasList(areasRes.data.filter((a) => a.status === 'ACTIVE').map((a) => a.name));

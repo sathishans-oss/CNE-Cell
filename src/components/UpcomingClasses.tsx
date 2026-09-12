@@ -178,14 +178,10 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
 
   const loadData = async (): Promise<UpcomingClass[] | undefined> => {
     setLoading(true);
-    if (officersList.length === 0) {
-      setIsResourcePersonsLoading(true);
-    }
     try {
-      const [clsRes, areasRes, officers] = await Promise.all([
+      const [clsRes, areasRes] = await Promise.all([
         ApiService.getUpcomingClasses(),
-        ApiService.getAreas(),
-        user ? loadOfficersSingleFlight() : Promise.resolve([])
+        ApiService.getAreas()
       ]);
 
       if (clsRes.success && clsRes.data) {
@@ -194,15 +190,22 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
       if (areasRes.success && areasRes.data) {
         setAreasList(areasRes.data.filter((a) => a.status === 'ACTIVE').map((a) => a.name));
       }
-      if (officers && officers.length > 0) {
-        setOfficersList(officers);
+
+      // Asynchronously load officers in the background without blocking CNE Schedule rendering
+      if (user) {
+        loadOfficersSingleFlight()
+          .then((officers) => {
+            if (officers && officers.length > 0) {
+              setOfficersList(officers);
+            }
+          })
+          .catch(() => {});
       }
       return clsRes.data;
     } catch (e: any) {
       error(e?.message || 'Failed to load CNE schedule.');
     } finally {
       setLoading(false);
-      setIsResourcePersonsLoading(false);
     }
   };
 
@@ -920,7 +923,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900">
-                    Schedule Central CNE
+                    Central CNE
                   </h3>
                   <p className="text-xs text-slate-500">
                     Publish training session to the institutional CNE Schedule

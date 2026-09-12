@@ -227,15 +227,7 @@ export const CNEFinalizeModal: React.FC<CNEFinalizeModalProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  disabled={isSubmitting}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl font-medium cursor-pointer transition-colors"
-                >
-                  Cancel
-                </button>
+              <div className="flex items-center justify-end pt-4 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={handleFinalize}

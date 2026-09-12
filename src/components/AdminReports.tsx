@@ -15,6 +15,7 @@ import { CNERecord, Employee, SessionUser } from '../types';
 import { ApiService } from '../services/api';
 import { useToast } from './Toast';
 import { resolveEmployeeName } from '../utils';
+import { getCachedOfficers, loadOfficersSingleFlight } from '../services/officerLoader';
 
 interface AdminReportsProps {
   user: SessionUser;
@@ -22,7 +23,7 @@ interface AdminReportsProps {
 
 export const AdminReports: React.FC<AdminReportsProps> = () => {
   const [records, setRecords] = useState<CNERecord[]>([]);
-  const [officers, setOfficers] = useState<Employee[]>([]);
+  const [officers, setOfficers] = useState<Employee[]>(() => getCachedOfficers() || []);
   const [loading, setLoading] = useState(true);
   const [selectedYear, setSelectedYear] = useState('2026');
 
@@ -34,16 +35,19 @@ export const AdminReports: React.FC<AdminReportsProps> = () => {
 
   const loadData = async () => {
     setLoading(true);
+    // Non-blocking background officer directory loading
+    loadOfficersSingleFlight()
+      .then((offData) => {
+        if (offData && offData.length > 0) {
+          setOfficers(offData);
+        }
+      })
+      .catch(() => {});
+
     try {
-      const [res, officersRes] = await Promise.all([
-        ApiService.getCNERecords(),
-        ApiService.getOfficersDropdown().catch(() => ({ success: true, data: [] }))
-      ]);
+      const res = await ApiService.getCNERecords();
       if (res.success && res.data) {
         setRecords(res.data);
-      }
-      if (officersRes.success && officersRes.data) {
-        setOfficers(officersRes.data);
       }
     } catch (e: any) {
       error('Failed to load records for report.');

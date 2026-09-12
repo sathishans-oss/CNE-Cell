@@ -786,12 +786,20 @@ function getUserRoleInfo(employeeId) {
 
 function invalidateUserRoleCache(employeeId) {
   if (employeeId) {
-    var normId = normalizeEmpId(employeeId);
+    var rawId = String(employeeId).trim();
+    var normId = normalizeEmpId(rawId);
+    var cache = CacheService.getScriptCache();
     if (normId) {
       try {
-        CacheService.getScriptCache().remove('cne_user_role_' + normId);
+        cache.remove('cne_user_role_' + normId);
       } catch (e) {}
       delete _inMemoryRoleCache[normId];
+    }
+    if (rawId && rawId.toLowerCase() !== normId) {
+      try {
+        cache.remove('cne_user_role_' + rawId.toLowerCase());
+      } catch (e) {}
+      delete _inMemoryRoleCache[rawId.toLowerCase()];
     }
   }
 }
@@ -1263,8 +1271,116 @@ function findOfficerById(employeeId) {
 }
 
 /**
+ * Cache Limits & Chunking Constants
+ */
+var MAX_SAFE_CACHE_BYTES = 400000; // 400KB maximum payload ceiling
+var MAX_SAFE_CHUNKS = 5;          // Maximum 5 chunks (up to 425KB total)
+var CACHE_CHUNK_SIZE = 85000;     // 85KB per chunk, safely below CacheService 100KB limit
+
+/**
+ * Helper: Store data in ScriptCache with automatic chunking for payloads > 90KB.
+ * Ensures large roster/map datasets never get discarded by CacheService's 100KB limit.
+ * Hardened with defensive bounds against operational limits and sensitive data.
+ */
+function putToScriptCache(baseKey, dataObj, ttlSeconds) {
+  try {
+    if (!baseKey) return;
+
+    // Security check: Never cache credentials, secrets, tokens, answers, or sensitive data
+    var sensitiveKeywords = ['pass', 'salt', 'token', 'secret', 'credential', 'response', 'answer'];
+    var lowerKey = String(baseKey).toLowerCase();
+    for (var sk = 0; sk < sensitiveKeywords.length; sk++) {
+      if (lowerKey.indexOf(sensitiveKeywords[sk]) !== -1) {
+        Logger.log('[Cache Security Guard] Refusing to cache sensitive key: ' + baseKey);
+        return;
+      }
+    }
+
+    var jsonStr = typeof dataObj === 'string' ? dataObj : JSON.stringify(dataObj);
+    var ttl = ttlSeconds || 60;
+    var cache = CacheService.getScriptCache();
+
+    // Defensive check: If payload is too large to cache safely, skip caching gracefully
+    if (jsonStr.length > MAX_SAFE_CACHE_BYTES) {
+      Logger.log('[Cache Put Notice] Payload for ' + baseKey + ' (' + jsonStr.length + ' bytes) exceeds safe cache threshold (' + MAX_SAFE_CACHE_BYTES + ' bytes). Skipping cache without failure; using authoritative sheet.');
+      try {
+        cache.remove(baseKey);
+        cache.remove(baseKey + '_chunks');
+      } catch (cleanErr) {}
+      return;
+    }
+
+    if (jsonStr.length < 90000) {
+      cache.put(baseKey, jsonStr, ttl);
+      cache.remove(baseKey + '_chunks');
+    } else {
+      var chunks = [];
+      for (var i = 0; i < jsonStr.length; i += CACHE_CHUNK_SIZE) {
+        chunks.push(jsonStr.substring(i, i + CACHE_CHUNK_SIZE));
+      }
+
+      // Defensive check: Ensure chunk count does not exceed safe operational bounds
+      if (chunks.length > MAX_SAFE_CHUNKS) {
+        Logger.log('[Cache Put Notice] Chunk count (' + chunks.length + ') for ' + baseKey + ' exceeds safe max (' + MAX_SAFE_CHUNKS + '). Skipping caching safely.');
+        try {
+          cache.remove(baseKey);
+          cache.remove(baseKey + '_chunks');
+        } catch (cleanErr) {}
+        return;
+      }
+
+      var chunkMap = {};
+      chunkMap[baseKey + '_chunks'] = String(chunks.length);
+      for (var c = 0; c < chunks.length; c++) {
+        chunkMap[baseKey + '_p' + c] = chunks[c];
+      }
+      cache.putAll(chunkMap, ttl);
+      cache.remove(baseKey);
+    }
+  } catch (e) {
+    Logger.log('[Cache Put Notice] ' + e.message);
+  }
+}
+
+/**
+ * Helper: Retrieve data from ScriptCache with automatic reassembly of chunked payloads.
+ * Hardened with defensive chunk boundary validation.
+ */
+function getFromScriptCache(baseKey) {
+  try {
+    if (!baseKey) return null;
+    var cache = CacheService.getScriptCache();
+    var single = cache.get(baseKey);
+    if (single) {
+      return JSON.parse(single);
+    }
+    var chunkCountStr = cache.get(baseKey + '_chunks');
+    if (chunkCountStr) {
+      var count = parseInt(chunkCountStr, 10) || 0;
+      if (count > 0 && count <= MAX_SAFE_CHUNKS) {
+        var keys = [];
+        for (var i = 0; i < count; i++) {
+          keys.push(baseKey + '_p' + i);
+        }
+        var parts = cache.getAll(keys);
+        var fullJson = '';
+        for (var j = 0; j < count; j++) {
+          var part = parts[baseKey + '_p' + j];
+          if (!part) return null; // Missing chunk, treat as cache miss
+          fullJson += part;
+        }
+        return JSON.parse(fullJson);
+      }
+    }
+  } catch (e) {
+    Logger.log('[Cache Get Notice] ' + e.message);
+  }
+  return null;
+}
+
+/**
  * Officers Dropdown (Admin Only, Sanitized: ONLY employeeId, name, designation returned)
- * Uses CacheService (TTL 60s) to eliminate repeated full-roster sheet reads.
+ * Uses CacheService (TTL 60s) with chunking protection to eliminate repeated full-roster sheet reads.
  */
 function handleGetOfficersDropdown(params, session) {
   if (!session) {
@@ -1278,13 +1394,10 @@ function handleGetOfficersDropdown(params, session) {
   var startedAt = Date.now();
   var cacheKey = 'cne_officers_dropdown';
   try {
-    var cached = CacheService.getScriptCache().get(cacheKey);
-    if (cached) {
-      var parsedList = JSON.parse(cached);
-      if (Array.isArray(parsedList) && parsedList.length > 0) {
-        logPerf('handleGetOfficersDropdown [cache-hit]', startedAt);
-        return { success: true, data: parsedList, _cached: true };
-      }
+    var cached = getFromScriptCache(cacheKey);
+    if (Array.isArray(cached) && cached.length > 0) {
+      logPerf('handleGetOfficersDropdown [cache-hit]', startedAt);
+      return { success: true, data: cached, _cached: true };
     }
   } catch (e) {}
 
@@ -1320,12 +1433,7 @@ function handleGetOfficersDropdown(params, session) {
     }
   }
 
-  try {
-    var jsonList = JSON.stringify(list);
-    if (jsonList.length < 95000) {
-      CacheService.getScriptCache().put(cacheKey, jsonList, 60);
-    }
-  } catch (ce) {}
+  putToScriptCache(cacheKey, list, 60);
 
   logPerf('handleGetOfficersDropdown [sheet-read]', startedAt, 'count: ' + list.length);
   return { success: true, data: list };
@@ -1334,22 +1442,32 @@ function handleGetOfficersDropdown(params, session) {
 /**
  * Helper: Build an in-memory map of { [employeeId]: officerName }
  * from the authoritative 'Rosters Master Data' tab in DROPDOWN_SPREADSHEET_ID.
- * Uses CacheService (TTL 60s) and execution context caching.
+ * Uses execution context, CacheService (TTL 60s), and chunking protection.
  */
 function getOfficerNameMap() {
   if (_inMemoryOfficerMap) return _inMemoryOfficerMap;
-  var startedAt = Date.now();
 
+  // If execution context already loaded full roster data, build directly without sheet read!
+  if (_executionRosterData && _executionRosterData.byNormId) {
+    var mapFromRoster = {};
+    for (var normKey in _executionRosterData.byNormId) {
+      var rosterEntry = _executionRosterData.byNormId[normKey];
+      if (rosterEntry && rosterEntry.name) {
+        mapFromRoster[normKey] = rosterEntry.name;
+      }
+    }
+    _inMemoryOfficerMap = mapFromRoster;
+    return _inMemoryOfficerMap;
+  }
+
+  var startedAt = Date.now();
   var cacheKey = 'cne_officer_name_map';
   try {
-    var cached = CacheService.getScriptCache().get(cacheKey);
-    if (cached) {
-      var parsed = JSON.parse(cached);
-      if (parsed && typeof parsed === 'object') {
-        _inMemoryOfficerMap = parsed;
-        logPerf('getOfficerNameMap [cache-hit]', startedAt);
-        return parsed;
-      }
+    var cached = getFromScriptCache(cacheKey);
+    if (cached && typeof cached === 'object') {
+      _inMemoryOfficerMap = cached;
+      logPerf('getOfficerNameMap [cache-hit]', startedAt);
+      return cached;
     }
   } catch (e) {
     Logger.log('[OfficerMap Cache Notice] ' + e.message);
@@ -1373,14 +1491,7 @@ function getOfficerNameMap() {
       }
     }
 
-    try {
-      var jsonStr = JSON.stringify(map);
-      if (jsonStr.length < 95000) {
-        CacheService.getScriptCache().put(cacheKey, jsonStr, 60);
-      }
-    } catch (ce) {
-      Logger.log('[OfficerMap Cache Put Notice] ' + ce.message);
-    }
+    putToScriptCache(cacheKey, map, 60);
 
     _inMemoryOfficerMap = map;
     logPerf('getOfficerNameMap [sheet-read]', startedAt, 'count: ' + Object.keys(map).length);
@@ -1823,6 +1934,9 @@ function handleAddArea(params, session) {
     try {
       CacheService.getScriptCache().remove('cne_areas_list');
     } catch (e) {}
+    if (params.inchargeEmpId || params.inchargeId || params.employeeId) {
+      invalidateUserRoleCache(params.inchargeEmpId || params.inchargeId || params.employeeId);
+    }
     logAuditAction('ADD_AREA', session.employeeId, 'Added area: ' + areaName, 'SUCCESS');
     return { success: true, message: 'Area added successfully.' };
   } finally {
@@ -1858,6 +1972,46 @@ function handleUpdateArea(params, session) {
         try {
           CacheService.getScriptCache().remove('cne_areas_list');
         } catch (e) {}
+
+        // Invalidate incharge cached role if incharge column is present in Area sheet
+        var inchargeCol = -1;
+        for (var c = 0; c < data[0].length; c++) {
+          var ah = String(data[0][c]).toLowerCase().trim();
+          if (ah.indexOf('incharge') !== -1 && ah.indexOf('id') !== -1) inchargeCol = c;
+        }
+        if (inchargeCol !== -1 && data[r][inchargeCol]) {
+          invalidateUserRoleCache(data[r][inchargeCol]);
+        }
+        if (params.inchargeEmpId || params.inchargeId || params.employeeId) {
+          invalidateUserRoleCache(params.inchargeEmpId || params.inchargeId || params.employeeId);
+        }
+
+        // If area was renamed or status changed, invalidate role cache for all officers assigned to oldName
+        try {
+          var roleSheet = ss.getSheetByName('Role');
+          if (roleSheet) {
+            var rData = roleSheet.getDataRange().getValues();
+            if (rData.length > 1) {
+              var rHeaders = rData[0];
+              var rEmpCol = 0;
+              var rAreaCol = 4;
+              for (var rc = 0; rc < rHeaders.length; rc++) {
+                var rh = String(rHeaders[rc] || '').toLowerCase();
+                if (rh.indexOf('emp') !== -1 && rh.indexOf('id') !== -1) rEmpCol = rc;
+                if (rh.indexOf('area') !== -1 || rh.indexOf('dept') !== -1 || rh.indexOf('ward') !== -1) rAreaCol = rc;
+              }
+              var oldLower = oldName.toLowerCase();
+              for (var ri = 1; ri < rData.length; ri++) {
+                var rawEmpArea = String(rData[ri][rAreaCol] || '').toLowerCase();
+                if (rawEmpArea.indexOf(oldLower) !== -1) {
+                  var rEmpId = normalizeEmpId(rData[ri][rEmpCol]);
+                  if (rEmpId) invalidateUserRoleCache(rEmpId);
+                }
+              }
+            }
+          }
+        } catch (re) {}
+
         logAuditAction('UPDATE_AREA', session.employeeId, 'Updated area: ' + oldName + ' -> ' + (newName || oldName), 'SUCCESS');
         return { success: true, message: 'Area updated successfully.' };
       }
@@ -3930,6 +4084,12 @@ function handleUpdateRole(params, session) {
     }
     
     invalidateUserRoleCache(employeeId);
+    if (params.targetEmployeeId && params.targetEmployeeId !== employeeId) {
+      invalidateUserRoleCache(params.targetEmployeeId);
+    }
+    if (params.empId && params.empId !== employeeId) {
+      invalidateUserRoleCache(params.empId);
+    }
     logAuditAction('UPDATE_ROLE', session.employeeId, 'Set role for ' + employeeId + ' -> ' + targetRole + (area ? ' (Area: ' + area + ')' : ''), 'SUCCESS');
     return { success: true, message: 'Role assigned successfully.' };
   } finally {
@@ -7511,6 +7671,7 @@ function setupNewCNESpreadsheet() {
             Logger.log('>>> First Admin Setup: Employee ID "' + normInitialId + '" does not exist in authoritative Rosters Master Data. Administrator NOT created (no fake administrator permitted).');
           } else {
             roleSheet.appendRow([normInitialId, officer.name, officer.designation || 'Nursing Officer', 'ADMIN']);
+            invalidateUserRoleCache(normInitialId);
             Logger.log('>>> First Admin Setup: First administrator created successfully for: ' + normInitialId + ' (' + officer.name + ')');
             logAuditAction('INITIAL_ADMIN_PROVISIONED', normInitialId, 'First administrator created for ' + normInitialId, 'SUCCESS');
           }

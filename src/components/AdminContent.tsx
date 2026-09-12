@@ -1170,15 +1170,7 @@ export const AdminContent: React.FC<AdminContentProps> = ({
                 </label>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsAddNewsOpen(false)}
-                  disabled={newsSubmitting}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
-                >
-                  Cancel
-                </button>
+              <div className="flex items-center justify-end pt-3 border-t border-slate-100">
                 <button
                   type="submit"
                   disabled={newsSubmitting}
@@ -1344,15 +1336,7 @@ export const AdminContent: React.FC<AdminContentProps> = ({
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsAddLinkOpen(false)}
-                  disabled={linkSubmitting}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
-                >
-                  Cancel
-                </button>
+              <div className="flex items-center justify-end pt-3 border-t border-slate-100">
                 <button
                   type="submit"
                   disabled={linkSubmitting}
