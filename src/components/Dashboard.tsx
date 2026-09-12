@@ -124,7 +124,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs sm:text-sm border border-slate-700 transition-all cursor-pointer"
               >
                 <PlusCircle className="w-4 h-4 text-emerald-400" />
-                <span>Record Unscheduled CNE Activity</span>
+                <span>Record Unscheduled CNE</span>
               </button>
             )}
           </div>
@@ -137,7 +137,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider">
-              {isAdmin ? 'Total Activities' : 'My CNE Sessions'}
+              {isAdmin ? 'Total CNE' : 'My CNE Sessions'}
             </span>
             <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
               <Award className="w-4 h-4" />
@@ -162,7 +162,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="text-2xl sm:text-3xl font-extrabold text-slate-900">
             {loading ? '...' : currentMonthActivities}
           </div>
-          <div className="text-xs text-slate-500 mt-1">Activities logged</div>
+          <div className="text-xs text-slate-500 mt-1">Sessions logged</div>
         </div>
 
         {/* Metric 3 */}
@@ -353,7 +353,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-lg font-bold text-slate-900">Recent CNE Activity Highlights</h3>
+            <h3 className="text-lg font-bold text-slate-900">Recent CNE Highlights</h3>
             <p className="text-xs text-slate-500">Photographs from clinical workshops and training stations</p>
           </div>
           <button

@@ -285,10 +285,10 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
               <Award className="w-6 h-6" />
             </div>
             <h3 className="text-sm font-bold text-slate-800">
-              No CNE activities found for the selected period.
+              No CNE sessions found for the selected period.
             </h3>
             <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              Check your date/year filters or contact the CNE In-charge if an activity you attended is missing.
+              Check your date/year filters or contact the CNE In-charge if a session you attended is missing.
             </p>
           </div>
         ) : (
@@ -443,7 +443,7 @@ export const MyCNE: React.FC<MyCNEProps> = ({ user }) => {
                 <Award className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-slate-900">CNE Activity Record</h3>
+                <h3 className="text-base font-bold text-slate-900">CNE Record</h3>
                 <span className="text-xs text-slate-500 font-mono">ID: {selectedRecord.dataId}</span>
               </div>
             </div>

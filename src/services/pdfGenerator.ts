@@ -87,24 +87,24 @@ export function generateAnnualCNEPdf(
   doc.text(user.employeeId || 'N/A', 50, 64);
   doc.text(user.designation || 'N/A', 50, 71);
 
-  // Right Column: Summary Metrics (Total Activities & Duration ABOVE Table)
+  // Right Column: Summary Metrics (Total Sessions & Duration ABOVE Table)
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(51, 65, 85);
   doc.text('Assessment Year:', 110, 57);
-  doc.text('Total CNE Activities:', 110, 64);
+  doc.text('Total CNE Sessions:', 110, 64);
   doc.text('Total Training Duration:', 110, 71);
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
   doc.text(`${ayStr}`, 154, 57);
-  doc.text(`${records.length} Activities`, 154, 64);
+  doc.text(`${records.length} Sessions`, 154, 64);
   doc.text(`${durationSummaryStr}`, 154, 71);
 
-  // 4. CNE ACTIVITY DETAILS Header
+  // 4. CNE DETAILS Header
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
   doc.setTextColor(30, 41, 59);
-  doc.text('CNE ACTIVITY DETAILS', 14, 84);
+  doc.text('CNE DETAILS', 14, 84);
 
   // Table Data Preparation
   const tableData = records.map((rec, index) => {
@@ -157,30 +157,37 @@ export function generateAnnualCNEPdf(
     margin: { left: 14, right: 14 }
   });
 
-  // Signatures Section
+  // Signatures Section:
+  // Left: "Signature of Nursing Officer"
+  // Right: "Signature of CNE Coordinator"
+  // Center (below): "Chairperson, CNE Committee / CNO"
   const finalY = (doc as any).lastAutoTable.finalY + 12;
   const pageHeight = doc.internal.pageSize.getHeight();
 
   // If close to page bottom, add new page
-  if (finalY > pageHeight - 40) {
+  if (finalY > pageHeight - 55) {
     doc.addPage();
   }
 
-  const sigY = finalY > pageHeight - 40 ? 30 : finalY;
+  const sigY = finalY > pageHeight - 55 ? 30 : finalY;
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(71, 85, 105);
 
-  doc.line(16, sigY, 68, sigY);
+  // Left: Signature of Nursing Officer
+  doc.line(16, sigY, 76, sigY);
   doc.text('Signature of Nursing Officer', 16, sigY + 5);
   doc.text(`(${user.name || 'Officer'})`, 16, sigY + 9);
 
-  doc.line(76, sigY, 130, sigY);
-  doc.text('Signature of CNE Coordinator', 76, sigY + 5);
+  // Right: Signature of CNE Coordinator
+  doc.line(134, sigY, 194, sigY);
+  doc.text('Signature of CNE Coordinator', 134, sigY + 5);
 
-  doc.line(138, sigY, 194, sigY);
-  doc.text('Chairperson, CNE Committee / CNO', 138, sigY + 5);
-  doc.text('AIIMS Rishikesh', 138, sigY + 9);
+  // Center (below): Chairperson, CNE Committee / CNO
+  const sigY2 = sigY + 20;
+  doc.line(75, sigY2, 135, sigY2);
+  doc.text('Chairperson, CNE Committee / CNO', 105, sigY2 + 5, { align: 'center' });
+  doc.text('AIIMS Rishikesh', 105, sigY2 + 9, { align: 'center' });
 
   // Footer / Verification Stamp
   doc.setFontSize(7.5);
@@ -378,28 +385,34 @@ export function generateCNESessionPdf(
   });
 
   // 4. Signatures Section
+  // Signatures Section: Left = Resource Person, Right = CNE Incharge, Centred Below = Chairperson
   const finalY = (doc as any).lastAutoTable.finalY + 12;
   const pageHeight = doc.internal.pageSize.getHeight();
-  const safeFinalY = finalY > pageHeight - 35 ? 30 : finalY;
-  if (finalY > pageHeight - 35) {
+  if (finalY > pageHeight - 55) {
     doc.addPage();
   }
+
+  const safeFinalY = finalY > pageHeight - 55 ? 30 : finalY;
 
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(71, 85, 105);
 
-  doc.line(16, safeFinalY, 68, safeFinalY);
+  // Left: Signature of Resource Person
+  doc.line(16, safeFinalY, 76, safeFinalY);
   doc.text('Signature of Resource Person', 16, safeFinalY + 5);
   doc.text(`(${cne.resourcePersonName || cne.resourcePersonEmpId || 'Faculty / Instructor'})`, 16, safeFinalY + 9);
 
-  doc.line(76, safeFinalY, 130, safeFinalY);
-  doc.text('Signature of CNE Incharge', 76, safeFinalY + 5);
-  doc.text(`(${cne.area || 'Department'})`, 76, safeFinalY + 9);
+  // Right: Signature of CNE Incharge
+  doc.line(134, safeFinalY, 194, safeFinalY);
+  doc.text('Signature of CNE Incharge', 134, safeFinalY + 5);
+  doc.text(`(${cne.area || 'Department'})`, 134, safeFinalY + 9);
 
-  doc.line(138, safeFinalY, 194, safeFinalY);
-  doc.text('Chairperson, CNE Committee / CNO', 138, safeFinalY + 5);
-  doc.text('AIIMS Rishikesh', 138, safeFinalY + 9);
+  // Centred below: Chairperson, CNE Committee / CNO
+  const safeFinalY2 = safeFinalY + 20;
+  doc.line(75, safeFinalY2, 135, safeFinalY2);
+  doc.text('Chairperson, CNE Committee / CNO', 105, safeFinalY2 + 5, { align: 'center' });
+  doc.text('AIIMS Rishikesh', 105, safeFinalY2 + 9, { align: 'center' });
 
   // Footer
   doc.setFontSize(7.5);

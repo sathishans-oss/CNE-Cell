@@ -63,6 +63,15 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
   const [extRpInputMap, setExtRpInputMap] = useState<Record<string, string>>({});
   const [rpSearchMap, setRpSearchMap] = useState<Record<string, string>>({});
 
+  // Reset to exactly 1 blank schedule row whenever modal is opened
+  React.useEffect(() => {
+    if (isOpen) {
+      setRows([createInitialRow(defaultArea)]);
+      setExtRpInputMap({});
+      setRpSearchMap({});
+    }
+  }, [isOpen, defaultArea]);
+
   if (!isOpen) return null;
 
   const handleAddRow = () => {
@@ -621,31 +630,21 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
             <span className="text-xs text-slate-500 font-medium">
               {rows.length} departmental schedule row{rows.length > 1 ? 's' : ''} ready to submit
             </span>
-            <div className="flex items-center gap-2.5">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={isSubmitting}
-                className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                id="btn-submit-departmental-schedule"
-                type="submit"
-                disabled={isSubmitting}
-                className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs disabled:opacity-60"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Publishing Schedules...</span>
-                  </>
-                ) : (
-                  <span>Publish Departmental Schedules</span>
-                )}
-              </button>
-            </div>
+            <button
+              id="btn-submit-departmental-schedule"
+              type="submit"
+              disabled={isSubmitting}
+              className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs disabled:opacity-60"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Publishing Schedule...</span>
+                </>
+              ) : (
+                <span>Publish Schedule</span>
+              )}
+            </button>
           </div>
         </form>
       </div>

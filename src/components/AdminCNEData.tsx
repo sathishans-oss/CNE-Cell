@@ -273,7 +273,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
     setEditExternalStaffList((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  // Handle Add CNE Activity
+  // Handle Add CNE
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formTopic.trim() || !formArea.trim() || !formFromDate.trim() || (selectedRpEmpIds.length === 0 && externalRpList.length === 0)) {
@@ -334,7 +334,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
       } as any);
 
       if (res.success && res.data) {
-        success('CNE activity recorded and saved successfully.', 'Activity Added');
+        success('CNE recorded and saved successfully.', 'CNE Added');
         setRecords((prev) => [res.data!, ...prev]);
         setIsAddModalOpen(false);
         // Reset form
@@ -484,9 +484,10 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
     try {
       const res = await ApiService.deleteCNE(deletingRecord.dataId);
       if (res.success) {
-        success('CNE activity deleted successfully.', 'Record Deleted');
+        success('CNE record deleted successfully.', 'Record Deleted');
         setRecords((prev) => prev.filter((r) => r.dataId !== deletingRecord.dataId));
         setDeletingRecord(null);
+        setEditingRecord(null);
       } else {
         error(res.message || 'Failed to delete record.');
       }
@@ -697,7 +698,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
             className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
           >
             <PlusCircle className="w-4 h-4 text-emerald-400" />
-            <span>Record Unscheduled CNE Activity</span>
+            <span>Record Unscheduled CNE</span>
           </button>
         </div>
       </div>
@@ -834,7 +835,6 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                     <th className="py-3 px-3">Mode</th>
                     <th className="py-3 px-3 text-center w-24">Participants</th>
                     <th className="py-3 px-3 text-center w-24">Duration</th>
-                    <th className="py-3 px-3 text-right w-24">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -842,7 +842,12 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                     const rowNumber = (currentPage - 1) * itemsPerPage + idx + 1;
                     const isCentral = (rec.cneType || 'CENTRAL').toUpperCase() === 'CENTRAL';
                     return (
-                      <tr key={rec.dataId} className="hover:bg-slate-50">
+                      <tr
+                        key={rec.dataId}
+                        onClick={() => openEditModal(rec)}
+                        className="hover:bg-slate-100/80 cursor-pointer transition-colors"
+                        title="Click to view or edit CNE record"
+                      >
                         {/* Sr. No. (Replacing Data ID) */}
                         <td className="py-3 px-3 text-center font-medium text-slate-400">
                           {rowNumber}
@@ -918,28 +923,6 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                         <td className="py-3 px-3 text-center whitespace-nowrap font-mono text-slate-600">
                           {rec.duration || '1:00:00'}
                         </td>
-
-                        {/* Actions (Modal triggers) */}
-                        <td className="py-3 px-3 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              type="button"
-                              onClick={() => openEditModal(rec)}
-                              className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-md cursor-pointer"
-                              title="Edit CNE Record (Modal)"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeletingRecord(rec)}
-                              className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-md cursor-pointer"
-                              title="Delete record"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
                       </tr>
                     );
                   })}
@@ -976,7 +959,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
       </div>
 
       {/* ========================================================= */}
-      {/* 1. Record Unscheduled CNE Activity Modal                 */}
+      {/* 1. Record Unscheduled CNE Modal                          */}
       {/* ========================================================= */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
@@ -988,8 +971,8 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                   <PlusCircle className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Record Unscheduled CNE Activity</h3>
-                  <p className="text-xs text-slate-500">Records a CNE activity conducted outside the web scheduling workflow.</p>
+                  <h3 className="text-base font-bold text-slate-900">Record Unscheduled CNE</h3>
+                  <p className="text-xs text-slate-500">Records a CNE session conducted outside the web scheduling workflow.</p>
                 </div>
               </div>
 
@@ -1007,10 +990,10 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
               <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
                 {/* 4 Logical Sections organized into a responsive grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
-                  {/* Section 1: Classification & Activity Details */}
+                  {/* Section 1: Classification & CNE Details */}
                   <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200 flex flex-col">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-purple-900 border-b border-purple-100 pb-2 flex items-center gap-1.5">
-                      <span>1. Classification &amp; Activity Details</span>
+                      <span>1. Classification &amp; CNE Details</span>
                     </h4>
 
                     {/* Topic */}
@@ -1411,15 +1394,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
               </div>
 
               {/* Sticky Footer */}
-              <div className="px-6 py-3.5 border-t border-slate-200 flex items-center justify-end gap-2 bg-slate-50/70 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  disabled={isSubmitting}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl font-medium text-xs disabled:opacity-40 cursor-pointer transition-colors"
-                >
-                  Cancel
-                </button>
+              <div className="px-6 py-3.5 border-t border-slate-200 flex items-center justify-end bg-slate-50/70 shrink-0">
                 <button
                   type="submit"
                   disabled={isSubmitting}
@@ -1428,10 +1403,10 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                   {isSubmitting ? (
                     <>
                       <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
-                      <span>Saving Activity...</span>
+                      <span>Saving CNE...</span>
                     </>
                   ) : (
-                    <span>Save CNE Activity</span>
+                    <span>Save CNE</span>
                   )}
                 </button>
               </div>
@@ -1441,7 +1416,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
       )}
 
       {/* ========================================================= */}
-      {/* 2. EDIT CNE Activity Modal (Replacing Inline Edit)        */}
+      {/* 2. EDIT CNE Modal (Replacing Inline Edit)                 */}
       {/* ========================================================= */}
       {editingRecord && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
@@ -1453,7 +1428,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                   <Edit2 className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Edit CNE Activity Record</h3>
+                  <h3 className="text-base font-bold text-slate-900">Edit CNE Record</h3>
                   <p className="text-xs text-slate-500">Update session details, resource persons, and participants</p>
                 </div>
               </div>
@@ -1472,10 +1447,10 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
               <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
                 {/* 4 Logical Sections organized into a responsive grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
-                  {/* Section 1: Classification & Activity Details */}
+                  {/* Section 1: Classification & CNE Details */}
                   <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200 flex flex-col">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-purple-900 border-b border-purple-100 pb-2 flex items-center gap-1.5">
-                      <span>1. Classification &amp; Activity Details</span>
+                      <span>1. Classification &amp; CNE Details</span>
                     </h4>
 
                     {/* Topic */}
@@ -1875,14 +1850,16 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
               </div>
 
               {/* Sticky Footer */}
-              <div className="px-6 py-3.5 border-t border-slate-200 flex items-center justify-end gap-2 bg-slate-50/70 shrink-0">
+              <div className="px-6 py-3.5 border-t border-slate-200 flex items-center justify-between bg-slate-50/70 shrink-0">
                 <button
                   type="button"
-                  onClick={() => setEditingRecord(null)}
+                  onClick={() => setDeletingRecord(editingRecord)}
                   disabled={isEditSubmitting}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl font-medium text-xs disabled:opacity-40 cursor-pointer transition-colors"
+                  className="flex items-center gap-1.5 px-3.5 py-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl font-bold text-xs transition-colors cursor-pointer disabled:opacity-40"
+                  title="Delete this CNE record"
                 >
-                  Cancel
+                  <Trash2 className="w-4 h-4" />
+                  <span>Delete</span>
                 </button>
                 <button
                   type="submit"
@@ -1914,9 +1891,9 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
               <AlertCircle className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">Delete CNE Activity?</h3>
+              <h3 className="text-base font-bold text-slate-900">Delete CNE Record?</h3>
               <p className="text-xs text-slate-500 mt-1">
-                Are you sure you want to delete the CNE activity on <strong className="text-slate-800">"{deletingRecord.topic}"</strong> held on <strong className="text-slate-800">{formatCneDateRangeDisplay(deletingRecord.fromDate, deletingRecord.toDate)}</strong>? This will remove participation records from connected staff portfolios.
+                Are you sure you want to delete the CNE record for <strong className="text-slate-800">"{deletingRecord.topic}"</strong> held on <strong className="text-slate-800">{formatCneDateRangeDisplay(deletingRecord.fromDate, deletingRecord.toDate)}</strong>? This will remove participation records from connected staff portfolios.
               </p>
             </div>
             <div className="flex items-center justify-center gap-2 pt-2">

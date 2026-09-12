@@ -108,7 +108,7 @@ export const Gallery: React.FC<GalleryProps> = ({ user }) => {
       );
 
       if (res.success && res.data) {
-        success('CNE activity image uploaded successfully.', 'Upload Complete');
+        success('CNE image uploaded successfully.', 'Upload Complete');
         setItems((prev) => [res.data!, ...prev]);
         setIsUploadOpen(false);
         setPreviewImage(null);
@@ -129,7 +129,7 @@ export const Gallery: React.FC<GalleryProps> = ({ user }) => {
       {/* Header */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Recent CNE Activity Highlights</h1>
+          <h1 className="text-xl font-bold text-slate-900">Recent CNE Highlights</h1>
           <p className="text-xs text-slate-500 mt-1">
             Photo gallery documenting simulation workshops, clinical skills stations, and academic forums.
           </p>
@@ -349,19 +349,11 @@ export const Gallery: React.FC<GalleryProps> = ({ user }) => {
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsUploadOpen(false)}
-                  disabled={isSubmitting}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium disabled:opacity-40"
-                >
-                  Cancel
-                </button>
+              <div className="flex items-center justify-end pt-2">
                 <button
                   type="submit"
                   disabled={isSubmitting || !previewImage}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-5 py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
                 >
                   {isSubmitting ? (
                     <>

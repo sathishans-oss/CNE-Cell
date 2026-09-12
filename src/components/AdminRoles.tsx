@@ -42,10 +42,16 @@ const AreaMultiSelect: React.FC<AreaMultiSelectProps> = ({
   onSave
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [draftAreas, setDraftAreas] = useState<string[]>(assignedAreas);
   const [filterText, setFilterText] = useState('');
   const popoverRef = React.useRef<HTMLDivElement>(null);
 
-  const selectedAreas = assignedAreas;
+  // Sync draft state with assignedAreas whenever assignedAreas updates and popover is closed
+  useEffect(() => {
+    if (!isOpen) {
+      setDraftAreas(assignedAreas);
+    }
+  }, [assignedAreas, isOpen]);
 
   const filteredAreas = React.useMemo(() => {
     if (!filterText.trim()) return areasList;
@@ -53,10 +59,33 @@ const AreaMultiSelect: React.FC<AreaMultiSelectProps> = ({
     return areasList.filter((a) => a.toLowerCase().includes(q));
   }, [areasList, filterText]);
 
+  const handleOpen = () => {
+    if (disabled) return;
+    setDraftAreas([...assignedAreas]);
+    setFilterText('');
+    setIsOpen(true);
+  };
+
+  const handleCancel = () => {
+    setDraftAreas([...assignedAreas]);
+    setIsOpen(false);
+  };
+
+  const handleDone = () => {
+    setIsOpen(false);
+    const isDifferent =
+      draftAreas.length !== assignedAreas.length ||
+      draftAreas.some((a) => !assignedAreas.includes(a)) ||
+      assignedAreas.some((a) => !draftAreas.includes(a));
+    if (isDifferent) {
+      onSave(draftAreas);
+    }
+  };
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
+        handleCancel();
       }
     };
     if (isOpen) {
@@ -65,22 +94,12 @@ const AreaMultiSelect: React.FC<AreaMultiSelectProps> = ({
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isOpen]);
+  }, [isOpen, assignedAreas]);
 
   const toggleArea = (area: string) => {
-    const isChecked = selectedAreas.includes(area);
-    let next: string[];
-    if (isChecked) {
-      next = selectedAreas.filter((a) => a !== area);
-    } else {
-      next = [...selectedAreas, area];
-    }
-    onSave(next);
-  };
-
-  const removeArea = (area: string) => {
-    const next = selectedAreas.filter((a) => a !== area);
-    onSave(next);
+    setDraftAreas((prev) =>
+      prev.includes(area) ? prev.filter((a) => a !== area) : [...prev, area]
+    );
   };
 
   return (
@@ -90,67 +109,55 @@ const AreaMultiSelect: React.FC<AreaMultiSelectProps> = ({
           <button
             type="button"
             disabled={disabled}
-            onClick={() => setIsOpen((prev) => !prev)}
+            onClick={isOpen ? handleCancel : handleOpen}
             className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
-              selectedAreas.length === 0
+              assignedAreas.length === 0
                 ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
                 : 'bg-teal-50 text-teal-800 border-teal-300 hover:bg-teal-100'
             }`}
             title="Assign or modify clinical areas/wards"
           >
-            {selectedAreas.length === 0 ? (
+            {assignedAreas.length === 0 ? (
               <>
                 <Plus className="w-3 h-3 text-amber-700" />
-                <span>Assign Wards</span>
+                <span>Assign Ward</span>
               </>
             ) : (
               <>
-                <span>{selectedAreas.length} Ward{selectedAreas.length > 1 ? 's' : ''} Assigned</span>
+                <span>{assignedAreas.length} Ward{assignedAreas.length > 1 ? 's' : ''} Assigned</span>
                 <ChevronDown className="w-3 h-3 text-teal-700" />
               </>
             )}
           </button>
         </div>
 
-        {/* Selected ward chips */}
-        {selectedAreas.length > 0 && (
+        {/* Selected ward badges */}
+        {assignedAreas.length > 0 && (
           <div className="flex flex-wrap gap-1 max-w-[280px]">
-            {selectedAreas.map((area) => (
+            {assignedAreas.map((area) => (
               <span
                 key={area}
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-semibold bg-teal-100/90 text-teal-900 border border-teal-200"
+                className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[11px] font-semibold bg-teal-100/90 text-teal-900 border border-teal-200"
               >
                 <span>{area}</span>
-                {!disabled && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeArea(area);
-                    }}
-                    className="hover:text-rose-700 p-0.5 rounded hover:bg-teal-200 cursor-pointer"
-                    title={`Remove ${area}`}
-                  >
-                    <X className="w-2.5 h-2.5" />
-                  </button>
-                )}
               </span>
             ))}
           </div>
         )}
       </div>
 
-      {/* Floating Multi-Select Dropdown */}
+      {/* Floating Multi-Select Dropdown with Local Draft */}
       {isOpen && (
         <div className="absolute left-0 z-50 mt-1 w-72 bg-white rounded-xl border border-slate-200 shadow-xl p-2.5 space-y-2">
           <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
             <span className="text-xs font-bold text-slate-800">
-              Assign Wards / Areas ({selectedAreas.length} selected)
+              Assign Wards / Areas ({draftAreas.length} selected)
             </span>
             <button
               type="button"
-              onClick={() => setIsOpen(false)}
+              onClick={handleCancel}
               className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-100 cursor-pointer"
+              title="Close and discard changes"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -173,8 +180,8 @@ const AreaMultiSelect: React.FC<AreaMultiSelectProps> = ({
             <button
               type="button"
               onClick={() => {
-                const toAdd = filteredAreas.filter((a) => !selectedAreas.includes(a));
-                onSave([...selectedAreas, ...toAdd]);
+                const toAdd = filteredAreas.filter((a) => !draftAreas.includes(a));
+                setDraftAreas((prev) => [...prev, ...toAdd]);
               }}
               className="hover:underline font-semibold cursor-pointer"
             >
@@ -182,7 +189,7 @@ const AreaMultiSelect: React.FC<AreaMultiSelectProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => onSave([])}
+              onClick={() => setDraftAreas([])}
               className="hover:underline font-semibold text-rose-600 cursor-pointer"
             >
               Clear All
@@ -195,7 +202,7 @@ const AreaMultiSelect: React.FC<AreaMultiSelectProps> = ({
               <div className="text-xs text-slate-400 py-3 text-center">No matching wards</div>
             ) : (
               filteredAreas.map((area) => {
-                const isChecked = selectedAreas.includes(area);
+                const isChecked = draftAreas.includes(area);
                 return (
                   <label
                     key={area}
@@ -220,7 +227,7 @@ const AreaMultiSelect: React.FC<AreaMultiSelectProps> = ({
           <div className="border-t border-slate-100 pt-1.5 flex justify-end">
             <button
               type="button"
-              onClick={() => setIsOpen(false)}
+              onClick={handleDone}
               className="px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-2xs"
             >
               Done

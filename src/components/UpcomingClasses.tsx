@@ -148,12 +148,12 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
           setActivityError(null);
         } else {
           setActivityProgress(null);
-          setActivityError(res?.message || 'Unable to load activity progress');
+          setActivityError(res?.message || 'Unable to load CNE progress');
         }
       })
       .catch((err: any) => {
         setActivityProgress(null);
-        setActivityError(err?.message || 'Unable to load activity progress');
+        setActivityError(err?.message || 'Unable to load CNE progress');
       })
       .finally(() => {
         setIsActivityLoading(false);
@@ -666,7 +666,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
               className="flex items-center gap-1.5 px-3.5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
             >
               <PlusCircle className="w-4 h-4 text-teal-200" />
-              <span>Schedule Departmental CNE</span>
+              <span>Departmental CNE</span>
             </button>
 
             {/* Central CNE Schedule Button (Admin only) */}
@@ -681,7 +681,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                 className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer shadow-xs"
               >
                 <PlusCircle className="w-4 h-4 text-emerald-400" />
-                <span>Schedule Central CNE</span>
+                <span>Central CNE</span>
               </button>
             )}
           </div>
@@ -1191,15 +1191,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
               </div>
 
               {/* Sticky Footer */}
-              <div className="px-6 py-3.5 border-t border-slate-200 flex items-center justify-end gap-2 bg-slate-50/70 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setIsAddClassOpen(false)}
-                  disabled={isSubmitting}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl font-medium text-xs disabled:opacity-40 cursor-pointer transition-colors"
-                >
-                  Cancel
-                </button>
+              <div className="px-6 py-3.5 border-t border-slate-200 flex items-center justify-end bg-slate-50/70 shrink-0">
                 <button
                   type="submit"
                   disabled={isSubmitting}
@@ -1307,7 +1299,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                 </div>
               </div>
 
-              {/* 2-Column Landscape Split: Left = Topic & Faculty, Right = CNE Activity Progress */}
+              {/* 2-Column Landscape Split: Left = Topic & Faculty, Right = CNE Progress */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
                 {/* Left Column (7 cols): CNE Details */}
                 <div className="lg:col-span-7 space-y-4">
@@ -2034,15 +2026,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
               </div>
 
               {/* Sticky Footer */}
-              <div className="px-6 py-3.5 border-t border-slate-200 flex items-center justify-end gap-2 bg-slate-50/70 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setEditingCne(null)}
-                  disabled={isEditSubmitting}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-xl text-xs font-bold cursor-pointer transition-colors"
-                >
-                  Cancel
-                </button>
+              <div className="px-6 py-3.5 border-t border-slate-200 flex items-center justify-end bg-slate-50/70 shrink-0">
                 <button
                   type="submit"
                   disabled={isEditSubmitting}
