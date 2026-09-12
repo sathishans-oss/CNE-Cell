@@ -148,22 +148,9 @@ export const CNEPostTestModal: React.FC<CNEPostTestModalProps> = ({
             <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
               <Award className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800 border border-indigo-200">
-                  CNE Post-Test Evaluation
-                </span>
-                {area && <span className="text-[11px] font-semibold text-slate-600">{area}</span>}
-                {resolvedCneId && (
-                  <span className="text-[11px] font-mono text-slate-400">
-                    ({resolvedCneId})
-                  </span>
-                )}
-              </div>
-              <h3 className="text-sm sm:text-base font-bold text-slate-900 mt-0.5 truncate max-w-2xl">
-                {topic || 'Clinical Nursing Evaluation'}
-              </h3>
-            </div>
+            <h3 className="text-sm sm:text-base font-bold text-slate-900 leading-snug">
+              CNE Post-Test Evaluation
+            </h3>
           </div>
 
           <button
@@ -261,13 +248,13 @@ export const CNEPostTestModal: React.FC<CNEPostTestModalProps> = ({
                 </div>
               </div>
 
-              {/* Review Breakdown in 2-Column Wide Grid */}
+              {/* Review Breakdown in 1-Column per Row */}
               <div className="space-y-3">
                 <h5 className="font-bold text-slate-900 text-xs uppercase tracking-wider">
                   Detailed Answer Review &amp; Clinical Rationales
                 </h5>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                <div className="grid grid-cols-1 gap-4 items-start">
                   {submissionResult.review.map((item, idx) => (
                     <div
                       key={item.questionId || idx}
@@ -348,8 +335,8 @@ export const CNEPostTestModal: React.FC<CNEPostTestModalProps> = ({
                 </div>
               )}
 
-              {/* Questions List in Responsive 2-Column Grid */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+              {/* Questions List in 1 Question per Row */}
+              <div className="grid grid-cols-1 gap-4 items-start">
                 {questions.map((q, idx) => {
                   const selectedOption = answers[q.id];
 

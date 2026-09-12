@@ -49,6 +49,12 @@ export const CNEFinalizeModal: React.FC<CNEFinalizeModalProps> = ({
   const handleFinalize = async () => {
     if (submittingRef.current || isSubmitting || !isAuthorized) return;
 
+    const totalParticipants = summary?.totalParticipants || 0;
+    if (totalParticipants <= 0) {
+      error('Cannot finalize CNE: At least one participant must be recorded before finalization.');
+      return;
+    }
+
     submittingRef.current = true;
     setIsSubmitting(true);
     try {
@@ -152,9 +158,6 @@ export const CNEFinalizeModal: React.FC<CNEFinalizeModalProps> = ({
             {/* Left Column: Consolidated Session Metrics & Details */}
             <div className="md:col-span-6 space-y-4">
               <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Target CNE Program
-                </span>
                 <h4 className="text-base font-bold text-slate-900 leading-snug">
                   {cne.topic}
                 </h4>
@@ -194,6 +197,13 @@ export const CNEFinalizeModal: React.FC<CNEFinalizeModalProps> = ({
                   </div>
                 </div>
               </div>
+
+              {summary && (summary.totalParticipants || 0) <= 0 && (
+                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>At least one participant must be recorded before finalization.</span>
+                </div>
+              )}
             </div>
 
             {/* Right Column: Guidance & Remarks Form */}
@@ -229,7 +239,8 @@ export const CNEFinalizeModal: React.FC<CNEFinalizeModalProps> = ({
                 <button
                   type="button"
                   onClick={handleFinalize}
-                  disabled={isSubmitting || !isAuthorized}
+                  disabled={isSubmitting || !isAuthorized || (summary?.totalParticipants || 0) <= 0}
+                  title={(summary?.totalParticipants || 0) <= 0 ? 'At least one participant must be recorded before finalization.' : ''}
                   className="flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-xs disabled:opacity-50 cursor-pointer transition-colors"
                 >
                   {isSubmitting ? (

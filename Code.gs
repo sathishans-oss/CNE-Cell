@@ -7103,6 +7103,15 @@ function handleFinalizeCNE(params, session) {
       }
     }
     
+    var totalParticipantsCount = internalEmpIds.length + externalParticipants.length;
+    if (totalParticipantsCount <= 0) {
+      return {
+        success: false,
+        errorCode: 'NO_PARTICIPANTS',
+        message: 'Cannot finalize CNE: At least one participant must be recorded before finalization.'
+      };
+    }
+
     var avg = postTestScores.length > 0 ? Math.round((postTestScores.reduce(function(a, b) { return a + b; }, 0) / postTestScores.length) * 10) / 10 : null;
     
     // 11. Create exactly one official Data Master record

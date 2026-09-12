@@ -104,14 +104,18 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
   const handleGenerateAi = async () => {
     if (generatingRef.current || isGenerating || isLocked || !isAuthorized) return;
 
+    // Immediate synchronous lock and UI state
+    generatingRef.current = true;
+    setIsGenerating(true);
+
     // 1. One-time allowance check
     if (isAiGenerationUsed) {
-      error('AI question generation has already been completed for this CNE. The one-time allowance is used.');
+      generatingRef.current = false;
+      setIsGenerating(false);
+      error('AI question generation has already been completed for this CNE.');
       return;
     }
 
-    generatingRef.current = true;
-    setIsGenerating(true);
     try {
       // 2. Material-First Rule: Material grounding check
       const refRes = await ApiService.getReferenceMaterial(cneId);
@@ -168,9 +172,18 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
 
       if (commitRes && commitRes.success && commitRes.data) {
         setQuotaInfo(commitRes.data);
-        setQuestions(aiRes.data);
+        try {
+          const freshQuestionsRes = await ApiService.getCNEQuestions(cneId);
+          if (freshQuestionsRes.success && freshQuestionsRes.data && freshQuestionsRes.data.length > 0) {
+            setQuestions(freshQuestionsRes.data);
+          } else {
+            setQuestions(aiRes.data);
+          }
+        } catch {
+          setQuestions(aiRes.data);
+        }
         success(
-          'Successfully generated and saved exactly 5 clinical MCQs via AI. One-time generation completed and post-test is ready.'
+          'Successfully generated and saved exactly 5 clinical MCQs via AI. Post-test is ready.'
         );
         if (onUpdated) onUpdated();
       } else {
@@ -379,11 +392,11 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
       <div className="bg-white rounded-2xl w-[94vw] max-w-[1440px] max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 relative overflow-hidden">
         {/* Header */}
         <div className="px-6 py-3.5 border-b border-slate-200 flex items-center justify-between shrink-0 bg-slate-50/70">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0 pr-4">
             <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
               <Sparkles className="w-5 h-5" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-50 text-purple-800 border border-purple-200">
                   Post-Test Question Bank
@@ -404,25 +417,9 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                     {activeFinalizedCount} of {activeQuestions.length} Active Finalized (Min 5)
                   </span>
                 )}
-
-                {/* Authoritative AI Quota Status Badge */}
-                <span
-                  className={`inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
-                    isAiGenerationUsed
-                      ? 'bg-slate-100 text-slate-700 border-slate-300'
-                      : 'bg-purple-50 text-purple-700 border-purple-200'
-                  }`}
-                >
-                  <Sparkles className="w-2.5 h-2.5" />
-                  AI Generation: {isAiGenerationUsed ? 'GENERATED / USED' : 'NOT GENERATED'}
-                </span>
-
-                <span className="text-[11px] font-mono text-slate-400">
-                  ({cneId})
-                </span>
               </div>
               <h3 className="text-sm sm:text-base font-bold text-slate-900 mt-0.5 truncate max-w-2xl">
-                {cne.topic} &mdash; Clinical Evaluation &amp; Assessment Setup
+                {cne.topic}
               </h3>
             </div>
           </div>
@@ -430,7 +427,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
           <button
             onClick={onClose}
             disabled={isSaving || isGenerating}
-            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200/60 disabled:opacity-40 cursor-pointer transition-colors"
+            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200/60 disabled:opacity-40 cursor-pointer transition-colors shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
@@ -456,8 +453,8 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
               <span>AI Question Synthesizer:</span>
               <span className="text-purple-700 text-[11px]">
                 {isAiGenerationUsed
-                  ? 'One-time initial AI generation completed. Use manual Add/Replace to adjust questions.'
-                  : 'Generates exactly 5 standardized clinical MCQs strictly from saved CNE learning material (one-time allowance)'}
+                  ? 'Initial AI generation completed. Use manual question tools to adjust questions.'
+                  : 'Generates exactly 5 standardized clinical MCQs strictly from saved CNE learning material.'}
               </span>
             </div>
 
@@ -478,10 +475,10 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
               <button
                 type="button"
                 onClick={handleGenerateAi}
-                disabled={isGenerating || isSaving || isAiGenerationUsed || hasMaterial === false}
+                disabled={isGenerating || generatingRef.current || isSaving || isAiGenerationUsed || hasMaterial === false}
                 title={
                   isAiGenerationUsed
-                    ? 'Initial AI generation already completed for this CNE (one-time allowance)'
+                    ? 'Initial AI generation already completed for this CNE'
                     : hasMaterial === false
                     ? 'Please enter CNE Class Content first'
                     : 'Generate exactly 5 clinical MCQs from learning material'
@@ -514,10 +511,10 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                 type="button"
                 onClick={handleAddManualQuestion}
                 disabled={isGenerating || isSaving}
-                className="flex items-center gap-1 px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-lg font-bold text-xs cursor-pointer shadow-xs"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-lg font-bold text-xs cursor-pointer shadow-xs"
               >
                 <Plus className="w-3.5 h-3.5 text-purple-600" />
-                <span>+ Add Manual Question</span>
+                <span>Manual Question</span>
               </button>
             </div>
           </div>
@@ -544,13 +541,13 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
               <HelpCircle className="w-10 h-10 text-slate-300 mx-auto" />
               <h4 className="text-sm font-bold text-slate-800">No Post-Test Questions Configured</h4>
               <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-                Save CNE Class Content in the Reference Material modal and click <strong>Auto-Generate 5 MCQs</strong> to synthesize evidence-based questions, or click <strong>+ Add Manual Question</strong> to craft custom assessment items.
+                Save CNE Class Content in the Reference Material modal and click <strong>Auto-Generate 5 MCQs</strong> to synthesize evidence-based questions, or click <strong>Manual Question</strong> to craft custom assessment items.
               </p>
             </div>
           ) : (
             <div className="space-y-6">
-              {/* Active Questions Grid */}
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+              {/* Active Questions Container (1 Question per row across all screen sizes) */}
+              <div className="grid grid-cols-1 gap-4 items-start">
                 {questions.map((q, idx) => {
                   if (q.status === 'INACTIVE' || q.status === 'REPLACED') return null;
                   const isEditing = editingIndex === idx;
@@ -824,15 +821,6 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2.5">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSaving || isGenerating}
-              className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl font-medium text-xs disabled:opacity-40 cursor-pointer transition-colors"
-            >
-              Close
-            </button>
-
             {!isLocked && isAuthorized && (
               <button
                 type="button"
@@ -848,7 +836,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                 ) : (
                   <>
                     <Save className="w-3.5 h-3.5" />
-                    <span>Save &amp; Publish Question Bank</span>
+                    <span>Save</span>
                   </>
                 )}
               </button>

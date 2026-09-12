@@ -817,6 +817,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                     <th className="py-3.5 px-4 whitespace-nowrap">Area/Ward</th>
                     <th className="py-3.5 px-4 whitespace-nowrap">Date &amp; Time</th>
                     <th className="py-3.5 px-4 min-w-[180px]">Resource Person</th>
+                    <th className="py-3.5 px-4 whitespace-nowrap">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
@@ -879,6 +880,23 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                           <div className="line-clamp-2 max-w-[220px] text-slate-600 text-xs leading-relaxed" title={rpDisplay}>
                             {rpDisplay}
                           </div>
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1 ${
+                              (cls.status || '').toLowerCase() === 'completed'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : (cls.status || '').toLowerCase().includes('cancel')
+                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                            }`}
+                          >
+                            {(cls.status || '').toLowerCase() === 'completed'
+                              ? 'Completed'
+                              : (cls.status || '').toLowerCase().includes('cancel')
+                              ? 'Canceled'
+                              : 'Scheduled'}
+                          </span>
                         </td>
                       </tr>
                     );
@@ -1619,9 +1637,38 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                                   </div>
                                 </div>
 
-                                {/* Stage 2: Completion (Participants, Post Test, Finalization) */}
+                                {/* Stage 2: Completion (Post Test, Participants, Finalization) */}
                                 <div className="grid grid-cols-3 gap-2">
-                                  {/* 4. Participants */}
+                                  {/* 4. Post Test */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActivePostTest({ cneId: selectedDetailCne.cneId, qrToken: selectedDetailCne.qrToken });
+                                    }}
+                                    title={isPostTestReady ? "Post Test ready • Click to view or take evaluation test" : "Post Test attention required • Click to configure post test"}
+                                    aria-label={isPostTestReady ? "Post Test ready. Click to view or take test" : "Post Test attention required. Click to configure"}
+                                    className={`p-2.5 rounded-xl border transition-all flex flex-col justify-between min-h-[66px] text-left cursor-pointer hover:shadow-md hover:border-slate-300 active:scale-[0.98] ${
+                                      isPostTestReady
+                                        ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950 shadow-2xs'
+                                        : 'bg-rose-50/80 border-rose-200 text-rose-950 shadow-2xs'
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                                        <ClipboardCheck className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                                        <span>Post Test</span>
+                                      </span>
+                                    </div>
+                                    <div className="mt-auto flex items-center justify-between">
+                                      {isPostTestReady ? (
+                                        <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" aria-label="Completed" />
+                                      ) : (
+                                        <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" aria-label="Attention required" />
+                                      )}
+                                    </div>
+                                  </button>
+
+                                  {/* 5. Participants */}
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -1654,35 +1701,6 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                                           <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" aria-label="Attention required" />
                                           <span className="font-mono text-xs font-bold text-slate-600">(0)</span>
                                         </div>
-                                      )}
-                                    </div>
-                                  </button>
-
-                                  {/* 5. Post Test */}
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setActivePostTest({ cneId: selectedDetailCne.cneId, qrToken: selectedDetailCne.qrToken });
-                                    }}
-                                    title={isPostTestReady ? "Post Test ready • Click to view or take evaluation test" : "Post Test attention required • Click to configure post test"}
-                                    aria-label={isPostTestReady ? "Post Test ready. Click to view or take test" : "Post Test attention required. Click to configure"}
-                                    className={`p-2.5 rounded-xl border transition-all flex flex-col justify-between min-h-[66px] text-left cursor-pointer hover:shadow-md hover:border-slate-300 active:scale-[0.98] ${
-                                      isPostTestReady
-                                        ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950 shadow-2xs'
-                                        : 'bg-rose-50/80 border-rose-200 text-rose-950 shadow-2xs'
-                                    }`}
-                                  >
-                                    <div className="flex items-center justify-between mb-1">
-                                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                                        <ClipboardCheck className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                        <span>Post Test</span>
-                                      </span>
-                                    </div>
-                                    <div className="mt-auto flex items-center justify-between">
-                                      {isPostTestReady ? (
-                                        <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" aria-label="Completed" />
-                                      ) : (
-                                        <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" aria-label="Attention required" />
                                       )}
                                     </div>
                                   </button>

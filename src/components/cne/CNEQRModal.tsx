@@ -85,19 +85,9 @@ export const CNEQRModal: React.FC<CNEQRModalProps> = ({
             <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
               <QrCode className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800 border border-indigo-200">
-                  QR Evaluation Access
-                </span>
-                <span className="text-[11px] font-mono text-slate-400">
-                  ({cneId})
-                </span>
-              </div>
-              <h3 className="text-sm sm:text-base font-bold text-slate-900 mt-0.5 truncate max-w-xl">
-                {cne.topic} &mdash; Participant Post-Test QR
-              </h3>
-            </div>
+            <h3 className="text-sm sm:text-base font-bold text-slate-900 leading-snug">
+              QR Evaluation Access
+            </h3>
           </div>
 
           <button
@@ -220,17 +210,6 @@ export const CNEQRModal: React.FC<CNEQRModalProps> = ({
             </div>
           </div>
         )}
-
-        {/* Modal Footer */}
-        <div className="px-6 py-3 border-t border-slate-200 bg-white flex justify-end shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl font-medium text-xs cursor-pointer transition-colors"
-          >
-            Close
-          </button>
-        </div>
       </div>
     </div>
   );

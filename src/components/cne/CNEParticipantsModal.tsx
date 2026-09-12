@@ -3,6 +3,7 @@ import {
   Users,
   X,
   Plus,
+  Minus,
   UserCheck,
   Award,
   Calendar,
@@ -17,6 +18,7 @@ import { UpcomingClass, CNEParticipant, CNEParticipantsSummary, Employee } from 
 import { ApiService } from '../../services/api';
 import { useToast } from '../Toast';
 import { generateCNESessionPdf } from '../../services/pdfGenerator';
+import { getCachedOfficers, loadOfficersSingleFlight } from '../../services/officerLoader';
 
 interface CNEParticipantsModalProps {
   cne: UpcomingClass;
@@ -38,21 +40,89 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Add Manual Participant State
+  // Multi-Select Participant State (based on AdminCNEData.tsx pattern)
   const [isAddingManual, setIsAddingManual] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
-  const [selectedEmpId, setSelectedEmpId] = useState('');
-  const [empName, setEmpName] = useState('');
-  const [empDesignation, setEmpDesignation] = useState('');
-  const [empDepartment, setEmpDepartment] = useState(cne.area || '');
-  const [remarks, setRemarks] = useState('In-person attendee');
+
+  // Officer list state & loading
+  const [internalOfficers, setInternalOfficers] = useState<Employee[]>(() => {
+    if (officersList && officersList.length > 0) return officersList;
+    const cached = getCachedOfficers();
+    return cached && cached.length > 0 ? cached : [];
+  });
+  const [isOfficersLoading, setIsOfficersLoading] = useState(false);
+  const [officersLoadError, setOfficersLoadError] = useState<string | null>(null);
+
+  // Internal Staff Multi-Select
+  const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
+  const [staffSearchQuery, setStaffSearchQuery] = useState('');
+
+  // External Participants
+  const [externalStaffList, setExternalStaffList] = useState<string[]>([]);
+  const [externalStaffInput, setExternalStaffInput] = useState('');
 
   const { success, error, warning } = useToast();
 
   useEffect(() => {
     loadParticipants();
   }, [cneId]);
+
+  // Sync or lazy load officers when the Add In-Person Attendee form is opened
+  useEffect(() => {
+    if (officersList && officersList.length > 0) {
+      setInternalOfficers(officersList);
+      setIsOfficersLoading(false);
+      setOfficersLoadError(null);
+      return;
+    }
+
+    const cached = getCachedOfficers();
+    if (cached && cached.length > 0) {
+      setInternalOfficers(cached);
+      setIsOfficersLoading(false);
+      setOfficersLoadError(null);
+      return;
+    }
+
+    // Only load if form is opened and officers are not loaded yet
+    if (isAddingManual) {
+      let cancelled = false;
+      setIsOfficersLoading(true);
+      setOfficersLoadError(null);
+
+      loadOfficersSingleFlight()
+        .then((officers) => {
+          if (!cancelled) {
+            if (officers && officers.length > 0) {
+              setInternalOfficers(officers);
+              setOfficersLoadError(null);
+            } else {
+              setOfficersLoadError('Unable to load staff directory.');
+            }
+          }
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            console.error('Error loading officers in CNEParticipantsModal:', err);
+            setOfficersLoadError('Failed to load staff directory. Please try again.');
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setIsOfficersLoading(false);
+          }
+        });
+
+      return () => {
+        cancelled = true;
+      };
+    }
+  }, [isAddingManual, officersList]);
+
+  const effectiveOfficers = (officersList && officersList.length > 0)
+    ? officersList
+    : (internalOfficers.length > 0 ? internalOfficers : (getCachedOfficers() || []));
 
   const loadParticipants = async () => {
     setLoading(true);
@@ -68,46 +138,122 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
     }
   };
 
-  const handleOfficerSelect = (empId: string) => {
-    setSelectedEmpId(empId);
-    const found = officersList.find((o) => o.employeeId === empId);
-    if (found) {
-      setEmpName(found.name);
-      setEmpDesignation(found.designation || '');
-    }
+  const existingEmpIds = new Set(
+    (summary?.participants || [])
+      .map((p) => (p.employeeId || '').trim().toUpperCase())
+      .filter(Boolean)
+  );
+
+  const existingExternalNames = new Set(
+    (summary?.participants || [])
+      .filter((p) => !p.employeeId)
+      .map((p) => (p.name || '').trim().toLowerCase())
+      .filter(Boolean)
+  );
+
+  const filteredStaffOptions = effectiveOfficers.filter((o) => {
+    if (!staffSearchQuery.trim()) return true;
+    const q = staffSearchQuery.toLowerCase();
+    return (
+      (o.employeeId || '').toLowerCase().includes(q) ||
+      (o.name || '').toLowerCase().includes(q) ||
+      (o.designation || '').toLowerCase().includes(q) ||
+      (o.department || '').toLowerCase().includes(q)
+    );
+  });
+
+  const toggleStaffSelection = (empId: string) => {
+    if (existingEmpIds.has(empId.toUpperCase())) return;
+    setSelectedStaffIds((prev) =>
+      prev.includes(empId) ? prev.filter((id) => id !== empId) : [...prev, empId]
+    );
   };
 
-  const handleAddManualAttendee = async (e: React.FormEvent) => {
+  const handleAddExternalStaff = () => {
+    const trimmed = externalStaffInput.trim();
+    if (!trimmed) return;
+    if (
+      externalStaffList.some((s) => s.toLowerCase() === trimmed.toLowerCase()) ||
+      existingExternalNames.has(trimmed.toLowerCase())
+    ) {
+      warning(`Participant "${trimmed}" is already added.`);
+      return;
+    }
+    setExternalStaffList((prev) => [...prev, trimmed]);
+    setExternalStaffInput('');
+  };
+
+  const handleRemoveExternalStaff = (index: number) => {
+    setExternalStaffList((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSaveParticipants = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submittingRef.current || isSubmitting || !isAuthorized) return;
 
-    if (!selectedEmpId.trim() && !empName.trim()) {
-      warning('Please enter an Employee ID or Name.');
+    if (selectedStaffIds.length === 0 && externalStaffList.length === 0) {
+      warning('Please select at least one internal staff member or add an external participant.');
       return;
     }
 
     submittingRef.current = true;
     setIsSubmitting(true);
-    try {
-      const res = await ApiService.addManualParticipant({
-        cneId: cneId,
-        employeeId: selectedEmpId.trim(),
-        name: empName.trim(),
-        designation: empDesignation.trim(),
-        department: empDepartment.trim(),
-        remarks: remarks.trim()
-      });
+    let addedCount = 0;
+    let failedCount = 0;
 
-      if (res.success) {
-        success('Manual participant attendance recorded.');
-        setSelectedEmpId('');
-        setEmpName('');
-        setEmpDesignation('');
+    try {
+      // 1. Add internal staff
+      for (const empId of selectedStaffIds) {
+        const off = effectiveOfficers.find((o) => o.employeeId === empId);
+        try {
+          const res = await ApiService.addManualParticipant({
+            cneId,
+            employeeId: empId,
+            name: off ? off.name : empId,
+            designation: off?.designation || 'Staff Nurse',
+            department: off?.department || cne.area || '',
+            remarks: 'In-person attendee'
+          });
+          if (res.success) {
+            addedCount++;
+          } else {
+            failedCount++;
+          }
+        } catch {
+          failedCount++;
+        }
+      }
+
+      // 2. Add external participants
+      for (const extName of externalStaffList) {
+        try {
+          const res = await ApiService.addManualParticipant({
+            cneId,
+            name: extName,
+            designation: 'Guest / External Participant',
+            department: cne.area || '',
+            remarks: 'External attendee'
+          });
+          if (res.success) {
+            addedCount++;
+          } else {
+            failedCount++;
+          }
+        } catch {
+          failedCount++;
+        }
+      }
+
+      if (addedCount > 0) {
+        success(`Successfully recorded ${addedCount} participant${addedCount > 1 ? 's' : ''}.`);
+        setSelectedStaffIds([]);
+        setExternalStaffList([]);
+        setExternalStaffInput('');
         setIsAddingManual(false);
         await loadParticipants();
         if (onUpdated) onUpdated();
-      } else {
-        error(res.message || 'Failed to record participant.');
+      } else if (failedCount > 0) {
+        error('Failed to record participants. Please verify if they were already recorded.');
       }
     } catch (e: any) {
       error(e?.message || 'Error occurred while saving attendance.');
@@ -140,7 +286,7 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
   return (
     <div className="fixed inset-0 z-[60] overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
       <div className="bg-white rounded-2xl w-[92vw] max-w-[1440px] max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 relative overflow-hidden">
-        {/* Header */}
+        {/* Header - simplified without Ward/Area and Class ID/CNE ID */}
         <div className="px-6 py-3.5 border-b border-slate-200 flex items-center justify-between shrink-0 bg-slate-50/70">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-teal-100 text-teal-800 flex items-center justify-center shrink-0">
@@ -150,12 +296,6 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-200">
                   Attendance &amp; Evaluation Roster
-                </span>
-                <span className="text-[11px] font-semibold text-slate-600">
-                  {cne.area}
-                </span>
-                <span className="text-[11px] font-mono text-slate-400">
-                  ({cneId})
                 </span>
               </div>
               <h3 className="text-sm sm:text-base font-bold text-slate-900 mt-0.5 truncate max-w-2xl">
@@ -219,79 +359,207 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
               onClick={() => setIsAddingManual(!isAddingManual)}
               className="flex items-center gap-1.5 px-3.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer transition-colors"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{isAddingManual ? 'Close Form' : '+ Add In-Person Attendee'}</span>
+              {isAddingManual ? (
+                <>
+                  <Minus className="w-3.5 h-3.5" />
+                  <span>Close Form</span>
+                </>
+              ) : (
+                <>
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add In-Person Attendee</span>
+                </>
+              )}
             </button>
           )}
         </div>
 
-        {/* Form: Add Manual Attendee */}
+        {/* Form: Add Participants (Multi-Select Staff & External) */}
         {isAddingManual && isAuthorized && (
           <form
-            onSubmit={handleAddManualAttendee}
-            className="px-6 py-3.5 bg-teal-50/60 border-b border-teal-100 text-xs space-y-3 shrink-0"
+            onSubmit={handleSaveParticipants}
+            className="px-6 py-4 bg-teal-50/60 border-b border-teal-100 text-xs space-y-3.5 shrink-0 max-h-[380px] overflow-y-auto"
           >
-            <div className="font-bold text-teal-950 flex items-center gap-1.5">
-              <UserCheck className="w-4 h-4 text-teal-700" />
-              <span>Record In-Person / Offline Participant</span>
+            <div className="flex items-center justify-between">
+              <div className="font-bold text-teal-950 flex items-center gap-1.5">
+                <UserCheck className="w-4 h-4 text-teal-700" />
+                <span>Add In-Person Attendees to Roster</span>
+              </div>
+              <span className="text-[11px] font-medium text-slate-500">
+                {selectedStaffIds.length + externalStaffList.length} participant{selectedStaffIds.length + externalStaffList.length === 1 ? '' : 's'} selected
+              </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
-                  Employee ID:
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. EMP1024"
-                  value={selectedEmpId}
-                  onChange={(e) => handleOfficerSelect(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
-                />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Internal Staff Multi-Select */}
+              <div className="space-y-2 flex flex-col">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <span>Internal Faculty &amp; Staff</span>
+                    {isOfficersLoading && (
+                      <Loader2 className="w-3 h-3 text-teal-600 animate-spin" />
+                    )}
+                  </label>
+                  <span className="text-[10px] text-slate-500">
+                    {selectedStaffIds.length} selected
+                  </span>
+                </div>
+
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Filter staff by name or employee ID..."
+                    value={staffSearchQuery}
+                    onChange={(e) => setStaffSearchQuery(e.target.value)}
+                    className="w-full pl-8 pr-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                  />
+                </div>
+
+                {/* Selected staff chips */}
+                {selectedStaffIds.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto p-1.5 bg-white rounded-lg border border-slate-200">
+                    {selectedStaffIds.map((id) => {
+                      const off = effectiveOfficers.find((o) => o.employeeId === id);
+                      return (
+                        <span
+                          key={id}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium bg-teal-50 text-teal-900 px-2 py-0.5 rounded-md border border-teal-200"
+                        >
+                          <span>{off ? off.name : id} <span className="text-[10px] text-teal-600 font-mono">({id})</span></span>
+                          <button
+                            type="button"
+                            onClick={() => toggleStaffSelection(id)}
+                            className="hover:text-rose-600 cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Staff Selection List */}
+                <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100 bg-white flex-1">
+                  {isOfficersLoading ? (
+                    <div className="p-4 flex flex-col items-center justify-center text-center space-y-2 text-slate-500">
+                      <Loader2 className="w-5 h-5 text-teal-600 animate-spin" />
+                      <span className="text-xs font-medium">Loading staff directory...</span>
+                    </div>
+                  ) : officersLoadError && effectiveOfficers.length === 0 ? (
+                    <div className="p-4 text-center text-rose-500 text-xs flex flex-col items-center justify-center space-y-1">
+                      <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                      <span>{officersLoadError}</span>
+                    </div>
+                  ) : filteredStaffOptions.length === 0 ? (
+                    <div className="p-3 text-center text-slate-400 text-xs">No matching staff found</div>
+                  ) : (
+                    filteredStaffOptions.slice(0, 60).map((o) => {
+                      const isSelected = selectedStaffIds.includes(o.employeeId);
+                      const isAlreadyRecorded = existingEmpIds.has((o.employeeId || '').toUpperCase());
+                      return (
+                        <div
+                          key={o.employeeId}
+                          onClick={() => {
+                            if (!isAlreadyRecorded) toggleStaffSelection(o.employeeId);
+                          }}
+                          className={`p-2 flex items-center justify-between text-xs transition-colors ${
+                            isAlreadyRecorded
+                              ? 'bg-slate-50 text-slate-400 cursor-not-allowed opacity-60'
+                              : isSelected
+                              ? 'bg-teal-50/70 font-semibold cursor-pointer'
+                              : 'hover:bg-slate-50 cursor-pointer'
+                          }`}
+                        >
+                          <div className="truncate mr-2">
+                            <span className="font-mono text-slate-600">{o.employeeId}</span>
+                            <span className="mx-1.5">•</span>
+                            <span className={isAlreadyRecorded ? 'text-slate-400 line-through' : 'text-slate-900'}>{o.name}</span>
+                            {o.designation && <span className="text-slate-400 text-[10px] ml-1">({o.designation})</span>}
+                            {isAlreadyRecorded && (
+                              <span className="ml-1.5 px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-200 text-slate-600">
+                                Recorded
+                              </span>
+                            )}
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            disabled={isAlreadyRecorded}
+                            onChange={() => {}}
+                            className="rounded text-teal-600 focus:ring-teal-500 pointer-events-none shrink-0"
+                          />
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
 
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
-                  Staff Name *:
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Full Name"
-                  value={empName}
-                  onChange={(e) => setEmpName(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
-                />
-              </div>
+              {/* External Participants */}
+              <div className="space-y-2 flex flex-col">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                    External Participants
+                  </label>
+                  <span className="text-[10px] text-slate-400">No Employee ID required</span>
+                </div>
 
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
-                  Designation:
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Staff Nurse / Sr. MO"
-                  value={empDesignation}
-                  onChange={(e) => setEmpDesignation(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
-                />
-              </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. Sneha Patel (Guest Trainee)..."
+                    value={externalStaffInput}
+                    onChange={(e) => setExternalStaffInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddExternalStaff();
+                      }
+                    }}
+                    className="flex-1 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-1 focus:ring-teal-500 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddExternalStaff}
+                    className="px-3 py-1.5 bg-teal-100 hover:bg-teal-200 text-teal-900 font-bold rounded-lg text-xs cursor-pointer transition-colors"
+                  >
+                    + Add
+                  </button>
+                </div>
 
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1">
-                  Ward / Department:
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. ICU / OT"
-                  value={empDepartment}
-                  onChange={(e) => setEmpDepartment(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs"
-                />
+                {/* External staff chips list */}
+                <div className="flex-1 min-h-[100px] max-h-44 p-2 bg-white rounded-lg border border-slate-200 overflow-y-auto">
+                  {externalStaffList.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-slate-400 text-xs italic text-center p-3">
+                      Type participant name above and click "+ Add" or press Enter
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {externalStaffList.map((staff, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-1 text-[11px] font-medium bg-amber-50 text-amber-900 px-2 py-0.5 rounded-md border border-amber-200"
+                        >
+                          <span>{staff}</span>
+                          <span className="text-[9px] text-amber-600 font-semibold">(External)</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveExternalStaff(idx)}
+                            className="hover:text-rose-600 cursor-pointer ml-0.5"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-1">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-teal-100">
               <button
                 type="button"
                 onClick={() => setIsAddingManual(false)}
@@ -302,18 +570,18 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || (selectedStaffIds.length === 0 && externalStaffList.length === 0)}
                 className="flex items-center gap-1.5 px-4 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded-lg font-bold text-xs shadow-xs disabled:opacity-50 cursor-pointer transition-colors"
               >
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Saving Attendee...</span>
+                    <span>Saving Participants...</span>
                   </>
                 ) : (
                   <>
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Add to Attendance Roster</span>
+                    <span>Save Participants</span>
                   </>
                 )}
               </button>

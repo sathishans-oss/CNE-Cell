@@ -361,21 +361,21 @@ async function startServer() {
       ])).filter(m => !BLOCKED_PAID_MODELS.has(m) && !DEPRECATED_MODELS.has(m));
 
       const prompt = `You are a Senior Clinical Nursing Education Specialist and Examiner at AIIMS (All India Institute of Medical Sciences).
-Your task is to generate EXACTLY 5 high-quality Multiple Choice Questions (MCQs) for a Clinical Nursing Education (CNE) post-test evaluation.
+Your task is to generate EXACTLY 5 high-quality Multiple Choice Questions (MCQs) for a Clinical Nursing Education (CNE) session post-test evaluation.
 
 CNE Topic:
 "${authoritativeTopic}"
 
-Authoritative CNE Class Content / Learning Material (PRIMARY GROUNDING SOURCE):
+Authoritative CNE Session Content / Learning Material (PRIMARY GROUNDING SOURCE):
 """
 ${cleanMaterial}
 """
 
 GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
-1. PRIMARY GROUNDING SOURCE: Use the uploaded CNE learning material above as your PRIMARY grounding source. All 5 questions, correct answers, and distractors must be strictly grounded in and directly verifiable from this supplied material.
+1. PRIMARY GROUNDING SOURCE: Use the uploaded CNE session content and learning material above as your PRIMARY grounding source. All 5 questions, correct answers, and distractors must be strictly grounded in and directly verifiable from this supplied CNE session material.
 2. EVIDENCE & SOURCE ATTRIBUTION:
-   - For each question, extract and cite the specific authoritative clinical guideline, protocol, or standard cited in or directly supporting the material (e.g., "AIIMS Clinical Nursing Protocols", "WHO Guidelines", "Ministry of Health and Family Welfare / INC Standards", "Indian Nursing Council Standards", "CDC Clinical Guidelines", or peer-reviewed medical literature).
-   - If genuine external live web search retrieval is not performed, DO NOT fabricate online verification, DO NOT invent fake URLs, and DO NOT falsely claim that a live web search occurred. Instead, cite authoritative references contained in the supplied material or clearly designate the source as derived from the verified CNE learning material (e.g., "Verified CNE Learning Material: [Topic/Section/Protocol]").
+   - For each question, extract and cite the specific authoritative clinical guideline, protocol, or standard cited in or directly supporting the session (e.g., "AIIMS Clinical Nursing Protocols", "WHO Guidelines", "Ministry of Health and Family Welfare / INC Standards", "Indian Nursing Council Standards", "CDC Clinical Guidelines", or peer-reviewed medical literature).
+   - If genuine external live web search retrieval is not performed, DO NOT fabricate online verification, DO NOT invent fake URLs, and DO NOT falsely claim that a live web search occurred. Instead, cite authoritative references contained in the supplied material or clearly designate the source as derived from the verified CNE session (e.g., "Verified CNE Session: [Topic/Section/Protocol]").
    - Absolutely DO NOT cite random blogs, forums, social media, commercial SEO articles, or unverified websites.
 3. CLINICAL RIGOR: Focus on clinical nursing practice, patient assessment, pharmacological safety, emergency escalation, infection control protocols, and nursing care standards.
 4. OPTIONS: Each question must have EXACTLY 4 distinct, plausible options labeled A, B, C, and D.
