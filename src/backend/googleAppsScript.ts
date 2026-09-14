@@ -7853,6 +7853,84 @@ function handleGetAiQuota(params, session) {
 }
 
 /**
+ * Helper: Find persisted active AI question batches for a CNE.
+ * Scans CNE Post Test Questions under ScriptLock.
+ * Detects any batch of active AI questions tagged with [AI:<token>] or q_ai_ prefix.
+ * Invariant: IF an AI batch has been successfully persisted for a CNE,
+ * that CNE must never become eligible for a second AI generation.
+ */
+function findPersistedAiBatchInfo(cneId, questionsSheet, qCols) {
+  var normCne = String(cneId || '').trim().toUpperCase();
+  if (!normCne) {
+    return { hasPersistedBatch: false, activeAiCount: 0, tokens: [], primaryToken: '', matchingRows: [] };
+  }
+  
+  var sheet = questionsSheet || getQuestionsSheet();
+  if (!sheet || sheet.getLastRow() <= 1) {
+    return { hasPersistedBatch: false, activeAiCount: 0, tokens: [], primaryToken: '', matchingRows: [] };
+  }
+  
+  var cols = qCols || getQuestionColIndexes(sheet);
+  var data = sheet.getDataRange().getValues();
+  var tokenCounts = {};
+  var tokenRows = {};
+  var allAiRows = [];
+  var allAiCount = 0;
+  
+  for (var r = 1; r < data.length; r++) {
+    var rCne = String(data[r][cols.cneId] || '').trim().toUpperCase();
+    if (rCne !== normCne) continue;
+    
+    var rStatus = String(data[r][cols.status] || 'ACTIVE').trim().toUpperCase();
+    if (rStatus !== 'ACTIVE') continue;
+    
+    var rCreatedBy = String(data[r][cols.createdBy] || '').trim();
+    var rQId = String(data[r][cols.qId] || '').trim().toLowerCase();
+    
+    var match = rCreatedBy.match(/\\[AI:([^\\]]+)\\]/);
+    var token = match ? match[1].trim() : '';
+    
+    if (token || rCreatedBy.indexOf('[AI:') !== -1 || rQId.indexOf('q_ai_') === 0) {
+      allAiCount++;
+      allAiRows.push(r + 1);
+      var key = token || '__NO_TOKEN__';
+      tokenCounts[key] = (tokenCounts[key] || 0) + 1;
+      if (!tokenRows[key]) tokenRows[key] = [];
+      tokenRows[key].push(r + 1);
+    }
+  }
+  
+  var foundTokens = Object.keys(tokenCounts);
+  var primaryToken = '';
+  var hasBatch = false;
+  
+  for (var t = 0; t < foundTokens.length; t++) {
+    var tk = foundTokens[t];
+    if (tokenCounts[tk] >= 5) {
+      hasBatch = true;
+      primaryToken = tk === '__NO_TOKEN__' ? '' : tk;
+      break;
+    }
+  }
+  
+  if (!hasBatch && allAiCount >= 5) {
+    hasBatch = true;
+    if (foundTokens.length > 0 && foundTokens[0] !== '__NO_TOKEN__') {
+      primaryToken = foundTokens[0];
+    }
+  }
+  
+  return {
+    hasPersistedBatch: hasBatch,
+    activeAiCount: allAiCount,
+    tokens: foundTokens.filter(function(k) { return k !== '__NO_TOKEN__'; }),
+    primaryToken: primaryToken,
+    matchingRows: allAiRows,
+    tokenCounts: tokenCounts
+  };
+}
+
+/**
  * Atomically reserve one AI generation slot for a CNE
  * Uses LockService to ensure atomic concurrency control
  */
@@ -7950,6 +8028,7 @@ function handleReserveAiQuota(params, session) {
     }
     
     // Protection against duplicate AI generation:
+    // 1. Authoritative check in CNE_AI_Quota sheet:
     // AI generation status becomes USED ONLY after successful AI batch persistence by handleCommitAiQuota().
     // Manual questions MUST NOT consume, reset, or alter the one-time AI generation allowance.
     if (attemptsUsed >= 1) {
@@ -7957,6 +8036,41 @@ function handleReserveAiQuota(params, session) {
         success: false,
         errorCode: 'QUOTA_EXHAUSTED',
         message: 'AI question generation has already been completed for this CNE. The one-time initial AI generation allowance is used.',
+        data: {
+          cneId: cneId,
+          status: 'USED',
+          attemptsUsed: 1,
+          maxQuota: 1,
+          remaining: 0,
+          canGenerate: false
+        }
+      };
+    }
+
+    // 2. CRITICAL RECONCILIATION & PREVENTION OF SECOND AI GENERATION:
+    // Invariant: IF an AI batch has been successfully persisted for a CNE,
+    // that CNE must NEVER become eligible for a second AI generation,
+    // even if the quota USED state update previously failed or reservation expired!
+    var questionsSheet = getQuestionsSheet();
+    var qCols = getQuestionColIndexes(questionsSheet);
+    var aiBatchInfo = findPersistedAiBatchInfo(cneId, questionsSheet, qCols);
+
+    if (aiBatchInfo.hasPersistedBatch) {
+      var committedToken = aiBatchInfo.primaryToken || existingToken || 'RECONCILED_BATCH';
+      var nowIso = new Date().toISOString();
+      if (rowIndex > 0) {
+        sheet.getRange(rowIndex, 3, 1, 7).setValues([[1, 1, nowIso, session.employeeId, '', '0', committedToken]]);
+      } else {
+        sheet.appendRow([cneId, record.topic, 1, 1, nowIso, session.employeeId, '', '0', committedToken]);
+      }
+      SpreadsheetApp.flush();
+
+      logAuditAction('RECONCILE_AI_QUOTA', session.employeeId, 'Reconciled CNE AI quota to USED after detecting already persisted batch (' + aiBatchInfo.activeAiCount + ' active AI questions) for CNE: ' + cneId, 'SUCCESS');
+
+      return {
+        success: false,
+        errorCode: 'QUOTA_EXHAUSTED',
+        message: 'An AI question batch has already been persisted for this CNE. The one-time initial AI generation allowance is used.',
         data: {
           cneId: cneId,
           status: 'USED',
@@ -8088,8 +8202,27 @@ function handleCommitAiQuota(params, session) {
         }
       };
     }
+
+    // Inspect existing questions sheet to prevent duplicate active AI batches and handle recovery
+    var questionsSheet = getQuestionsSheet();
+    var qCols = getQuestionColIndexes(questionsSheet);
+    var qSheetData = questionsSheet.getDataRange().getValues();
+    var aiBatchInfo = findPersistedAiBatchInfo(cneId, questionsSheet, qCols);
+
+    // If an AI batch was already persisted for this CNE under another reservation token:
+    if (aiBatchInfo.hasPersistedBatch && aiBatchInfo.primaryToken && aiBatchInfo.primaryToken !== reservationToken) {
+      if (rowIndex > 0) {
+        quotaSheet.getRange(rowIndex, 3, 1, 7).setValues([[1, 1, new Date().toISOString(), session.employeeId, '', '0', aiBatchInfo.primaryToken]]);
+        SpreadsheetApp.flush();
+      }
+      return {
+        success: false,
+        errorCode: 'QUOTA_EXHAUSTED',
+        message: 'An AI question batch has already been persisted for this CNE under another reservation.'
+      };
+    }
     
-    if (rowIndex === -1 || storedToken !== reservationToken) {
+    if (rowIndex === -1 || (storedToken !== reservationToken && lastCommittedToken !== reservationToken)) {
       return {
         success: false,
         errorCode: 'INVALID_RESERVATION',
@@ -8112,22 +8245,20 @@ function handleCommitAiQuota(params, session) {
     var aiBatchTag = '[AI:' + reservationToken + ']';
 
     // Inspect existing questions in sheet across all rows for ID uniqueness & this CNE's reservation
-    var questionsSheet = getQuestionsSheet();
-    var qSheetData = questionsSheet.getDataRange().getValues();
     var allExistingSheetQIds = {};
     var matchingTagRows = []; // 1-based row numbers
     var matchingTagQIds = [];
 
     for (var rIdx = 1; rIdx < qSheetData.length; rIdx++) {
-      var rQId = String(qSheetData[rIdx][1] || '').trim();
+      var rQId = String(qSheetData[rIdx][qCols.qId] || '').trim();
       if (rQId) {
         allExistingSheetQIds[rQId.toLowerCase()] = true;
       }
 
-      var rCne = String(qSheetData[rIdx][0] || '').trim().toUpperCase();
+      var rCne = String(qSheetData[rIdx][qCols.cneId] || '').trim().toUpperCase();
       if (rCne === cneId.toUpperCase()) {
-        var rStatus = String(qSheetData[rIdx][14] || 'ACTIVE').trim().toUpperCase();
-        var rCreatedBy = String(qSheetData[rIdx][12] || '').trim();
+        var rStatus = String(qSheetData[rIdx][qCols.status] || 'ACTIVE').trim().toUpperCase();
+        var rCreatedBy = String(qSheetData[rIdx][qCols.createdBy] || '').trim();
 
         if (rStatus === 'ACTIVE') {
           if (rCreatedBy.indexOf(aiBatchTag) !== -1) {
@@ -8152,7 +8283,7 @@ function handleCommitAiQuota(params, session) {
     // Unrelated manual and AI questions are completely untouched.
     if (!batchAlreadyPersisted && matchingTagRows.length > 0 && matchingTagRows.length < 5) {
       for (var p = 0; p < matchingTagRows.length; p++) {
-        questionsSheet.getRange(matchingTagRows[p], 15).setValue('INCOMPLETE');
+        questionsSheet.getRange(matchingTagRows[p], qCols.status + 1).setValue('INCOMPLETE');
       }
       SpreadsheetApp.flush();
     }
@@ -8253,9 +8384,26 @@ function handleCommitAiQuota(params, session) {
         var srcUrl = sanitizeCellInput(qObj.sourceUrl || '').trim();
         var srcRetrievedAt = sanitizeCellInput(qObj.sourceRetrievedAt || '').trim();
 
-        rowsToSave.push([
-          cneId, qId, qText, optA, optB, optC, optD, rawCorrect, expl, 'YES', 'NO', nowIso, session.employeeId + ' ' + aiBatchTag, authSrc, 'ACTIVE', srcUrl, srcRetrievedAt
-        ]);
+        var item = {
+          cneId: cneId,
+          id: qId,
+          question: qText,
+          optA: optA,
+          optB: optB,
+          optC: optC,
+          optD: optD,
+          correctOption: rawCorrect,
+          explanation: expl,
+          isFinalized: 'YES',
+          isLocked: 'NO',
+          createdAt: nowIso,
+          createdBy: session.employeeId + ' ' + aiBatchTag,
+          authoritativeSource: authSrc,
+          status: 'ACTIVE',
+          sourceUrl: srcUrl,
+          sourceRetrievedAt: srcRetrievedAt
+        };
+        rowsToSave.push(buildQuestionRowArray(qCols, item, qSheetData[0].length));
       }
 
       try {
@@ -8272,22 +8420,31 @@ function handleCommitAiQuota(params, session) {
     }
 
     // 4. VERIFY THAT THE EXACT 5 QUESTIONS TIED TO CURRENT RESERVATION WERE PERSISTED
-    var verifyData = questionsSheet.getDataRange().getValues();
+    var isVerified = false;
     var verifiedTagCount = 0;
+    for (var vAttempt = 1; vAttempt <= 3; vAttempt++) {
+      SpreadsheetApp.flush();
+      var verifyData = questionsSheet.getDataRange().getValues();
+      verifiedTagCount = 0;
 
-    for (var vRow = 1; vRow < verifyData.length; vRow++) {
-      var rowCne = String(verifyData[vRow][0] || '').trim().toUpperCase();
-      var rowStatus = String(verifyData[vRow][14] || 'ACTIVE').trim().toUpperCase();
-      var rowCreatedBy = String(verifyData[vRow][12] || '').trim();
+      for (var vRow = 1; vRow < verifyData.length; vRow++) {
+        var rowCne = String(verifyData[vRow][qCols.cneId] || '').trim().toUpperCase();
+        var rowStatus = String(verifyData[vRow][qCols.status] || 'ACTIVE').trim().toUpperCase();
+        var rowCreatedBy = String(verifyData[vRow][qCols.createdBy] || '').trim();
 
-      if (rowCne === cneId.toUpperCase() && rowStatus === 'ACTIVE') {
-        if (rowCreatedBy.indexOf(aiBatchTag) !== -1) {
-          verifiedTagCount++;
+        if (rowCne === cneId.toUpperCase() && rowStatus === 'ACTIVE') {
+          if (rowCreatedBy.indexOf(aiBatchTag) !== -1) {
+            verifiedTagCount++;
+          }
         }
       }
-    }
 
-    var isVerified = (verifiedTagCount === 5);
+      if (verifiedTagCount === 5) {
+        isVerified = true;
+        break;
+      }
+      Utilities.sleep(150);
+    }
 
     if (!isVerified) {
       return {
@@ -8378,8 +8535,33 @@ function handleReleaseAiQuota(params, session) {
       if (String(data[r][0] || '').trim().toUpperCase() === cneId.toUpperCase()) {
         rowIndex = r + 1;
         storedToken = String(data[r][6] || '').trim();
+        var attemptsUsed = parseInt(data[r][2], 10) || 0;
+        if (attemptsUsed >= 1) {
+          return {
+            success: false,
+            errorCode: 'QUOTA_EXHAUSTED',
+            message: 'Cannot release reservation: One-time AI generation quota for this CNE has already been successfully committed and marked USED.'
+          };
+        }
         break;
       }
+    }
+    
+    // Invariant check: Cannot release reservation if an AI batch has already been persisted for this CNE
+    var questionsSheet = getQuestionsSheet();
+    var qCols = getQuestionColIndexes(questionsSheet);
+    var aiBatchInfo = findPersistedAiBatchInfo(cneId, questionsSheet, qCols);
+    if (aiBatchInfo.hasPersistedBatch) {
+      var committedToken = aiBatchInfo.primaryToken || storedToken || 'RECONCILED_BATCH';
+      if (rowIndex > 0) {
+        sheet.getRange(rowIndex, 3, 1, 7).setValues([[1, 1, new Date().toISOString(), session.employeeId, '', '0', committedToken]]);
+        SpreadsheetApp.flush();
+      }
+      return {
+        success: false,
+        errorCode: 'QUOTA_EXHAUSTED',
+        message: 'Cannot release reservation: An AI question batch has already been persisted for this CNE.'
+      };
     }
     
     if (rowIndex === -1) {
@@ -8534,10 +8716,12 @@ function handleValidateAiQuotaReservation(params, session) {
     var attemptsUsed = 0;
     var maxQuota = 1;
     var found = false;
+    var rowIndex = -1;
 
     for (var r = 1; r < data.length; r++) {
       if (String(data[r][0] || '').trim().toUpperCase() === cneId.toUpperCase()) {
         found = true;
+        rowIndex = r + 1;
         var rawUsed = parseInt(data[r][2], 10) || 0;
         attemptsUsed = rawUsed >= 1 ? 1 : 0;
         storedToken = String(data[r][6] || '').trim();
@@ -8568,6 +8752,23 @@ function handleValidateAiQuotaReservation(params, session) {
         success: false,
         errorCode: 'QUOTA_EXHAUSTED',
         message: 'One-time AI generation allowance already used for this CNE.'
+      };
+    }
+
+    // Invariant check: Fail validation if an AI batch has already been persisted for this CNE
+    var questionsSheet = getQuestionsSheet();
+    var qCols = getQuestionColIndexes(questionsSheet);
+    var aiBatchInfo = findPersistedAiBatchInfo(cneId, questionsSheet, qCols);
+    if (aiBatchInfo.hasPersistedBatch) {
+      var committedToken = aiBatchInfo.primaryToken || storedToken || 'RECONCILED_BATCH';
+      if (rowIndex > 0) {
+        sheet.getRange(rowIndex, 3, 1, 7).setValues([[1, 1, new Date().toISOString(), session.employeeId, '', '0', committedToken]]);
+        SpreadsheetApp.flush();
+      }
+      return {
+        success: false,
+        errorCode: 'QUOTA_EXHAUSTED',
+        message: 'One-time AI generation allowance already used for this CNE (persisted question batch detected).'
       };
     }
 
@@ -8645,22 +8846,23 @@ function getCachedSanitizedQuestions(cneId) {
   var qSheet = getQuestionsSheet();
   if (!qSheet || qSheet.getLastRow() <= 1) return [];
 
+  var cols = getQuestionColIndexes(qSheet);
   var qData = qSheet.getDataRange().getValues();
   var sanitized = [];
 
   for (var r = 1; r < qData.length; r++) {
-    var qCne = String(qData[r][0] || '').trim().toUpperCase();
-    var isFin = String(qData[r][9] || 'NO').toUpperCase() === 'YES';
-    var qStatus = String(qData[r][14] || 'ACTIVE').trim().toUpperCase();
+    var qCne = String(qData[r][cols.cneId] || '').trim().toUpperCase();
+    var isFin = String(qData[r][cols.isFinalized] || 'NO').toUpperCase() === 'YES';
+    var qStatus = String(qData[r][cols.status] || 'ACTIVE').trim().toUpperCase();
     if (qCne === normCneId && isFin && qStatus !== 'INACTIVE' && qStatus !== 'REPLACED') {
       sanitized.push({
-        id: String(qData[r][1] || ''),
-        question: String(qData[r][2] || ''),
+        id: String(qData[r][cols.qId] || ''),
+        question: String(qData[r][cols.question] || ''),
         options: {
-          A: String(qData[r][3] || ''),
-          B: String(qData[r][4] || ''),
-          C: String(qData[r][5] || ''),
-          D: String(qData[r][6] || '')
+          A: String(qData[r][cols.optA] || ''),
+          B: String(qData[r][cols.optB] || ''),
+          C: String(qData[r][cols.optC] || ''),
+          D: String(qData[r][cols.optD] || '')
         }
         // STRICT SECURITY: Correct Option, Explanation, and Authoritative Source are NEVER included in sanitized payload!
       });
@@ -8716,6 +8918,68 @@ function getQuestionsSheet() {
 }
 
 /**
+ * Helper: Resolve Questions Sheet Column Mapping
+ * Dynamically resolves 0-based column indexes from the header row.
+ */
+function getQuestionColIndexes(sheet) {
+  ensureQuestionsSheetHeaders(sheet);
+  var colMap = getHeaderMap(sheet);
+  return {
+    cneId: colMap['cneid'] !== undefined ? colMap['cneid'] : 0,
+    qId: colMap['questionid'] !== undefined ? colMap['questionid'] : (colMap['id'] !== undefined ? colMap['id'] : 1),
+    question: colMap['questiontext'] !== undefined ? colMap['questiontext'] : (colMap['question'] !== undefined ? colMap['question'] : 2),
+    optA: colMap['optiona'] !== undefined ? colMap['optiona'] : 3,
+    optB: colMap['optionb'] !== undefined ? colMap['optionb'] : 4,
+    optC: colMap['optionc'] !== undefined ? colMap['optionc'] : 5,
+    optD: colMap['optiond'] !== undefined ? colMap['optiond'] : 6,
+    correctOption: colMap['correctoption'] !== undefined ? colMap['correctoption'] : (colMap['correctanswer'] !== undefined ? colMap['correctanswer'] : 7),
+    explanation: colMap['explanation'] !== undefined ? colMap['explanation'] : (colMap['rationale'] !== undefined ? colMap['rationale'] : 8),
+    isFinalized: colMap['isfinalized'] !== undefined ? colMap['isfinalized'] : 9,
+    isLocked: colMap['islocked'] !== undefined ? colMap['islocked'] : 10,
+    createdAt: colMap['createdat'] !== undefined ? colMap['createdat'] : 11,
+    createdBy: colMap['createdby'] !== undefined ? colMap['createdby'] : 12,
+    authoritativeSource: colMap['authoritativesource'] !== undefined ? colMap['authoritativesource'] : (colMap['source'] !== undefined ? colMap['source'] : 13),
+    status: colMap['status'] !== undefined ? colMap['status'] : 14,
+    sourceUrl: colMap['sourceurl'] !== undefined ? colMap['sourceurl'] : (colMap['url'] !== undefined ? colMap['url'] : 15),
+    sourceRetrievedAt: colMap['sourceretrievedat'] !== undefined ? colMap['sourceretrievedat'] : (colMap['retrievedat'] !== undefined ? colMap['retrievedat'] : 16)
+  };
+}
+
+/**
+ * Builds a 0-indexed row array for writing to the question sheet according to the dynamic column mapping.
+ */
+function buildQuestionRowArray(cols, item, totalCols, existingRow) {
+  var row = existingRow ? existingRow.slice() : [];
+  var targetLen = Math.max(totalCols || 0, 17);
+  for (var k in cols) {
+    if (cols[k] !== undefined && cols[k] >= targetLen) {
+      targetLen = cols[k] + 1;
+    }
+  }
+  while (row.length < targetLen) {
+    row.push('');
+  }
+  if (cols.cneId !== undefined) row[cols.cneId] = item.cneId || '';
+  if (cols.qId !== undefined) row[cols.qId] = item.id || '';
+  if (cols.question !== undefined) row[cols.question] = item.question || '';
+  if (cols.optA !== undefined) row[cols.optA] = item.optA || '';
+  if (cols.optB !== undefined) row[cols.optB] = item.optB || '';
+  if (cols.optC !== undefined) row[cols.optC] = item.optC || '';
+  if (cols.optD !== undefined) row[cols.optD] = item.optD || '';
+  if (cols.correctOption !== undefined) row[cols.correctOption] = item.correctOption || 'A';
+  if (cols.explanation !== undefined) row[cols.explanation] = item.explanation || '';
+  if (cols.isFinalized !== undefined) row[cols.isFinalized] = item.isFinalized || 'NO';
+  if (cols.isLocked !== undefined) row[cols.isLocked] = item.isLocked || 'NO';
+  if (cols.createdAt !== undefined && (!existingRow || !row[cols.createdAt])) row[cols.createdAt] = item.createdAt || new Date().toISOString();
+  if (cols.createdBy !== undefined) row[cols.createdBy] = item.createdBy || '';
+  if (cols.authoritativeSource !== undefined) row[cols.authoritativeSource] = item.authoritativeSource || '';
+  if (cols.status !== undefined) row[cols.status] = item.status || 'ACTIVE';
+  if (cols.sourceUrl !== undefined) row[cols.sourceUrl] = item.sourceUrl || '';
+  if (cols.sourceRetrievedAt !== undefined) row[cols.sourceRetrievedAt] = item.sourceRetrievedAt || '';
+  return row;
+}
+
+/**
  * Helper: Count Active Finalized Questions for a CNE
  * Returns the authoritative count of active post-test questions persisted in Google Sheets.
  */
@@ -8724,12 +8988,13 @@ function countActiveCNEQuestions(cneId) {
   var sheet = getQuestionsSheet();
   if (!sheet || sheet.getLastRow() <= 1) return 0;
   var data = sheet.getDataRange().getValues();
+  var cols = getQuestionColIndexes(sheet);
   var count = 0;
   var targetCne = String(cneId).trim().toUpperCase();
   for (var r = 1; r < data.length; r++) {
-    if (String(data[r][0] || '').trim().toUpperCase() === targetCne) {
-      var status = String(data[r][14] || 'ACTIVE').trim().toUpperCase();
-      var isFinalized = String(data[r][9] || '').trim().toUpperCase();
+    if (String(data[r][cols.cneId] || '').trim().toUpperCase() === targetCne) {
+      var status = String(data[r][cols.status] || 'ACTIVE').trim().toUpperCase();
+      var isFinalized = String(data[r][cols.isFinalized] || '').trim().toUpperCase();
       if (status === 'ACTIVE' && (isFinalized === 'YES' || isFinalized === 'TRUE')) {
         count++;
       }
@@ -8779,9 +9044,10 @@ function isCNEQuestionsLocked(cneId) {
   var qSheet = getQuestionsSheet();
   if (qSheet && qSheet.getLastRow() > 1) {
     var qData = qSheet.getDataRange().getValues();
+    var cols = getQuestionColIndexes(qSheet);
     for (var q = 1; q < qData.length; q++) {
-      var qCneId = String(qData[q][0] || '').trim().toUpperCase();
-      var isLockCol = String(qData[q][10] || '').trim().toUpperCase();
+      var qCneId = String(qData[q][cols.cneId] || '').trim().toUpperCase();
+      var isLockCol = String(qData[q][cols.isLocked] || '').trim().toUpperCase();
       if (qCneId === String(cneId).trim().toUpperCase() && isLockCol === 'YES') {
         return true;
       }
@@ -8938,13 +9204,14 @@ function handleSaveCNEQuestions(params, session) {
     }
 
     var sheet = getQuestionsSheet();
+    var cols = getQuestionColIndexes(sheet);
     var data = sheet.getDataRange().getValues();
     var existingRowMap = {}; // qId.toLowerCase() -> rowNumber
     var existingCneRows = [];
 
     for (var r = 1; r < data.length; r++) {
-      if (String(data[r][0] || '').trim().toUpperCase() === cneId.toUpperCase()) {
-        var existingQId = String(data[r][1] || '').trim().toLowerCase();
+      if (String(data[r][cols.cneId] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+        var existingQId = String(data[r][cols.qId] || '').trim().toLowerCase();
         existingRowMap[existingQId] = r + 1;
         existingCneRows.push({ rowNum: r + 1, qId: existingQId });
       }
@@ -8955,34 +9222,35 @@ function handleSaveCNEQuestions(params, session) {
       var exQId = existingCneRows[e].qId;
       if (!seenIds[exQId]) {
         var rowNum = existingCneRows[e].rowNum;
-        sheet.getRange(rowNum, 15).setValue('REPLACED');
+        sheet.getRange(rowNum, cols.status + 1).setValue('REPLACED');
       }
     }
 
     // Update or append validated questions
     for (var v = 0; v < validatedList.length; v++) {
       var item = validatedList[v];
-      var rowValues = [
-        cneId,
-        item.id,
-        item.question,
-        item.optA,
-        item.optB,
-        item.optC,
-        item.optD,
-        item.correctOption,
-        item.explanation,
-        item.isFinalized,
-        'NO',
-        now,
-        session.employeeId,
-        item.authoritativeSource,
-        item.status,
-        item.sourceUrl || '',
-        item.sourceRetrievedAt || ''
-      ];
-
       var targetRow = existingRowMap[item.id.toLowerCase()];
+      var existingRowValues = targetRow ? data[targetRow - 1] : null;
+      var rowValues = buildQuestionRowArray(cols, {
+        cneId: cneId,
+        id: item.id,
+        question: item.question,
+        optA: item.optA,
+        optB: item.optB,
+        optC: item.optC,
+        optD: item.optD,
+        correctOption: item.correctOption,
+        explanation: item.explanation,
+        isFinalized: item.isFinalized,
+        isLocked: 'NO',
+        createdAt: now,
+        createdBy: session.employeeId,
+        authoritativeSource: item.authoritativeSource,
+        status: item.status,
+        sourceUrl: item.sourceUrl || '',
+        sourceRetrievedAt: item.sourceRetrievedAt || ''
+      }, data[0].length, existingRowValues);
+
       if (targetRow) {
         sheet.getRange(targetRow, 1, 1, rowValues.length).setValues([rowValues]);
       } else {
@@ -9023,41 +9291,39 @@ function handleGetCNEQuestions(params, session) {
   
   var isLocked = isCNEQuestionsLocked(cneId);
   var sheet = getQuestionsSheet();
+  var cols = getQuestionColIndexes(sheet);
   var data = sheet.getDataRange().getValues();
-  var colMap = getHeaderMap(sheet);
-  var srcUrlCol = colMap['sourceurl'] !== undefined ? colMap['sourceurl'] : 15;
-  var srcRetrievedAtCol = colMap['sourceretrievedat'] !== undefined ? colMap['sourceretrievedat'] : 16;
   var questions = [];
   var finalizedCount = 0;
   var activeCount = 0;
   
   for (var r = 1; r < data.length; r++) {
-    if (String(data[r][0] || '').trim().toUpperCase() === cneId.toUpperCase()) {
-      var isFin = String(data[r][9] || 'NO').toUpperCase() === 'YES';
-      var authSrc = String(data[r][13] || '').trim();
-      var qStatus = String(data[r][14] || 'ACTIVE').trim().toUpperCase();
-      var srcUrl = srcUrlCol < data[r].length ? String(data[r][srcUrlCol] || '').trim() : '';
-      var srcRetrievedAt = srcRetrievedAtCol < data[r].length ? String(data[r][srcRetrievedAtCol] || '').trim() : '';
+    if (String(data[r][cols.cneId] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+      var isFin = String(data[r][cols.isFinalized] || 'NO').toUpperCase() === 'YES';
+      var authSrc = String(data[r][cols.authoritativeSource] || '').trim();
+      var qStatus = String(data[r][cols.status] || 'ACTIVE').trim().toUpperCase();
+      var srcUrl = cols.sourceUrl < data[r].length ? String(data[r][cols.sourceUrl] || '').trim() : '';
+      var srcRetrievedAt = cols.sourceRetrievedAt < data[r].length ? String(data[r][cols.sourceRetrievedAt] || '').trim() : '';
       if (qStatus !== 'INACTIVE' && qStatus !== 'REPLACED') {
         qStatus = 'ACTIVE';
         activeCount++;
         if (isFin) finalizedCount++;
       }
       questions.push({
-        id: String(data[r][1] || ''),
-        question: String(data[r][2] || ''),
+        id: String(data[r][cols.qId] || ''),
+        question: String(data[r][cols.question] || ''),
         options: {
-          A: String(data[r][3] || ''),
-          B: String(data[r][4] || ''),
-          C: String(data[r][5] || ''),
-          D: String(data[r][6] || '')
+          A: String(data[r][cols.optA] || ''),
+          B: String(data[r][cols.optB] || ''),
+          C: String(data[r][cols.optC] || ''),
+          D: String(data[r][cols.optD] || '')
         },
-        correctOption: String(data[r][7] || 'A'),
-        explanation: String(data[r][8] || ''),
+        correctOption: String(data[r][cols.correctOption] || 'A'),
+        explanation: String(data[r][cols.explanation] || ''),
         authoritativeSource: authSrc,
         status: qStatus,
         isFinalized: isFin,
-        isLocked: isLocked || String(data[r][10] || 'NO').toUpperCase() === 'YES',
+        isLocked: isLocked || String(data[r][cols.isLocked] || 'NO').toUpperCase() === 'YES',
         sourceUrl: srcUrl,
         sourceRetrievedAt: srcRetrievedAt
       });
@@ -9088,18 +9354,7 @@ function handleGetQRToken(params, session) {
   var authErr = checkQuestionManagementAuthorized(session, record);
   if (authErr) return authErr;
   
-  var sheet = getQuestionsSheet();
-  var data = sheet.getDataRange().getValues();
-  var finalizedCount = 0;
-  for (var r = 1; r < data.length; r++) {
-    if (String(data[r][0] || '').trim().toUpperCase() === cneId.toUpperCase()) {
-      var isFin = String(data[r][9] || 'NO').toUpperCase() === 'YES';
-      var qStatus = String(data[r][14] || 'ACTIVE').trim().toUpperCase();
-      if (isFin && qStatus !== 'INACTIVE' && qStatus !== 'REPLACED') {
-        finalizedCount++;
-      }
-    }
-  }
+  var finalizedCount = countActiveCNEQuestions(cneId);
 
   // Look for existing QR token first
   var qrSheet = getQRTokensSheet();
@@ -9462,20 +9717,21 @@ function handleSubmitPostTest(params, session) {
     
     // Step 2: Question Retrieval (Fetch True Answer Keys)
     var qSheet = getQuestionsSheet();
+    var cols = getQuestionColIndexes(qSheet);
     var qData = qSheet.getDataRange().getValues();
     var answerKeys = [];
     var questionRowsToLock = [];
     
     for (var r = 1; r < qData.length; r++) {
-      var qCne = String(qData[r][0] || '').trim().toUpperCase();
-      var isFin = String(qData[r][9] || 'NO').toUpperCase() === 'YES';
-      var qStatus = String(qData[r][14] || 'ACTIVE').trim().toUpperCase();
+      var qCne = String(qData[r][cols.cneId] || '').trim().toUpperCase();
+      var isFin = String(qData[r][cols.isFinalized] || 'NO').toUpperCase() === 'YES';
+      var qStatus = String(qData[r][cols.status] || 'ACTIVE').trim().toUpperCase();
       if (qCne === cneId.toUpperCase() && isFin && qStatus !== 'INACTIVE' && qStatus !== 'REPLACED') {
         answerKeys.push({
-          id: String(qData[r][1] || ''),
-          question: String(qData[r][2] || ''),
-          correctOption: String(qData[r][7] || 'A').toUpperCase(),
-          explanation: String(qData[r][8] || '')
+          id: String(qData[r][cols.qId] || ''),
+          question: String(qData[r][cols.question] || ''),
+          correctOption: String(qData[r][cols.correctOption] || 'A').toUpperCase(),
+          explanation: String(qData[r][cols.explanation] || '')
         });
         questionRowsToLock.push(r + 1);
       }
@@ -9533,7 +9789,7 @@ function handleSubmitPostTest(params, session) {
     // Step 5: Question Locking - ONLY on successful response write!
     // A failed submission never reaches this point and does NOT lock questions.
     for (var k = 0; k < questionRowsToLock.length; k++) {
-      qSheet.getRange(questionRowsToLock[k], 11).setValue('YES');
+      qSheet.getRange(questionRowsToLock[k], cols.isLocked + 1).setValue('YES');
     }
     
     logAuditAction('SUBMIT_POST_TEST', empId, 'CNE: ' + cneId + ', Score: ' + score + '/' + total + ' (' + percentage + '%)', 'SUCCESS');

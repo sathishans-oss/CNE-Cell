@@ -1,3 +1,20 @@
+/**
+ * ============================================================================
+ * LOCAL DEVELOPMENT SERVER (Express + Vite Middleware)
+ * ============================================================================
+ * PRODUCTION ARCHITECTURE:
+ * - Hosting: Cloudflare Pages
+ * - Production AI Endpoint: functions/api/ai/generate-questions.ts
+ * - Production Route: /api/ai/generate-questions
+ * - Production Health: functions/api/health.ts (/api/health)
+ *
+ * This server.ts file serves as the local development environment (`npm run dev`)
+ * providing local API emulation matching the Cloudflare Pages Functions production
+ * contract. In production, Cloudflare Pages directly executes the Edge Functions
+ * under `functions/`.
+ * ============================================================================
+ */
+
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
@@ -50,6 +67,7 @@ interface RawGeneratedQuestion {
   authoritativeSource?: string;
   source?: string;
   reference?: string;
+  sourceId?: string;
 }
 
 // Explicitly blocked paid-tier models - MUST NEVER BE CALLED
@@ -69,95 +87,15 @@ const BLOCKED_PAID_MODELS = new Set([
 ]);
 
 // AI Question In-Memory Cache to protect free-tier quotas and prevent duplicate Gemini API requests
+// Strictly bounded size (50 entries) and 5-minute TTL to prevent memory leaks and stale data
 const aiQuestionCache = new Map<string, {
   questions: any[];
   timestamp: number;
   model: string;
   topic: string;
 }>();
-
-/**
- * Clinical Question Synthesis Engine
- * When Gemini API returns 401 (unauthenticated), 429/503 (over capacity), or network errors,
- * this synthesizes 5 rigorous, clinically validated MCQs grounded in the provided CNE learning material.
- */
-function synthesizeGroundedClinicalQuestions(
-  cneId: string,
-  topic: string,
-  material: string
-): RawGeneratedQuestion[] {
-  const cleanTopic = topic.trim() || 'Clinical Nursing Practice';
-
-  // Extract clean text sentences and meaningful fragments from the learning material
-  const rawSentences = material
-    .split(/(?<=[.!?\n])\s+/)
-    .map((s) => s.trim().replace(/^[-*•\d.)\s]+/, '').replace(/[`*_#]/g, ''))
-    .filter((s) => s.length >= 15);
-
-  const s1 = rawSentences[0] || `${cleanTopic} requires systematic adherence to validated clinical nursing protocols.`;
-  const s2 = rawSentences[1] || rawSentences[0] || `Continuous patient assessment and baseline vital parameter monitoring are vital for early risk detection in ${cleanTopic}.`;
-  const s3 = rawSentences[2] || rawSentences[0] || `Standard aseptic barrier precautions and procedural checklists must be strictly followed during ${cleanTopic}.`;
-  const s4 = rawSentences[3] || rawSentences[1] || `Dual-nurse independent verification of high-alert medications and equipment settings ensures clinical safety.`;
-  const s5 = rawSentences[4] || rawSentences[2] || `Immediate escalation to the senior clinical team is mandatory upon identifying early warning signs of clinical deterioration.`;
-
-  const truncate = (str: string, maxLen = 120) => {
-    const s = str.trim();
-    return s.length > maxLen ? s.substring(0, maxLen - 3) + '...' : s;
-  };
-
-  return [
-    {
-      questionText: `Based on the CNE module on "${cleanTopic}", which clinical principle represents the core standard of care?`,
-      optionA: truncate(s1),
-      optionB: 'Relying exclusively on unverified bedside shortcuts without clinical documentation',
-      optionC: 'Deferring patient assessment until routine end-of-shift handover documentation',
-      optionD: 'Omitting standardized verification checklists during high-acuity interventions',
-      correctOption: 'A',
-      explanation: `According to the CNE curriculum: ${truncate(s1, 160)}. Standardized nursing practice ensures procedural accuracy and patient safety.`,
-      authoritativeSource: `AIIMS Clinical Nursing Protocols & INC Guidelines - Grounded in CNE Session: ${cleanTopic}`
-    },
-    {
-      questionText: `During initial assessment of a patient undergoing care for "${cleanTopic}", which parameter requires immediate evaluation?`,
-      optionA: 'Completing discharge billing paperwork before assessing acute clinical signs',
-      optionB: truncate(s2),
-      optionC: 'Recording vital parameters once every 24 hours regardless of patient acuity',
-      optionD: 'Withholding clinical observations until subjective complaints become severe',
-      correctOption: 'B',
-      explanation: `Clinical monitoring standard: ${truncate(s2, 160)}. Early recognition of physiological deviations prevents adverse outcomes.`,
-      authoritativeSource: `AIIMS Clinical Nursing Protocols & INC Guidelines - Grounded in CNE Session: ${cleanTopic}`
-    },
-    {
-      questionText: `Which procedural safety standard must be prioritized by the nursing team when managing "${cleanTopic}"?`,
-      optionA: 'Proceeding with invasive interventions without verifying patient identity or consent',
-      optionB: 'Delegating complex clinical decision-making to untrained personnel',
-      optionC: truncate(s3),
-      optionD: 'Bypassing personal protective equipment and barrier precautions to expedite care',
-      correctOption: 'C',
-      explanation: `Procedural guideline: ${truncate(s3, 160)}. Following strict aseptic barrier and safety protocols prevents healthcare-associated complications.`,
-      authoritativeSource: `AIIMS Clinical Nursing Protocols & INC Guidelines - Grounded in CNE Session: ${cleanTopic}`
-    },
-    {
-      questionText: `In the context of patient safety for "${cleanTopic}", which infection control and medication safety measure is mandatory?`,
-      optionA: 'Administering high-risk medications without independent second-nurse verification',
-      optionB: 'Reusing single-use disposable consumables across multiple patients to conserve supplies',
-      optionC: 'Skipping hand hygiene before clean/aseptic procedures if gloves were previously donned',
-      optionD: truncate(s4),
-      correctOption: 'D',
-      explanation: `Patient safety standard: ${truncate(s4, 160)}. Systematic verification and strict infection prevention eliminate preventable clinical errors.`,
-      authoritativeSource: `AIIMS Clinical Nursing Protocols & INC Guidelines - Grounded in CNE Session: ${cleanTopic}`
-    },
-    {
-      questionText: `When managing potential complications related to "${cleanTopic}", what is the priority nursing escalation action?`,
-      optionA: 'Withholding urgent notification to the medical team until the next morning rounds',
-      optionB: truncate(s5),
-      optionC: 'Discharging or transferring the unstable patient without attending physician clearance',
-      optionD: 'Modifying critical treatment dosages without verified authorized physician orders',
-      correctOption: 'B',
-      explanation: `Emergency escalation protocol: ${truncate(s5, 160)}. Rapid multidisciplinary communication and immediate stabilization are critical nursing priorities.`,
-      authoritativeSource: `AIIMS Clinical Nursing Protocols & INC Guidelines - Grounded in CNE Session: ${cleanTopic}`
-    }
-  ];
-}
+const MAX_CACHE_ENTRIES = 50;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes TTL
 
 function computeContentKey(cneId: string, topic: string, material: string): string {
   const normTopic = topic.trim().toLowerCase();
@@ -206,6 +144,7 @@ async function startServer() {
 
   // Interface for retrieved external clinical sources (Europe PMC & NCBI / PubMed Central)
   interface RetrievedClinicalSource {
+    sourceId: string;
     sourceName: string;
     title: string;
     url: string;
@@ -239,11 +178,14 @@ async function startServer() {
           const journal = item.journalInfo?.journal?.title || item.bookOrReportDetails?.publisher || 'Peer-Reviewed Clinical Literature';
           const doi = item.doi;
           const pmid = item.pmid;
+          const pmcId = item.id;
           const docUrl = doi ? `https://doi.org/${doi}` : (pmid ? `https://pubmed.ncbi.nlm.nih.gov/${pmid}/` : `https://europepmc.org/article/MED/${item.id}`);
+          const sourceId = pmid ? `PMID_${pmid}` : (pmcId ? `PMC_${pmcId}` : (doi ? `DOI_${doi.replace(/[^a-zA-Z0-9]/g, '_')}` : `SRC_${sources.length + 1}`));
 
           // STRICT EVIDENCE REQUIREMENT: Must have real abstract clinical text (at least 60 characters)
           if (title && abstract.length >= 60) {
             sources.push({
+              sourceId,
               sourceName: journal,
               title,
               url: docUrl,
@@ -294,6 +236,7 @@ async function startServer() {
                   const docUrl = doi ? `https://doi.org/${doi}` : `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`;
 
                   sources.push({
+                    sourceId: `PMID_${pmid}`,
                     sourceName: journal,
                     title,
                     url: docUrl,
@@ -389,14 +332,17 @@ async function startServer() {
 
     let appsScriptUrl = '';
     if (rawAppsScriptUrl) {
-      try {
-        const parsed = new URL(rawAppsScriptUrl);
-        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-          appsScriptUrl = rawAppsScriptUrl;
-        }
-      } catch {
-        appsScriptUrl = '';
-      }
+       try {
+         const parsed = new URL(rawAppsScriptUrl);
+         const isLocalDev = process.env.NODE_ENV !== 'production' && (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1');
+         if (parsed.protocol === 'https:' || (isLocalDev && parsed.protocol === 'http:')) {
+           appsScriptUrl = rawAppsScriptUrl;
+         } else {
+           console.warn('[AI Service] Non-HTTPS Apps Script URL rejected in production:', rawAppsScriptUrl);
+         }
+       } catch {
+         appsScriptUrl = '';
+       }
     }
 
     if (!appsScriptUrl) {
@@ -501,21 +447,28 @@ async function startServer() {
       });
     }
 
-    // Cache Check: Return cached AI questions if identical CNE request was already generated
-    // Protects free-tier usage by avoiding redundant Gemini API calls
+    // Cache Check: Return cached AI questions only for Material mode within TTL
+    // External clinical source generations are NEVER cached to ensure fresh, authoritative retrieval
     const cacheKey = isExternalSource
-      ? computeContentKey(cleanCneId, authoritativeTopic, 'EXTERNAL_SOURCES_V1')
+      ? ''
       : computeContentKey(cleanCneId, authoritativeTopic, authoritativeMaterial);
-    const cachedEntry = aiQuestionCache.get(cacheKey);
-    if (cachedEntry && Array.isArray(cachedEntry.questions) && cachedEntry.questions.length === 5) {
-      console.log(`[AI Question Cache] Cache HIT for CNE ${cleanCneId}. Reusing existing questions to protect free-tier API.`);
-      return res.json({
-        success: true,
-        data: cachedEntry.questions,
-        cneId: cleanCneId,
-        reservationToken: cleanToken,
-        source: `${cachedEntry.model} (Cached Result)`
-      });
+
+    if (!isExternalSource && cacheKey) {
+      const cachedEntry = aiQuestionCache.get(cacheKey);
+      if (cachedEntry) {
+        if (Date.now() - cachedEntry.timestamp > CACHE_TTL_MS) {
+          aiQuestionCache.delete(cacheKey);
+        } else if (Array.isArray(cachedEntry.questions) && cachedEntry.questions.length === 5) {
+          console.log(`[AI Question Cache] Cache HIT for CNE ${cleanCneId}. Reusing existing questions to protect free-tier API.`);
+          return res.json({
+            success: true,
+            data: cachedEntry.questions,
+            cneId: cleanCneId,
+            reservationToken: cleanToken,
+            source: `${cachedEntry.model} (Cached Result)`
+          });
+        }
+      }
     }
 
     // Helper to release quota reservation server-side to prevent stranded reservations on failure
@@ -603,7 +556,7 @@ async function startServer() {
       let prompt = '';
       if (isExternalSource && externalSources) {
         const sourcesText = externalSources.map((s, idx) => `
-[Source ${idx + 1}]
+[Source ID: ${s.sourceId}]
 Source Name / Journal: ${s.journal || s.sourceName}
 Article Title: ${s.title}
 Permanent URL: ${s.url}
@@ -626,9 +579,10 @@ ${sourcesText}
 GROUNDING AND SOURCE ATTRIBUTION REQUIREMENTS (STRICT):
 1. PRIMARY GROUNDING SOURCE: All 5 questions, correct answers, and distractors must be strictly grounded in and directly verifiable from the retrieved authoritative clinical sources provided above.
 2. SOURCE ATTRIBUTION:
+   - For each question, the "sourceId" field MUST be the exact Source ID from the retrieved sources above (e.g. "${externalSources[0].sourceId}").
    - For each question, the "authoritativeSource" field MUST cite the specific retrieved external source name, its direct URL, and the retrieval timestamp.
    - Example format: "${externalSources[0].journal || externalSources[0].sourceName} (${externalSources[0].url}) [Retrieved: ${externalSources[0].retrievedAt}]"
-   - DO NOT fabricate unretrieved sources or invent fake URLs.
+   - DO NOT fabricate unretrieved sources or invent fake URLs or IDs.
    - Absolutely DO NOT cite random blogs, forums, social media, commercial SEO articles, or unverified websites.
 3. CLINICAL RIGOR: Focus on evidence-based nursing care, patient assessment, safety protocols, medication precautions, and clinical management.
 4. OPTIONS: Each question must have EXACTLY 4 distinct, plausible options labeled A, B, C, and D.
@@ -693,9 +647,12 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
                           optionD: { type: 'string' },
                           correctOption: { type: 'string' },
                           explanation: { type: 'string' },
-                          authoritativeSource: { type: 'string' }
+                          authoritativeSource: { type: 'string' },
+                          sourceId: { type: 'string' }
                         },
-                        required: ['questionText', 'optionA', 'optionB', 'optionC', 'optionD', 'correctOption', 'explanation', 'authoritativeSource']
+                        required: isExternalSource
+                          ? ['questionText', 'optionA', 'optionB', 'optionC', 'optionD', 'correctOption', 'explanation', 'authoritativeSource', 'sourceId']
+                          : ['questionText', 'optionA', 'optionB', 'optionC', 'optionD', 'correctOption', 'explanation', 'authoritativeSource']
                       }
                     }
                   },
@@ -750,15 +707,11 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
 
       // If Gemini generation was unauthenticated, unavailable, or returned invalid list:
       if (!rawQuestionsList || rawQuestionsList.length !== 5) {
-        if (isExternalSource) {
-          // NO fallback to general knowledge in external mode: strict compliance with Requirement 9
-          throw new Error(`Unable to generate questions from external sources for topic "${authoritativeTopic}". Please retry or use "Generate from Given Material".`);
-        } else {
-          // For material mode, utilize the grounded clinical question synthesis engine strictly using the verified material
-          console.info(`[AI Service] Synthesizing 5 clinical MCQs deeply grounded in session material for "${authoritativeTopic}"...`);
-          rawQuestionsList = synthesizeGroundedClinicalQuestions(cleanCneId, authoritativeTopic, authoritativeMaterial);
-          usedModel = 'CNE Clinical Knowledge Engine (Material Grounded)';
-        }
+        throw new Error(
+          isExternalSource
+            ? `Unable to generate questions from external sources for topic "${authoritativeTopic}". Please retry or use "Generate from Given Material".`
+            : `Gemini model was unable to generate valid clinical questions for topic "${authoritativeTopic}". Please ensure the configured model is available and retry.`
+        );
       }
 
       // Strict validation: Must have EXACTLY 5 questions
@@ -808,14 +761,31 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
           throw new Error(`Question ${idx + 1} is missing a clinical explanation/rationale.`);
         }
 
-        // Match external source if in external mode
+        // Match external source if in external mode - STRICT EXACT SOURCE ID ASSOCIATION
         let matchedExternalSource: RetrievedClinicalSource | null = null;
-        if (isExternalSource && externalSources && externalSources.length > 0) {
-          matchedExternalSource = externalSources.find(s =>
-            (s.journal && authSource.toLowerCase().includes(s.journal.toLowerCase())) ||
-            (s.title && authSource.toLowerCase().includes(s.title.toLowerCase().substring(0, 20)))
-          ) || externalSources[idx % externalSources.length];
+        if (isExternalSource) {
+          if (!externalSources || externalSources.length === 0) {
+            throw new Error('No authoritative external sources were retrieved for this generation.');
+          }
 
+          const rawSourceId = String(item.sourceId || '').trim();
+          const cleanSourceId = rawSourceId.replace(/^\[|\]$/g, '').replace(/^"|"$/g, '').trim().toUpperCase();
+
+          if (!cleanSourceId) {
+            throw new Error(`Question ${idx + 1} is missing a sourceId. Every external question must contain an exact retrieved sourceId.`);
+          }
+
+          // Strict exact match on sourceId ONLY (e.g. PMID_12345, PMC_6789, DOI_...)
+          // NO fallback by URL, journal name, title substring, positional or inferred matching
+          matchedExternalSource = externalSources.find(s => s.sourceId.toUpperCase() === cleanSourceId) || null;
+
+          if (!matchedExternalSource) {
+            const validIds = externalSources.map(s => s.sourceId).join(', ');
+            throw new Error(`Question ${idx + 1} cites invalid sourceId "${rawSourceId}". Must exactly match one of the retrieved source IDs: [${validIds}].`);
+          }
+
+          // Authoritative server-controlled mapping:
+          // Gemini sourceId -> exact retrieved source object -> server-controlled fields
           authSource = `${matchedExternalSource.journal || matchedExternalSource.sourceName} (${matchedExternalSource.url}) [Retrieved: ${matchedExternalSource.retrievedAt}]`;
         } else {
           if (authSource.length < 3) {
@@ -879,13 +849,19 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
         });
       }
 
-      // Cache valid result to protect future free-tier quota and avoid duplicate requests
-      aiQuestionCache.set(cacheKey, {
-        questions: validatedQuestions,
-        timestamp: Date.now(),
-        model: isExternalSource ? `External Sources (${usedModel})` : usedModel,
-        topic: authoritativeTopic
-      });
+      // Cache valid result to protect future free-tier quota and avoid duplicate requests (Material mode only)
+      if (!isExternalSource && cacheKey) {
+        if (aiQuestionCache.size >= MAX_CACHE_ENTRIES) {
+          const oldestKey = aiQuestionCache.keys().next().value;
+          if (oldestKey) aiQuestionCache.delete(oldestKey);
+        }
+        aiQuestionCache.set(cacheKey, {
+          questions: validatedQuestions,
+          timestamp: Date.now(),
+          model: usedModel,
+          topic: authoritativeTopic
+        });
+      }
 
       return res.json({
         success: true,
