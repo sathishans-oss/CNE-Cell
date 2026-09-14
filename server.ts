@@ -346,7 +346,11 @@ async function startServer() {
     if (!authResult || !authResult.success) {
       const errCode = authResult?.errorCode || 'UNAUTHORIZED';
       const statusCode = (errCode === 'UNAUTHORIZED') ? 401 : 400;
-      console.warn(`[AI Service] Auth validation failed: ${errCode} - ${authResult?.message || 'Unauthorized'}`);
+      if (errCode === 'UNAUTHORIZED') {
+        console.warn(`[AI Service] Auth validation failed: ${errCode} - ${authResult?.message || 'Unauthorized'}`);
+      } else {
+        console.warn(`[AI Service] Content or quota validation failed: ${errCode} - ${authResult?.message || 'Validation failed'}`);
+      }
       return res.status(statusCode).json({
         success: false,
         errorCode: errCode,

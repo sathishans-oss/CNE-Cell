@@ -7,8 +7,11 @@ console.log('--- Phase 2 Unit and Security Test Suite ---');
 // Test 1: Inflate implementation
 function inflate(input) {
   let inPos = 0;
-  if (input.length > 2 && (input[0] & 0x0F) === 8 && (((input[0] << 8) | input[1]) % 31 === 0)) {
-    inPos = 2;
+  while (inPos < input.length && (input[inPos] === 10 || input[inPos] === 13 || input[inPos] === 32 || input[inPos] === 0)) {
+    inPos++;
+  }
+  if (input.length > inPos + 2 && (input[inPos] & 0x0F) === 8 && (((input[inPos] << 8) | input[inPos + 1]) % 31 === 0)) {
+    inPos += 2;
   }
 
   let bitBuf = 0;
@@ -166,6 +169,44 @@ function inflate(input) {
   return Buffer.from(output);
 }
 
+function decodePdfHex(hex) {
+  hex = hex.replace(/[\s\r\n]/g, '');
+  if (!hex) return '';
+  if (hex.length % 2 !== 0) hex += '0';
+  if (hex.toLowerCase().indexOf('feff') === 0) {
+    let uStr = '';
+    for (let u = 4; u < hex.length; u += 4) {
+      const code = parseInt(hex.substr(u, 4), 16);
+      if (!isNaN(code) && code >= 32 && code < 0xFFFE) {
+        uStr += String.fromCharCode(code);
+      }
+    }
+    return uStr;
+  }
+  if (hex.length >= 8 && hex.substr(0, 2) === '00' && hex.substr(4, 2) === '00') {
+    let uStr2 = '';
+    for (let u2 = 0; u2 < hex.length; u2 += 4) {
+      const code2 = parseInt(hex.substr(u2, 4), 16);
+      if (!isNaN(code2) && code2 >= 32 && code2 < 0xFFFE) {
+        uStr2 += String.fromCharCode(code2);
+      }
+    }
+    if (uStr2.length > 0) return uStr2;
+  }
+  let s = '';
+  for (let i = 0; i < hex.length; i += 2) {
+    const b = parseInt(hex.substr(i, 2), 16);
+    if (!isNaN(b)) {
+      if (b >= 32 && b <= 255) {
+        s += String.fromCharCode(b);
+      } else if (b === 10 || b === 13 || b === 9) {
+        s += ' ';
+      }
+    }
+  }
+  return s;
+}
+
 // PDF Text Stream Parser
 function parsePdfStreamText(content) {
   const textPieces = [];
@@ -182,12 +223,8 @@ function parsePdfStreamText(content) {
     });
   }
 
-  const btEtRegex = /BT[\s\S]*?ET/g;
-  let match;
-  while ((match = btEtRegex.exec(content)) !== null) {
-    const block = match[0];
-    
-    // Tj: (text) Tj
+  function extractFromBlock(block) {
+    // 1. Tj: (text) Tj
     const tjRegex = /\(((?:[^()\\]|\\.)*)\)\s*Tj/g;
     let m;
     while ((m = tjRegex.exec(block)) !== null) {
@@ -195,23 +232,52 @@ function parsePdfStreamText(content) {
       if (t) textPieces.push(t);
     }
 
-    // TJ: [(text) 10 (text)] TJ
+    // 2. Tj with hex: <hex> Tj
+    const tjHexRegex = /<([0-9a-fA-F\s]+)>\s*Tj/g;
+    while ((m = tjHexRegex.exec(block)) !== null) {
+      const hText = decodePdfHex(m[1]).trim();
+      if (hText) textPieces.push(hText);
+    }
+
+    // 3. Single / Double quote operators: (text) ' or <hex> ' or "
+    const quoteRegex = /(?:\(((?:[^()\\]|\\.)*)\)|<([0-9a-fA-F\s]+)>)\s*['"]/g;
+    while ((m = quoteRegex.exec(block)) !== null) {
+      const qText = m[1] !== undefined ? unescapePdfStr(m[1]).trim() : decodePdfHex(m[2]).trim();
+      if (qText) textPieces.push(qText);
+    }
+
+    // 4. TJ: [(text) 10 <hex>] TJ
     const tjArrRegex = /\[([\s\S]*?)\]\s*TJ/g;
     while ((m = tjArrRegex.exec(block)) !== null) {
       const inner = m[1];
-      const strRegex = /\(((?:[^()\\]|\\.)*)\)|(-?\d+(?:\.\d+)?)/g;
+      const strRegex = /\(((?:[^()\\]|\\.)*)\)|<([0-9a-fA-F\s]+)>|(-?\d+(?:\.\d+)?)/g;
       let s;
       let line = '';
       while ((s = strRegex.exec(inner)) !== null) {
         if (s[1] !== undefined) {
           line += unescapePdfStr(s[1]);
-        } else if (Number(s[2]) < -150) {
+        } else if (s[2] !== undefined) {
+          line += decodePdfHex(s[2]);
+        } else if (Number(s[3]) < -150) {
           line += ' ';
         }
       }
       if (line.trim()) textPieces.push(line.trim());
     }
   }
+
+  const btEtRegex = /BT[\s\S]*?ET/g;
+  let match;
+  let hasBt = false;
+  while ((match = btEtRegex.exec(content)) !== null) {
+    hasBt = true;
+    extractFromBlock(match[0]);
+  }
+
+  if (!hasBt || textPieces.length === 0) {
+    extractFromBlock(content);
+  }
+
   return textPieces.join('\n');
 }
 
@@ -235,7 +301,7 @@ function parseWordDocumentXml(xmlStr) {
   while ((pMatch = pRegex.exec(xmlStr)) !== null) {
     const pContent = pMatch[1];
     let pText = '';
-    const tRegex = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>|<w:tab\/>|<w:br\/>/g;
+    const tRegex = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>|<a:t\b[^>]*>([\s\S]*?)<\/a:t>|<w:tab\/>|<w:br\/>/g;
     let tMatch;
     while ((tMatch = tRegex.exec(pContent)) !== null) {
       if (tMatch[0] === '<w:tab/>') {
@@ -244,11 +310,27 @@ function parseWordDocumentXml(xmlStr) {
         pText += '\n';
       } else if (tMatch[1]) {
         pText += tMatch[1];
+      } else if (tMatch[2]) {
+        pText += tMatch[2];
       }
     }
     const cleanP = decodeXml(pText).trim();
     if (cleanP) {
       paragraphs.push(cleanP);
+    }
+  }
+
+  // Direct extraction fallback if no <w:p> found
+  if (paragraphs.length === 0) {
+    const allTRegex = /<(?:w|a):t\b[^>]*>([\s\S]*?)<\/(?:w|a):t>/g;
+    let aMatch;
+    const directTexts = [];
+    while ((aMatch = allTRegex.exec(xmlStr)) !== null) {
+      const dt = decodeXml(aMatch[1]).trim();
+      if (dt) directTexts.push(dt);
+    }
+    if (directTexts.length > 0) {
+      return directTexts.join(' ');
     }
   }
 
@@ -342,7 +424,35 @@ const compressedPdfStream = zlib.deflateSync(Buffer.from(validPdfStream));
 const inflated = inflate(compressedPdfStream);
 const pdfText = parsePdfStreamText(inflated.toString('latin1'));
 assert.strictEqual(pdfText, 'Emergency Airway Management and Intubation Protocols');
-console.log('✓ Case 1 passed: Valid PDF containing text extracted successfully');
+
+// Subtest 1a: CRLF stream with leading/trailing newlines and inflate
+const crlfStream = Buffer.concat([Buffer.from('\r\n'), compressedPdfStream, Buffer.from('\r\n')]);
+const crlfInflated = inflate(crlfStream);
+assert.ok(crlfInflated.toString('latin1').includes('Emergency Airway Management'));
+
+// Subtest 1b: PDF with Hex encoding and TJ array
+const hexPdfContent = 'BT [ <4e656f6e6174616c20494355> -200 (Clinical Guidelines) ] TJ ET';
+const hexPdfParsed = parsePdfStreamText(hexPdfContent);
+assert.ok(hexPdfParsed.includes('Neonatal ICU Clinical Guidelines'));
+
+// Subtest 1c: Stream with array filter `/Filter [ /FlateDecode ]` and trailing space `stream \r\n`
+const streamDict = '<< /Length 120 /Filter [ /FlateDecode ] >>';
+const isFlateMatch = /(?:Filter|F)[\s\S]*?FlateDecode/i.test(streamDict);
+assert.ok(isFlateMatch, 'Filter array regex must match /Filter [ /FlateDecode ]');
+
+const pdfWithTrailingSpace = '<< /Length 50 /Filter /FlateDecode >>\r\nstream \r\n' + compressedPdfStream.toString('latin1') + '\r\nendstream';
+const streamRegex = /<<([\s\S]*?)>>[\s%]*stream[ \t]*\r?[\r\n]([\s\S]*?)(?:\r?\n|\r)[ \t]*endstream/g;
+const streamMatch = streamRegex.exec(pdfWithTrailingSpace);
+assert.ok(streamMatch, 'Stream regex must match streams with trailing space after keyword stream');
+const inflatedTrailing = inflate(Buffer.from(streamMatch[2], 'latin1'));
+assert.ok(parsePdfStreamText(inflatedTrailing.toString('latin1')).includes('Emergency Airway Management'));
+
+// Subtest 1d: PDF text with quote operators
+const quotePdf = 'BT (Cardiopulmonary Resuscitation Protocol) \' ET';
+const quoteParsed = parsePdfStreamText(quotePdf);
+assert.ok(quoteParsed.includes('Cardiopulmonary Resuscitation Protocol'));
+
+console.log('✓ Case 1 passed: Valid PDF containing text extracted successfully (including CRLF, Hex, Array Filter & Trailing Space)');
 
 // Case 2: Valid DOCX containing paragraphs
 const docxXml = '<w:document><w:body><w:p><w:r><w:t>Infection Control Standard Precautions</w:t></w:r></w:p><w:p><w:r><w:t>Hand hygiene is mandatory before patient contact.</w:t></w:r></w:p></w:body></w:document>';

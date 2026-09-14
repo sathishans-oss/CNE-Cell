@@ -523,6 +523,10 @@ function handleRequest(e, method) {
         output = handleUploadLearningResource(params, session);
         break;
 
+      case 'deleteLearningResource':
+        output = handleDeleteLearningResource(params, session);
+        break;
+
       case 'getLearningResource':
         output = handleGetLearningResource(params, session);
         break;
@@ -5657,7 +5661,7 @@ function validateOfficeOpenXmlStructure(bytes, ext) {
 /**
  * Upload and Store CNE Learning Resource File (Phase 1: Backend Foundation)
  * Supported Formats: PDF, DOCX, PPT, PPTX
- * Max Size: 10 MB
+ * Max Size: 5 MB
  * Authoritative storage: DRIVE_FOLDER_ID -> Learning Resources subfolder
  * Access: Completely PRIVATE (No ANYONE_WITH_LINK)
  * Metadata: Appended non-destructively to CNE_Reference
@@ -5695,11 +5699,12 @@ function handleUploadLearningResource(params, session) {
   }
 
   // Pre-decode size check (approximate base64 length check to avoid huge memory allocation)
-  if (rawBase64.length > 14 * 1024 * 1024) {
+  // For 5 MB binary file, base64 length is ~ 5 * 1024 * 1024 * 4/3 ≈ 6.99 MB.
+  if (rawBase64.length > 7 * 1024 * 1024) {
     return {
       success: false,
       errorCode: 'FILE_TOO_LARGE',
-      message: 'File exceeds maximum allowed size of 10 MB.'
+      message: 'File exceeds maximum allowed size of 5 MB.'
     };
   }
 
@@ -5797,11 +5802,11 @@ function handleUploadLearningResource(params, session) {
     };
   }
 
-  if (fileSize > 10 * 1024 * 1024) {
+  if (fileSize > 5 * 1024 * 1024) {
     return {
       success: false,
       errorCode: 'FILE_TOO_LARGE',
-      message: 'File exceeds maximum allowed size of 10 MB (Actual: ' + (Math.round(fileSize / (1024 * 1024) * 10) / 10) + ' MB).'
+      message: 'File exceeds maximum allowed size of 5 MB (Actual: ' + (Math.round(fileSize / (1024 * 1024) * 10) / 10) + ' MB).'
     };
   }
 
@@ -6019,6 +6024,213 @@ function handleUploadLearningResource(params, session) {
           message: 'Failed to persist reference metadata. Upload cleanup could not be completed; administrative reconciliation may be required.'
         };
       }
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Securely delete an uploaded Learning Resource for a CNE
+ * Enforces authoritative verification:
+ *   CNE exists -> Caller authorized -> CNE_Reference metadata -> Associated Drive File ID
+ *   -> Verification file resides in Learning Resources folder -> Trashing -> Metadata cleanup -> Audit log
+ */
+function handleDeleteLearningResource(params, session) {
+  if (!session || !session.employeeId) {
+    return {
+      success: false,
+      errorCode: 'UNAUTHORIZED',
+      message: 'Authentication required. Please sign in.'
+    };
+  }
+
+  var cneId = sanitizeCellInput(params ? params.cneId : '');
+  if (!cneId) {
+    return {
+      success: false,
+      errorCode: 'INVALID_CNE_ID',
+      message: 'CNE ID is required.'
+    };
+  }
+
+  // 1. Verify CNE exists
+  var record = getCNEClassRecord(cneId);
+  if (!record) {
+    return {
+      success: false,
+      errorCode: 'CNE_NOT_FOUND',
+      message: 'CNE record not found for ID: ' + cneId
+    };
+  }
+
+  // 2. Verify caller is authorized for that CNE
+  var authErr = checkCNEActionAuthorized(session, record);
+  if (authErr) return authErr;
+
+  // For completed/finalized CNEs, restrict Learning Resource deletion to ADMIN
+  var isCompleted = normalizeCNEStatus(record.status) === 'Completed';
+  var userRole = String(session.role || '').toUpperCase();
+  if (isCompleted && userRole !== 'ADMIN') {
+    return {
+      success: false,
+      errorCode: 'FORBIDDEN',
+      message: 'This CNE is completed/finalized. Only Administrators can delete learning resources for completed CNEs.'
+    };
+  }
+
+  // 3. Resolve the associated Drive File ID from the authoritative CNE_Reference record
+  var sheet = getOrCreateSheet('CNE_Reference');
+  ensureReferenceSheetHeaders(sheet);
+  var colMap = getHeaderMap(sheet);
+  var data = sheet.getDataRange().getValues();
+  var idCol = colMap['cneid'] !== undefined ? colMap['cneid'] : 0;
+  var driveFileIdCol = colMap['drivefileid'];
+  var fileNameCol = colMap['filename'];
+  var fileTypeCol = colMap['filetype'];
+  var fileSizeCol = colMap['filesize'];
+  var updatedCol = colMap['updatedat'] !== undefined ? colMap['updatedat'] : 3;
+  var byCol = colMap['updatedby'] !== undefined ? colMap['updatedby'] : 4;
+
+  var existingRow = -1;
+  var targetDriveFileId = '';
+  var targetFileName = '';
+
+  for (var r = 1; r < data.length; r++) {
+    if (String(data[r][idCol] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+      existingRow = r + 1;
+      targetDriveFileId = driveFileIdCol !== undefined ? String(data[r][driveFileIdCol] || '').trim() : '';
+      targetFileName = fileNameCol !== undefined ? String(data[r][fileNameCol] || '').trim() : '';
+      break;
+    }
+  }
+
+  if (!targetDriveFileId || existingRow === -1) {
+    return {
+      success: false,
+      errorCode: 'NO_RESOURCE_FILE',
+      message: 'No uploaded learning resource file is currently associated with this CNE.'
+    };
+  }
+
+  // 4. Verify the file belongs to the configured DRIVE_FOLDER_ID / Learning Resources folder
+  var folderRes = getOrCreateLearningResourcesFolder();
+  if (!folderRes.success || !folderRes.folder) {
+    return {
+      success: false,
+      errorCode: 'DRIVE_STORAGE_ERROR',
+      message: folderRes.message || 'Learning Resources folder could not be accessed.'
+    };
+  }
+
+  var targetFolder = folderRes.folder;
+  var targetFolderId = targetFolder.getId();
+
+  var file = null;
+  try {
+    file = DriveApp.getFileById(targetDriveFileId);
+  } catch (driveLookupErr) {
+    file = null;
+  }
+
+  if (file) {
+    var parents = file.getParents();
+    var inFolder = false;
+    while (parents.hasNext()) {
+      if (parents.next().getId() === targetFolderId) {
+        inFolder = true;
+        break;
+      }
+    }
+
+    if (!inFolder) {
+      logAuditAction('DELETE_LEARNING_RESOURCE_REJECTED', session.employeeId, 'Attempted to delete Drive file ' + targetDriveFileId + ' which does not belong to the authoritative Learning Resources directory for CNE ' + cneId, 'FAILED');
+      return {
+        success: false,
+        errorCode: 'FILE_OUTSIDE_REPOSITORY',
+        message: 'Resource file does not belong to the authoritative Learning Resources folder.'
+      };
+    }
+  }
+
+  // 5. Use ScriptLock for critical Drive + metadata mutation
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(15000);
+  } catch (lockErr) {
+    return {
+      success: false,
+      errorCode: 'SERVER_BUSY',
+      message: 'Server is busy. Please try again in a few moments.'
+    };
+  }
+
+  try {
+    // 6. Trash/delete only that specific Learning Resource file if it exists
+    if (file) {
+      try {
+        file.setTrashed(true);
+      } catch (trashErr) {
+        return {
+          success: false,
+          errorCode: 'DRIVE_DELETE_FAILED',
+          message: 'Failed to trash learning resource file in Google Drive: ' + trashErr.message
+        };
+      }
+    }
+
+    // 7. Remove corresponding Learning Resource metadata from CNE_Reference
+    try {
+      var updatedAt = new Date().toISOString();
+      var updatedBy = session.employeeId;
+
+      if (driveFileIdCol !== undefined) sheet.getRange(existingRow, driveFileIdCol + 1).setValue('');
+      if (fileNameCol !== undefined) sheet.getRange(existingRow, fileNameCol + 1).setValue('');
+      if (fileTypeCol !== undefined) sheet.getRange(existingRow, fileTypeCol + 1).setValue('');
+      if (fileSizeCol !== undefined) sheet.getRange(existingRow, fileSizeCol + 1).setValue(0);
+      if (updatedCol !== undefined) sheet.getRange(existingRow, updatedCol + 1).setValue(updatedAt);
+      if (byCol !== undefined) sheet.getRange(existingRow, byCol + 1).setValue(updatedBy);
+
+      // Invalidate script cache for this file ID if cached
+      try {
+        var safeFileId = targetDriveFileId.replace(/[^a-zA-Z0-9_-]/g, '');
+        var cache = CacheService.getScriptCache();
+        cache.remove('cne_res_' + safeFileId);
+      } catch (cacheErr) {}
+
+      // 8. Write audit entry for successful deletion
+      logAuditAction(
+        'DELETE_LEARNING_RESOURCE',
+        session.employeeId,
+        'Deleted learning resource ' + (targetFileName || targetDriveFileId) + ' for CNE: ' + cneId,
+        'SUCCESS'
+      );
+
+      // 9. Return structured success response
+      return {
+        success: true,
+        data: {
+          cneId: cneId,
+          deletedFileId: targetDriveFileId,
+          deletedFileName: targetFileName,
+          updatedAt: updatedAt,
+          updatedBy: updatedBy
+        },
+        message: 'Learning resource deleted successfully.'
+      };
+    } catch (metaErr) {
+      // Drive deletion succeeded, but metadata cleanup failed
+      logAuditAction(
+        'DELETE_LEARNING_RESOURCE_INCONSISTENCY',
+        session.employeeId,
+        'CRITICAL: Drive file ' + targetDriveFileId + ' trashed, but metadata cleanup failed for CNE ' + cneId + ': ' + metaErr.message,
+        'FAILED'
+      );
+      return {
+        success: false,
+        errorCode: 'METADATA_CLEANUP_FAILED',
+        message: 'The file was trashed in Drive, but updating reference metadata failed. Administrative reconciliation may be required: ' + metaErr.message
+      };
     }
   } finally {
     lock.releaseLock();
@@ -6459,12 +6671,12 @@ function extractLearningResourceContentCore(cneId, session) {
     };
   }
 
-  // 7. Validate size (Max 10 MB)
-  if (file.getSize() > 10 * 1024 * 1024) {
+  // 7. Validate size (Max 5 MB)
+  if (file.getSize() > 5 * 1024 * 1024) {
     return {
       success: false,
       errorCode: 'CONTENT_TOO_LARGE',
-      message: 'Learning resource exceeds maximum allowed size of 10 MB.'
+      message: 'Learning resource exceeds maximum allowed size of 5 MB.'
     };
   }
 
@@ -6605,19 +6817,38 @@ function extractTextFromDocx(blob) {
   }
 
   var docXmlBlob = null;
+  var additionalXmlBlobs = [];
   for (var i = 0; i < zipBlobs.length; i++) {
-    if (zipBlobs[i].getName().toLowerCase() === 'word/document.xml') {
+    var n = zipBlobs[i].getName().replace(/\\/g, '/').toLowerCase();
+    if (n === 'word/document.xml' || n.indexOf('document.xml') >= 0) {
       docXmlBlob = zipBlobs[i];
-      break;
+    } else if (n.indexOf('word/header') >= 0 || n.indexOf('word/footer') >= 0 || n.indexOf('word/footnotes') >= 0) {
+      additionalXmlBlobs.push(zipBlobs[i]);
     }
   }
 
-  if (!docXmlBlob) {
+  if (!docXmlBlob && additionalXmlBlobs.length === 0) {
     throw new Error('MISSING_WORD_DOCUMENT');
   }
 
-  var xmlStr = docXmlBlob.getDataAsString('UTF-8');
-  return parseWordDocumentXml(xmlStr);
+  var textParts = [];
+  if (docXmlBlob) {
+    var xmlStr = docXmlBlob.getDataAsString('UTF-8');
+    var mainText = parseWordDocumentXml(xmlStr);
+    if (mainText && mainText.trim()) {
+      textParts.push(mainText.trim());
+    }
+  }
+
+  for (var a = 0; a < additionalXmlBlobs.length; a++) {
+    var aXml = additionalXmlBlobs[a].getDataAsString('UTF-8');
+    var aText = parseWordDocumentXml(aXml);
+    if (aText && aText.trim()) {
+      textParts.push(aText.trim());
+    }
+  }
+
+  return textParts.join('\n\n');
 }
 
 function parseWordDocumentXml(xmlStr) {
@@ -6638,7 +6869,7 @@ function parseWordDocumentXml(xmlStr) {
   while ((pMatch = pRegex.exec(xmlStr)) !== null) {
     var pContent = pMatch[1];
     var pText = '';
-    var tRegex = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>|<w:tab\/>|<w:br\/>/g;
+    var tRegex = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>|<a:t\b[^>]*>([\s\S]*?)<\/a:t>|<w:tab\/>|<w:br\/>/g;
     var tMatch;
     while ((tMatch = tRegex.exec(pContent)) !== null) {
       if (tMatch[0] === '<w:tab/>') {
@@ -6647,11 +6878,27 @@ function parseWordDocumentXml(xmlStr) {
         pText += '\n';
       } else if (tMatch[1]) {
         pText += tMatch[1];
+      } else if (tMatch[2]) {
+        pText += tMatch[2];
       }
     }
     var cleanP = decodeXml(pText).trim();
     if (cleanP) {
       paragraphs.push(cleanP);
+    }
+  }
+
+  // Fallback: if no <w:p> matched, extract all <w:t> and <a:t> tags directly
+  if (paragraphs.length === 0) {
+    var allTRegex = /<(?:w|a):t\b[^>]*>([\s\S]*?)<\/(?:w|a):t>/g;
+    var aMatch;
+    var directTexts = [];
+    while ((aMatch = allTRegex.exec(xmlStr)) !== null) {
+      var dt = decodeXml(aMatch[1]).trim();
+      if (dt) directTexts.push(dt);
+    }
+    if (directTexts.length > 0) {
+      return directTexts.join(' ');
     }
   }
 
@@ -6670,22 +6917,31 @@ function extractTextFromPptx(blob) {
   }
 
   var slideBlobs = [];
+  var notesBlobs = [];
   for (var i = 0; i < zipBlobs.length; i++) {
-    var bName = zipBlobs[i].getName().toLowerCase();
-    var match = bName.match(/^ppt\/slides\/slide(\d+)\.xml$/);
+    var bName = zipBlobs[i].getName().replace(/\\/g, '/').toLowerCase();
+    var match = bName.match(/(?:^|\/)ppt\/slides\/slide(\d+)\.xml$/i);
     if (match) {
       slideBlobs.push({
         num: parseInt(match[1], 10),
         blob: zipBlobs[i]
       });
     }
+    var notesMatch = bName.match(/(?:^|\/)ppt\/notesSlides\/notesSlide(\d+)\.xml$/i);
+    if (notesMatch) {
+      notesBlobs.push({
+        num: parseInt(notesMatch[1], 10),
+        blob: zipBlobs[i]
+      });
+    }
   }
 
-  if (slideBlobs.length === 0) {
+  if (slideBlobs.length === 0 && notesBlobs.length === 0) {
     throw new Error('NO_SLIDES_FOUND');
   }
 
   slideBlobs.sort(function(a, b) { return a.num - b.num; });
+  notesBlobs.sort(function(a, b) { return a.num - b.num; });
 
   var slideTexts = [];
   for (var s = 0; s < slideBlobs.length; s++) {
@@ -6693,6 +6949,14 @@ function extractTextFromPptx(blob) {
     var sText = parsePptxSlideXml(sXml);
     if (sText && sText.trim()) {
       slideTexts.push('--- Slide ' + slideBlobs[s].num + ' ---\n' + sText.trim());
+    }
+  }
+
+  for (var n = 0; n < notesBlobs.length; n++) {
+    var nXml = notesBlobs[n].blob.getDataAsString('UTF-8');
+    var nText = parsePptxSlideXml(nXml);
+    if (nText && nText.trim()) {
+      slideTexts.push('--- Slide ' + notesBlobs[n].num + ' Notes ---\n' + nText.trim());
     }
   }
 
@@ -6731,6 +6995,16 @@ function parsePptxSlideXml(xmlStr) {
       lines.push(cleanL);
     }
   }
+
+  if (lines.length === 0) {
+    var allTRegex = /<a:t\b[^>]*>([\s\S]*?)<\/a:t>/g;
+    var allMatch;
+    while ((allMatch = allTRegex.exec(xmlStr)) !== null) {
+      var dt = decodeXml(allMatch[1]).trim();
+      if (dt) lines.push(dt);
+    }
+  }
+
   return lines.join('\n');
 }
 
@@ -6793,6 +7067,29 @@ function extractTextFromPpt(blob) {
     }
   }
 
+  // Fallback for binary PPT: scan printable ASCII character runs (length >= 4)
+  if (deduped.length === 0) {
+    var asciiScan = [];
+    var curRun = [];
+    for (var bIdx = 0; bIdx < len; bIdx++) {
+      var bVal = bytes[bIdx] & 0xFF;
+      if (bVal >= 32 && bVal <= 126) {
+        curRun.push(String.fromCharCode(bVal));
+      } else {
+        if (curRun.length >= 5) {
+          var w = curRun.join('').trim();
+          if (w.length >= 5 && !/^[0-9\s]+$/.test(w)) asciiScan.push(w);
+        }
+        curRun = [];
+      }
+    }
+    if (curRun.length >= 5) {
+      var wEnd = curRun.join('').trim();
+      if (wEnd.length >= 5 && !/^[0-9\s]+$/.test(wEnd)) asciiScan.push(wEnd);
+    }
+    return asciiScan.join('\n');
+  }
+
   return deduped.join('\n');
 }
 
@@ -6810,6 +7107,29 @@ function extractTextFromPdf(blob) {
     throw new Error('INVALID_PDF_HEADER');
   }
 
+  // 1. If Google Drive OCR service is enabled in Apps Script, attempt OCR conversion first
+  if (typeof Drive !== 'undefined' && Drive.Files && Drive.Files.insert) {
+    try {
+      var resource = {
+        title: 'temp_extract_' + new Date().getTime(),
+        mimeType: MimeType.GOOGLE_DOCS
+      };
+      var tempFile = Drive.Files.insert(resource, blob, { ocr: true });
+      if (tempFile && tempFile.id) {
+        var doc = DocumentApp.openById(tempFile.id);
+        var ocrText = doc.getBody().getText();
+        try {
+          DriveApp.getFileById(tempFile.id).setTrashed(true);
+        } catch (tErr) {}
+        if (ocrText && ocrText.trim().length >= 15) {
+          return ocrText.trim();
+        }
+      }
+    } catch (ocrErr) {
+      // Non-fatal: fallback to native stream parsing
+    }
+  }
+
   var textBlocks = [];
   var rawString = '';
   try {
@@ -6818,20 +7138,46 @@ function extractTextFromPdf(blob) {
     rawString = '';
   }
 
-  var streamRegex = /<<([\s\S]*?)>>\s*stream[\r\n|\n]([\s\S]*?)[\r\n|\n]endstream/g;
+  // Match streams in PDF: << dict >> stream ... endstream
+  // Flexible regex handling spaces/tabs after stream, mixed line endings (\r\n, \n, \r)
+  var streamRegex = /<<([\s\S]*?)>>[\s%]*stream[ \t]*\r?[\r\n]([\s\S]*?)(?:\r?\n|\r)[ \t]*endstream/g;
   var match;
   var streamCount = 0;
 
-  while ((match = streamRegex.exec(rawString)) !== null && streamCount < 200) {
+  while ((match = streamRegex.exec(rawString)) !== null && streamCount < 250) {
     streamCount++;
     var dict = match[1];
     var streamRaw = match[2];
-    var isFlate = /Filter\s*(?:\/\w+)*\s*\/FlateDecode/i.test(dict);
 
+    // If /Length is declared as direct integer, verify we have the full stream
+    var lenMatch = dict.match(/\/Length\s+(\d+)(?!\s+\d+\s+R)/);
+    if (lenMatch) {
+      var exactLen = parseInt(lenMatch[1], 10);
+      if (exactLen > 0 && exactLen < 5000000 && streamRaw.length < exactLen) {
+        var startIdx = match.index + match[0].indexOf(streamRaw);
+        if (startIdx >= 0 && startIdx + exactLen <= rawString.length) {
+          streamRaw = rawString.substr(startIdx, exactLen);
+        }
+      }
+    }
+
+    // Skip leading whitespace / null bytes to inspect header
+    var firstByteIdx = 0;
+    while (firstByteIdx < streamRaw.length && (streamRaw.charCodeAt(firstByteIdx) === 10 || streamRaw.charCodeAt(firstByteIdx) === 13 || streamRaw.charCodeAt(firstByteIdx) === 32 || streamRaw.charCodeAt(firstByteIdx) === 0)) {
+      firstByteIdx++;
+    }
+    var b0 = streamRaw.length > firstByteIdx ? (streamRaw.charCodeAt(firstByteIdx) & 0xFF) : 0;
+    var b1 = streamRaw.length > firstByteIdx + 1 ? (streamRaw.charCodeAt(firstByteIdx + 1) & 0xFF) : 0;
+    var hasZlibHeader = (b0 & 0x0F) === 8 && (((b0 << 8) | b1) % 31 === 0);
+
+    // Filter check: handles /Filter /FlateDecode, /Filter [ /FlateDecode ], /Filter[/FlateDecode], /F /FlateDecode, etc.
+    var isFlate = hasZlibHeader || /(?:Filter|F)[\s\S]*?FlateDecode/i.test(dict);
     var decompressedText = '';
+
     if (isFlate) {
       var streamBytes = [];
-      for (var b = 0; b < streamRaw.length; b++) {
+      var sStart = (firstByteIdx > 0 && hasZlibHeader) ? firstByteIdx : 0;
+      for (var b = sStart; b < streamRaw.length; b++) {
         streamBytes.push(streamRaw.charCodeAt(b) & 0xFF);
       }
       try {
@@ -6846,7 +7192,7 @@ function extractTextFromPdf(blob) {
       } catch (infErr) {
         decompressedText = '';
       }
-    } else {
+    } else if (!/(?:Filter|F)/i.test(dict)) {
       decompressedText = streamRaw;
     }
 
@@ -6858,6 +7204,7 @@ function extractTextFromPdf(blob) {
     }
   }
 
+  // Fallback 1: If stream parsing found nothing, try parsePdfStreamText on rawString
   if (textBlocks.length === 0 && rawString) {
     var fallbackText = parsePdfStreamText(rawString);
     if (fallbackText && fallbackText.trim()) {
@@ -6865,7 +7212,61 @@ function extractTextFromPdf(blob) {
     }
   }
 
+  // Fallback 2: Scan raw string for uncompressed ASCII/UTF-8 phrases (useful for raw or object stream text)
+  if (textBlocks.length === 0 && rawString) {
+    var asciiWords = [];
+    var wordRegex = /[A-Za-z0-9][A-Za-z0-9\s,.:;!?'"()\-–—/]{4,}[A-Za-z0-9.]/g;
+    var wMatch;
+    while ((wMatch = wordRegex.exec(rawString)) !== null && asciiWords.length < 150) {
+      var candidate = wMatch[0].trim();
+      if (!/^(obj|endobj|stream|endstream|xref|trailer|startxref|FlateDecode|Length|Filter|Type|Pages|Catalog|Font|Contents|MediaBox|CropBox|Rotate|Resources|ProcSet|Parent|Kids|Count|Producer|CreationDate|ModDate)$/i.test(candidate) && candidate.length >= 8) {
+        asciiWords.push(candidate);
+      }
+    }
+    if (asciiWords.join(' ').length >= 15) {
+      textBlocks.push(asciiWords.join('\n'));
+    }
+  }
+
   return textBlocks.join('\n\n');
+}
+
+function decodePdfHex(hex) {
+  hex = hex.replace(/[\s\r\n]/g, '');
+  if (!hex) return '';
+  if (hex.length % 2 !== 0) hex += '0';
+  if (hex.toLowerCase().indexOf('feff') === 0) {
+    var uStr = '';
+    for (var u = 4; u < hex.length; u += 4) {
+      var code = parseInt(hex.substr(u, 4), 16);
+      if (!isNaN(code) && code >= 32 && code < 0xFFFE) {
+        uStr += String.fromCharCode(code);
+      }
+    }
+    return uStr;
+  }
+  if (hex.length >= 8 && hex.substr(0, 2) === '00' && hex.substr(4, 2) === '00') {
+    var uStr2 = '';
+    for (var u2 = 0; u2 < hex.length; u2 += 4) {
+      var code2 = parseInt(hex.substr(u2, 4), 16);
+      if (!isNaN(code2) && code2 >= 32 && code2 < 0xFFFE) {
+        uStr2 += String.fromCharCode(code2);
+      }
+    }
+    if (uStr2.length > 0) return uStr2;
+  }
+  var s = '';
+  for (var i = 0; i < hex.length; i += 2) {
+    var b = parseInt(hex.substr(i, 2), 16);
+    if (!isNaN(b)) {
+      if (b >= 32 && b <= 255) {
+        s += String.fromCharCode(b);
+      } else if (b === 10 || b === 13 || b === 9) {
+        s += ' ';
+      }
+    }
+  }
+  return s;
 }
 
 function parsePdfStreamText(content) {
@@ -6883,12 +7284,8 @@ function parsePdfStreamText(content) {
     });
   }
 
-  var btEtRegex = /BT[\s\S]*?ET/g;
-  var match;
-  while ((match = btEtRegex.exec(content)) !== null) {
-    var block = match[0];
-    
-    // Tj: (text) Tj
+  function extractFromBlock(block) {
+    // 1. Tj: (text) Tj
     var tjRegex = /\(((?:[^()\\]|\\.)*)\)\s*Tj/g;
     var m;
     while ((m = tjRegex.exec(block)) !== null) {
@@ -6896,23 +7293,64 @@ function parsePdfStreamText(content) {
       if (t) textPieces.push(t);
     }
 
-    // TJ: [(text) 10 (text)] TJ
+    // 2. Tj with hex: <hex> Tj
+    var tjHexRegex = /<([0-9a-fA-F\s]+)>\s*Tj/g;
+    while ((m = tjHexRegex.exec(block)) !== null) {
+      var hText = decodePdfHex(m[1]).trim();
+      if (hText) textPieces.push(hText);
+    }
+
+    // 3. Single / Double quote operators: (text) ' or <hex> ' or "
+    var quoteRegex = /(?:\(((?:[^()\\]|\\.)*)\)|<([0-9a-fA-F\s]+)>)\s*['"]/g;
+    while ((m = quoteRegex.exec(block)) !== null) {
+      var qText = m[1] !== undefined ? unescapePdfStr(m[1]).trim() : decodePdfHex(m[2]).trim();
+      if (qText) textPieces.push(qText);
+    }
+
+    // 4. TJ: [(text) 10 <hex>] TJ
     var tjArrRegex = /\[([\s\S]*?)\]\s*TJ/g;
     while ((m = tjArrRegex.exec(block)) !== null) {
       var inner = m[1];
-      var strRegex = /\(((?:[^()\\]|\\.)*)\)|(-?\d+(?:\.\d+)?)/g;
+      var strRegex = /\(((?:[^()\\]|\\.)*)\)|<([0-9a-fA-F\s]+)>|(-?\d+(?:\.\d+)?)/g;
       var s;
       var line = '';
       while ((s = strRegex.exec(inner)) !== null) {
         if (s[1] !== undefined) {
           line += unescapePdfStr(s[1]);
-        } else if (Number(s[2]) < -150) {
+        } else if (s[2] !== undefined) {
+          line += decodePdfHex(s[2]);
+        } else if (Number(s[3]) < -100) {
           line += ' ';
         }
       }
       if (line.trim()) textPieces.push(line.trim());
     }
   }
+
+  var btEtRegex = /BT[\s\S]*?ET/g;
+  var match;
+  var hasBt = false;
+  while ((match = btEtRegex.exec(content)) !== null) {
+    hasBt = true;
+    extractFromBlock(match[0]);
+  }
+
+  if (!hasBt || textPieces.length === 0) {
+    extractFromBlock(content);
+  }
+
+  // Fallback: Scan parenthesized strings if no operators were matched
+  if (textPieces.length === 0) {
+    var parenRegex = /\(((?:[^()\\]|\\.)*)\)/g;
+    var pm;
+    while ((pm = parenRegex.exec(content)) !== null) {
+      var pt = unescapePdfStr(pm[1]).trim();
+      if (pt.length >= 3 && !/^[0-9\s.]+$/.test(pt)) {
+        textPieces.push(pt);
+      }
+    }
+  }
+
   return textPieces.join('\n');
 }
 
@@ -6921,8 +7359,12 @@ function parsePdfStreamText(content) {
  */
 function inflatePdfStreamBytes(input) {
   var inPos = 0;
-  if (input.length > 2 && (input[0] & 0x0F) === 8 && (((input[0] << 8) | input[1]) % 31 === 0)) {
-    inPos = 2; // Skip 2-byte zlib header
+  // Skip leading whitespaces or newlines
+  while (inPos < input.length && (input[inPos] === 10 || input[inPos] === 13 || input[inPos] === 32 || input[inPos] === 0)) {
+    inPos++;
+  }
+  if (input.length > inPos + 2 && (input[inPos] & 0x0F) === 8 && (((input[inPos] << 8) | input[inPos + 1]) % 31 === 0)) {
+    inPos += 2; // Skip 2-byte zlib header
   }
 
   var bitBuf = 0;
@@ -8589,8 +9031,38 @@ function handleGetQRToken(params, session) {
       }
     }
   }
+
+  // Look for existing QR token first
+  var qrSheet = getQRTokensSheet();
+  var qrData = qrSheet.getDataRange().getValues();
+  var existingToken = null;
   
-  if (finalizedCount < 5) {
+  for (var q = 1; q < qrData.length; q++) {
+    if (String(qrData[q][1] || '').trim().toUpperCase() === cneId.toUpperCase() &&
+        String(qrData[q][4] || 'ACTIVE').toUpperCase() === 'ACTIVE') {
+      existingToken = String(qrData[q][0] || '');
+      break;
+    }
+  }
+
+  // Check-only mode: do NOT automatically generate if missing
+  var isCheckOnly = params.checkOnly === true || params.createIfMissing === false;
+  if (isCheckOnly) {
+    return {
+      success: true,
+      data: {
+        hasQR: Boolean(existingToken),
+        qrToken: existingToken || '',
+        cneId: cneId,
+        topic: record.topic,
+        area: record.area,
+        finalizedCount: finalizedCount
+      }
+    };
+  }
+
+  // Generating / saving mode: require at least 5 finalized questions if token does not exist
+  if (!existingToken && finalizedCount < 5) {
     return {
       success: false,
       errorCode: 'INSUFFICIENT_QUESTIONS',
@@ -8606,29 +9078,27 @@ function handleGetQRToken(params, session) {
   }
 
   try {
-    var qrSheet = getQRTokensSheet();
-    var qrData = qrSheet.getDataRange().getValues();
-    var existingToken = null;
-    
-    for (var q = 1; q < qrData.length; q++) {
-      if (String(qrData[q][1] || '').trim().toUpperCase() === cneId.toUpperCase() &&
-          String(qrData[q][4] || 'ACTIVE').toUpperCase() === 'ACTIVE') {
-        existingToken = String(qrData[q][0] || '');
+    // Re-check existing token after lock
+    var qrDataLatest = qrSheet.getDataRange().getValues();
+    var qrToken = null;
+    for (var q2 = 1; q2 < qrDataLatest.length; q2++) {
+      if (String(qrDataLatest[q2][1] || '').trim().toUpperCase() === cneId.toUpperCase() &&
+          String(qrDataLatest[q2][4] || 'ACTIVE').toUpperCase() === 'ACTIVE') {
+        qrToken = String(qrDataLatest[q2][0] || '');
         break;
       }
     }
     
-    var qrToken = existingToken;
     if (!qrToken) {
       qrToken = Utilities.getUuid().replace(/-/g, '');
       qrSheet.appendRow([qrToken, cneId, new Date().toISOString(), session.employeeId, 'ACTIVE']);
+      logAuditAction('GENERATE_QR', session.employeeId, 'Generated secure QR token for CNE: ' + cneId, 'SUCCESS');
     }
-    
-    logAuditAction('GENERATE_QR', session.employeeId, 'Generated secure QR token for CNE: ' + cneId, 'SUCCESS');
     
     return {
       success: true,
       data: {
+        hasQR: true,
         qrToken: qrToken,
         cneId: cneId,
         topic: record.topic,

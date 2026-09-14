@@ -2165,7 +2165,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
           onNavigateToQuestions={() => {
             const currentCne = activeReferenceCne;
             setActiveReferenceCne(null);
-            setTriggerAiOnQuestions(true);
+            setTriggerAiOnQuestions(false);
             setActiveQuestionsCne(currentCne);
           }}
         />
@@ -2175,7 +2175,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
         <CNEQuestionsModal
           cne={activeQuestionsCne}
           isAuthorized={isCneAuthorized(user, activeQuestionsCne.area, activeQuestionsCne.cneType)}
-          triggerAiGeneration={triggerAiOnQuestions}
+          triggerAiGeneration={false}
           onClose={() => {
             setActiveQuestionsCne(null);
             setTriggerAiOnQuestions(false);
@@ -2197,6 +2197,10 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
             const targetId = activeQRCne.cneId || activeQRCne.classId;
             setActiveQRCne(null);
             handleChildModalUpdated(targetId);
+          }}
+          onSaveSuccess={(savedCneId) => {
+            setActiveQRCne(null);
+            handleChildModalUpdated(savedCneId);
           }}
           onOpenPostTest={(tok) => {
             const targetId = activeQRCne.cneId || activeQRCne.classId;

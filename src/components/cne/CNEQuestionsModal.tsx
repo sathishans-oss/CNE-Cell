@@ -54,7 +54,6 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
 
   // Real-time stage progress state for AI generation
   const [generationStage, setGenerationStage] = useState<string>('');
-  const hasAutoTriggeredRef = useRef(false);
 
   // Authoritative AI Quota & Material State
   const [quotaInfo, setQuotaInfo] = useState<CNEAiQuotaInfo | null>(null);
@@ -102,16 +101,6 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
   const isAiGenerationUsed = Boolean(
     quotaInfo && (quotaInfo.status === 'USED' || quotaInfo.attemptsUsed >= 1)
   );
-
-  // Auto-trigger AI generation if navigating from Material with triggerAiGeneration = true
-  useEffect(() => {
-    if (triggerAiGeneration && !hasAutoTriggeredRef.current && !loading && !loadingQuota) {
-      if (!isAiGenerationUsed && questions.length < 5 && isAuthorized && !isLocked) {
-        hasAutoTriggeredRef.current = true;
-        handleGenerateAi();
-      }
-    }
-  }, [triggerAiGeneration, loading, loadingQuota, isAiGenerationUsed, questions.length, isAuthorized, isLocked]);
 
   const handleGenerateAi = async () => {
     if (generatingRef.current || isGenerating || isLocked || !isAuthorized) return;
@@ -170,7 +159,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
         try {
           await ApiService.releaseAiQuota(cneId, reservationToken);
         } catch (rErr) {}
-        if (aiRes?.errorCode === 'MATERIAL_REQUIRED') {
+        if (aiRes?.errorCode === 'MATERIAL_REQUIRED' || aiRes?.errorCode === 'NO_EXTRACTABLE_CONTENT') {
           setHasMaterial(false);
         }
         error(aiRes?.message || 'AI question generation failed: Expected exactly 5 complete MCQs. Allowance was not consumed.');
@@ -344,6 +333,15 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
       return;
     }
 
+    // Save & Next requires at least 5 finalized questions
+    if (moveToQr) {
+      const activeFinalized = activeQuestions.filter((q) => q.isFinalized).length;
+      if (activeFinalized < 5) {
+        error(`At least 5 finalized questions are required before advancing to the QR page. Currently finalized: ${activeFinalized}`);
+        return;
+      }
+    }
+
     // Validate that all active questions are complete
     for (let i = 0; i < activeQuestions.length; i++) {
       const q = activeQuestions[i];
@@ -457,7 +455,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
             <div className="flex items-center gap-2">
               <FileWarning className="w-4 h-4 text-amber-600 shrink-0" />
               <span>
-                <strong>Learning Material Missing:</strong> CNE Class Content must be entered and saved in the Reference Material modal before AI questions can be generated.
+                <strong>Learning Material Missing or Document Unreadable:</strong> Learning material is required before AI questions can be generated. Please ensure the attached document contains extractable text or enter CNE Class Content in the Reference Material modal.
               </span>
             </div>
           </div>
@@ -906,7 +904,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                 <button
                   type="button"
                   onClick={() => performSaveQuestions(true)}
-                  disabled={isSaving || isGenerating || activeQuestions.length < 5}
+                  disabled={isSaving || isGenerating || activeQuestions.length < 5 || activeFinalizedCount < 5}
                   className="flex items-center gap-1.5 px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl font-bold text-xs shadow-xs disabled:opacity-50 cursor-pointer transition-colors"
                   title="Save questions and advance to QR stage"
                 >

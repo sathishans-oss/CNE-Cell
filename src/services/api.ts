@@ -878,6 +878,25 @@ export class ApiService {
   }
 
   /**
+   * Authoritatively and securely delete uploaded Learning Resource file and metadata
+   */
+  static async deleteLearningResource(cneId: string): Promise<ApiResponse<{
+    cneId: string;
+    deletedFileId: string;
+    deletedFileName: string;
+    updatedAt: string;
+    updatedBy: string;
+  }>> {
+    return this.executeAction<{
+      cneId: string;
+      deletedFileId: string;
+      deletedFileName: string;
+      updatedAt: string;
+      updatedBy: string;
+    }>('deleteLearningResource', { cneId });
+  }
+
+  /**
    * Phase 2: Authoritatively extract textual content from CNE learning resource in Drive
    */
   static async extractLearningResourceContent(cneId: string): Promise<ApiResponse<CNELearningResourceExtractedContent>> {
@@ -934,8 +953,11 @@ export class ApiService {
   /**
    * QR Code Generation & Resolution APIs
    */
-  static async getQRToken(cneId: string): Promise<ApiResponse<{ qrToken: string; cneId: string; topic: string; finalizedCount: number }>> {
-    return this.executeAction<{ qrToken: string; cneId: string; topic: string; finalizedCount: number }>('getQRToken', { cneId });
+  static async getQRToken(cneId: string, options?: { checkOnly?: boolean }): Promise<ApiResponse<{ hasQR?: boolean; qrToken: string; cneId: string; topic: string; finalizedCount: number }>> {
+    return this.executeAction<{ hasQR?: boolean; qrToken: string; cneId: string; topic: string; finalizedCount: number }>('getQRToken', {
+      cneId,
+      checkOnly: options?.checkOnly ?? false
+    });
   }
 
   static async resolveQRToken(token: string): Promise<ApiResponse<any>> {
