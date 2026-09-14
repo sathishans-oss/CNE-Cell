@@ -121,7 +121,15 @@ export class ApiService {
   static getAppsScriptUrl(): string {
     const envUrl = (import.meta as any).env?.VITE_APPS_SCRIPT_URL;
     if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
-      return envUrl.trim();
+      const trimmed = envUrl.trim();
+      try {
+        const parsed = new URL(trimmed);
+        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+          return trimmed;
+        }
+      } catch {
+        return '';
+      }
     }
     return '';
   }
@@ -748,7 +756,6 @@ export class ApiService {
         },
         body: JSON.stringify({
           ...params,
-          appsScriptUrl: this.getAppsScriptUrl() || undefined,
           token: session?.token,
           loggedInEmployeeId: session?.employeeId
         })

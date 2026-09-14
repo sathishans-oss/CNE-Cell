@@ -187,21 +187,25 @@ export const onRequestPost = async (context: {
     }, 403);
   }
 
-  if (!cleanMaterial || cleanMaterial.length < 15) {
-    return createJsonResponse({
-      success: false,
-      errorCode: 'MATERIAL_REQUIRED',
-      message: 'CNE Class Content / Learning Material is required (minimum 15 characters) to generate questions.'
-    }, 400);
-  }
-
   // 3. Authoritative backend URL check (strictly from server environment binding)
-  const appsScriptUrl = (
-    env?.APPS_SCRIPT_URL ||
+  const rawAppsScriptUrl = (
     env?.VITE_APPS_SCRIPT_URL ||
-    (typeof process !== 'undefined' && (process.env?.APPS_SCRIPT_URL || process.env?.VITE_APPS_SCRIPT_URL)) ||
+    env?.APPS_SCRIPT_URL ||
+    (typeof process !== 'undefined' && (process.env?.VITE_APPS_SCRIPT_URL || process.env?.APPS_SCRIPT_URL)) ||
     ''
   ).trim();
+
+  let appsScriptUrl = '';
+  if (rawAppsScriptUrl) {
+    try {
+      const parsed = new URL(rawAppsScriptUrl);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+        appsScriptUrl = rawAppsScriptUrl;
+      }
+    } catch {
+      appsScriptUrl = '';
+    }
+  }
 
   if (!appsScriptUrl) {
     return createJsonResponse({
@@ -279,13 +283,20 @@ export const onRequestPost = async (context: {
   }
 
   const authoritativeResourcePerson = String(authResult.data?.resourcePersonName || '').trim();
-  const authoritativeMaterial = String(authResult.data?.authoritativeLearningContent || cleanMaterial).trim();
+
+  // Authoritative learning content resolution:
+  // When an uploaded Drive Learning Resource exists, use ONLY authResult.data.authoritativeLearningContent.
+  // Legacy/reference-text path is used ONLY when no uploaded Drive Learning Resource exists.
+  const hasLearningResource = Boolean(authResult.data?.hasLearningResource);
+  const authoritativeMaterial = hasLearningResource
+    ? String(authResult.data?.authoritativeLearningContent || '').trim()
+    : String(authResult.data?.authoritativeLearningContent || cleanMaterial || '').trim();
 
   if (!authoritativeMaterial || authoritativeMaterial.length < 15) {
     return createJsonResponse({
       success: false,
       errorCode: 'MATERIAL_REQUIRED',
-      message: 'CNE Class Content / Learning Material is required (minimum 15 characters) to generate questions.'
+      message: 'CNE Class Content / Learning Material is required (minimum 15 characters) before AI questions can be generated.'
     }, 400);
   }
 

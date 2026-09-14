@@ -280,15 +280,27 @@ async function startServer() {
       });
     }
 
-    // 2. Authoritative backend URL check (strictly from server environment or client payload)
-    const appsScriptUrl = (
-      process.env.APPS_SCRIPT_URL ||
+    // 2. Authoritative backend URL check (strictly from server-side environment configuration)
+    const rawAppsScriptUrl = (
       process.env.VITE_APPS_SCRIPT_URL ||
-      req.body?.appsScriptUrl ||
-      'https://script.google.com/macros/s/AKfycbxgKxrXro6DIEXeOCkZUysnUHdpW168MreeYJ5LE9QMG3OsDty1TFQrqeLFLkk4mC7s2g/exec'
+      process.env.APPS_SCRIPT_URL ||
+      ''
     ).trim();
+
+    let appsScriptUrl = '';
+    if (rawAppsScriptUrl) {
+      try {
+        const parsed = new URL(rawAppsScriptUrl);
+        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+          appsScriptUrl = rawAppsScriptUrl;
+        }
+      } catch {
+        appsScriptUrl = '';
+      }
+    }
+
     if (!appsScriptUrl) {
-      console.error('[AI Service] Apps Script backend URL is not configured');
+      console.error('[AI Service] Authoritative Apps Script backend URL is missing or invalid on the server');
       return res.status(200).json({
         success: false,
         errorCode: 'BACKEND_NOT_CONFIGURED',
