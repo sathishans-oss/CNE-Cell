@@ -91,6 +91,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   const [selectedDetailCne, setSelectedDetailCne] = useState<UpcomingClass | null>(null);
   const [activeReferenceCne, setActiveReferenceCne] = useState<UpcomingClass | null>(null);
   const [activeQuestionsCne, setActiveQuestionsCne] = useState<UpcomingClass | null>(null);
+  const [triggerAiOnQuestions, setTriggerAiOnQuestions] = useState(false);
   const [activeQRCne, setActiveQRCne] = useState<UpcomingClass | null>(null);
   const [activeParticipantsCne, setActiveParticipantsCne] = useState<UpcomingClass | null>(null);
   const [activeFinalizeCne, setActiveFinalizeCne] = useState<UpcomingClass | null>(null);
@@ -2161,6 +2162,12 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
           isAuthorized={isCneAuthorized(user, activeReferenceCne.area, activeReferenceCne.cneType)}
           onClose={() => setActiveReferenceCne(null)}
           onUpdated={() => handleChildModalUpdated(activeReferenceCne.cneId || activeReferenceCne.classId)}
+          onNavigateToQuestions={() => {
+            const currentCne = activeReferenceCne;
+            setActiveReferenceCne(null);
+            setTriggerAiOnQuestions(true);
+            setActiveQuestionsCne(currentCne);
+          }}
         />
       )}
 
@@ -2168,8 +2175,18 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
         <CNEQuestionsModal
           cne={activeQuestionsCne}
           isAuthorized={isCneAuthorized(user, activeQuestionsCne.area, activeQuestionsCne.cneType)}
-          onClose={() => setActiveQuestionsCne(null)}
+          triggerAiGeneration={triggerAiOnQuestions}
+          onClose={() => {
+            setActiveQuestionsCne(null);
+            setTriggerAiOnQuestions(false);
+          }}
           onUpdated={() => handleChildModalUpdated(activeQuestionsCne.cneId || activeQuestionsCne.classId)}
+          onNavigateToQR={() => {
+            const currentCne = activeQuestionsCne;
+            setActiveQuestionsCne(null);
+            setTriggerAiOnQuestions(false);
+            setActiveQRCne(currentCne);
+          }}
         />
       )}
 

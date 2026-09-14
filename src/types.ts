@@ -6,6 +6,7 @@ export type ViewMode =
   | 'my-cne'
   | 'calendar'
   | 'upcoming'
+  | 'learning-resources'
   | 'gallery'
   | 'admin-cne'
   | 'admin-areas'
@@ -208,6 +209,20 @@ export interface CNELearningResourceMetadata {
   updatedAt?: string;
   updatedBy?: string;
   hasFile?: boolean;
+}
+
+export interface CNELearningResourceExtractedContent {
+  cneId: string;
+  topic: string;
+  resourcePersonName: string;
+  driveFileId: string;
+  fileName: string;
+  fileType: string;
+  extractedText: string;
+  charCount: number;
+  isTruncated: boolean;
+  originalCharCount: number;
+  cached: boolean;
 }
 
 export interface CNEAiQuotaInfo {

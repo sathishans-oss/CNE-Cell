@@ -18,6 +18,7 @@ import {
   CNEQuestion,
   CNEReferenceMaterial,
   CNELearningResourceMetadata,
+  CNELearningResourceExtractedContent,
   CNEAiQuotaInfo,
   CNEParticipant,
   CNEParticipantsSummary,
@@ -732,8 +733,8 @@ export class ApiService {
   static async generateAiQuestions(params: {
     cneId: string;
     topic: string;
-    cneMaterial: string;
     reservationToken: string;
+    cneMaterial?: string;
     referenceMaterial?: string;
     syllabus?: string;
   }): Promise<ApiResponse<CNEQuestion[]>> {
@@ -867,6 +868,39 @@ export class ApiService {
    */
   static async getLearningResource(cneId: string): Promise<ApiResponse<CNELearningResourceMetadata>> {
     return this.executeAction<CNELearningResourceMetadata>('getLearningResource', { cneId });
+  }
+
+  /**
+   * Phase 2: Authoritatively extract textual content from CNE learning resource in Drive
+   */
+  static async extractLearningResourceContent(cneId: string): Promise<ApiResponse<CNELearningResourceExtractedContent>> {
+    return this.executeAction<CNELearningResourceExtractedContent>('extractLearningResourceContent', { cneId });
+  }
+
+  /**
+   * Phase 3: List all CNE Learning Resources available to authenticated user
+   */
+  static async listLearningResources(): Promise<ApiResponse<CNELearningResourceMetadata[]>> {
+    return this.executeAction<CNELearningResourceMetadata[]>('listLearningResources');
+  }
+
+  /**
+   * Phase 3: Authoritatively download / stream Learning Resource file
+   */
+  static async downloadLearningResource(cneId: string): Promise<ApiResponse<{
+    cneId: string;
+    fileName: string;
+    fileType: string;
+    mimeType: string;
+    fileBase64: string;
+  }>> {
+    return this.executeAction<{
+      cneId: string;
+      fileName: string;
+      fileType: string;
+      mimeType: string;
+      fileBase64: string;
+    }>('downloadLearningResource', { cneId });
   }
 
   /**

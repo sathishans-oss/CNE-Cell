@@ -278,6 +278,17 @@ export const onRequestPost = async (context: {
     }, 400);
   }
 
+  const authoritativeResourcePerson = String(authResult.data?.resourcePersonName || '').trim();
+  const authoritativeMaterial = String(authResult.data?.authoritativeLearningContent || cleanMaterial).trim();
+
+  if (!authoritativeMaterial || authoritativeMaterial.length < 15) {
+    return createJsonResponse({
+      success: false,
+      errorCode: 'MATERIAL_REQUIRED',
+      message: 'CNE Class Content / Learning Material is required (minimum 15 characters) to generate questions.'
+    }, 400);
+  }
+
   // 7. Check Gemini API key from Cloudflare secret binding
   const apiKey = (
     env?.GEMINI_API_KEY ||
@@ -353,10 +364,10 @@ Your task is to generate EXACTLY 5 high-quality Multiple Choice Questions (MCQs)
 
 CNE Topic:
 "${authoritativeTopic}"
-
+${authoritativeResourcePerson ? `Resource Person / Speaker:\n"${authoritativeResourcePerson}"\n` : ''}
 Authoritative CNE Session Content / Learning Material (PRIMARY GROUNDING SOURCE):
 """
-${cleanMaterial}
+${authoritativeMaterial}
 """
 
 GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
@@ -492,7 +503,7 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
     }
 
     if (!rawQuestionsList || rawQuestionsList.length !== 5) {
-      rawQuestionsList = synthesizeGroundedClinicalQuestions(cleanCneId, authoritativeTopic, cleanMaterial);
+      rawQuestionsList = synthesizeGroundedClinicalQuestions(cleanCneId, authoritativeTopic, authoritativeMaterial);
       usedModel = 'CNE Clinical Knowledge Engine (Material Grounded)';
     }
 

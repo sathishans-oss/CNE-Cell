@@ -17,7 +17,8 @@ import {
   BookOpen,
   History,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  ArrowRight
 } from 'lucide-react';
 import { UpcomingClass, CNEQuestion, CNEAiQuotaInfo } from '../../types';
 import { ApiService } from '../../services/api';
@@ -28,13 +29,17 @@ interface CNEQuestionsModalProps {
   isAuthorized: boolean;
   onClose: () => void;
   onUpdated?: () => void;
+  triggerAiGeneration?: boolean;
+  onNavigateToQR?: () => void;
 }
 
 export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
   cne,
   isAuthorized,
   onClose,
-  onUpdated
+  onUpdated,
+  triggerAiGeneration,
+  onNavigateToQR
 }) => {
   const cneId = cne.cneId || cne.classId || '';
   const [questions, setQuestions] = useState<CNEQuestion[]>([]);
@@ -47,6 +52,10 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [showHistory, setShowHistory] = useState(false);
 
+  // Real-time stage progress state for AI generation
+  const [generationStage, setGenerationStage] = useState<string>('');
+  const hasAutoTriggeredRef = useRef(false);
+
   // Authoritative AI Quota & Material State
   const [quotaInfo, setQuotaInfo] = useState<CNEAiQuotaInfo | null>(null);
   const [loadingQuota, setLoadingQuota] = useState(false);
@@ -56,7 +65,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
 
   useEffect(() => {
     loadQuestions();
-    loadQuotaAndMaterial();
+    loadQuota();
   }, [cneId]);
 
   const loadQuestions = async () => {
@@ -75,22 +84,15 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
     }
   };
 
-  const loadQuotaAndMaterial = async () => {
+  const loadQuota = async () => {
     setLoadingQuota(true);
     try {
-      const [quotaRes, refRes] = await Promise.all([
-        ApiService.getAiQuota(cneId),
-        ApiService.getReferenceMaterial(cneId)
-      ]);
-
+      const quotaRes = await ApiService.getAiQuota(cneId);
       if (quotaRes.success && quotaRes.data) {
         setQuotaInfo(quotaRes.data);
       }
-
-      const materialText = (refRes.data?.unifiedContent || refRes.data?.referenceText || '').trim();
-      setHasMaterial(materialText.length >= 15);
     } catch (e) {
-      console.warn('Failed to load AI quota or reference material:', e);
+      console.warn('Failed to load AI quota:', e);
     } finally {
       setLoadingQuota(false);
     }
@@ -101,34 +103,39 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
     quotaInfo && (quotaInfo.status === 'USED' || quotaInfo.attemptsUsed >= 1)
   );
 
+  // Auto-trigger AI generation if navigating from Material with triggerAiGeneration = true
+  useEffect(() => {
+    if (triggerAiGeneration && !hasAutoTriggeredRef.current && !loading && !loadingQuota) {
+      if (!isAiGenerationUsed && questions.length < 5 && isAuthorized && !isLocked) {
+        hasAutoTriggeredRef.current = true;
+        handleGenerateAi();
+      }
+    }
+  }, [triggerAiGeneration, loading, loadingQuota, isAiGenerationUsed, questions.length, isAuthorized, isLocked]);
+
   const handleGenerateAi = async () => {
     if (generatingRef.current || isGenerating || isLocked || !isAuthorized) return;
 
     // Immediate synchronous lock and UI state
     generatingRef.current = true;
     setIsGenerating(true);
+    setGenerationStage('Learning resource received');
 
     // 1. One-time allowance check
     if (isAiGenerationUsed) {
       generatingRef.current = false;
       setIsGenerating(false);
+      setGenerationStage('');
       error('AI question generation has already been completed for this CNE.');
       return;
     }
 
     try {
-      // 2. Material-First Rule: Material grounding check
-      const refRes = await ApiService.getReferenceMaterial(cneId);
-      const materialText = (refRes.data?.unifiedContent || refRes.data?.referenceText || '').trim();
+      // Stage 1 & 2: Reading and analyzing authoritative learning resource
+      setGenerationStage('Reading and analyzing learning resource');
 
-      if (!materialText || materialText.length < 15) {
-        setHasMaterial(false);
-        error('CNE Class Content / Learning Material is required before generating AI questions. Please enter and save learning material first.');
-        return;
-      }
-      setHasMaterial(true);
-
-      // 3. Atomically Reserve Quota attempt with Apps Script LockService
+      // Stage 3: Preparing CNE session questions & quota reservation
+      setGenerationStage('Preparing CNE session questions & quota reservation');
       const reserveRes = await ApiService.reserveAiQuota(cneId);
       if (!reserveRes.success || !reserveRes.data?.reservationToken) {
         error(reserveRes.message || 'Failed to reserve AI generation allowance.');
@@ -140,13 +147,13 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
 
       const reservationToken = reserveRes.data.reservationToken;
 
-      // 4. Generate EXACTLY 5 MCQs via Gemini Flash Free Tier on Express backend
+      // Stage 4: Generating 5 MCQs grounded in material
+      setGenerationStage('Generating 5 MCQs grounded in material');
       let aiRes: any;
       try {
         aiRes = await ApiService.generateAiQuestions({
           cneId: cneId,
           topic: cne.topic,
-          cneMaterial: materialText,
           reservationToken: reservationToken
         });
       } catch (genErr: any) {
@@ -163,11 +170,16 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
         try {
           await ApiService.releaseAiQuota(cneId, reservationToken);
         } catch (rErr) {}
+        if (aiRes?.errorCode === 'MATERIAL_REQUIRED') {
+          setHasMaterial(false);
+        }
         error(aiRes?.message || 'AI question generation failed: Expected exactly 5 complete MCQs. Allowance was not consumed.');
         return;
       }
+      setHasMaterial(true);
 
-      // 5. Commit Quota and save questions atomically
+      // Stage 5: Finalizing questions
+      setGenerationStage('Finalizing questions');
       const commitRes = await ApiService.commitAiQuota(cneId, reservationToken, aiRes.data);
 
       if (commitRes && commitRes.success && commitRes.data) {
@@ -204,6 +216,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
     } finally {
       generatingRef.current = false;
       setIsGenerating(false);
+      setGenerationStage('');
     }
   };
 
@@ -319,7 +332,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
     });
   };
 
-  const handleSaveQuestions = async () => {
+  const performSaveQuestions = async (moveToQr: boolean = false) => {
     if (savingRef.current || isSaving || isLocked || !isAuthorized) return;
 
     const activeQuestions = questions.filter(
@@ -367,7 +380,12 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
       if (res.success) {
         success(`Saved question set (${activeQuestions.length} active questions). Post-test is ready.`);
         if (onUpdated) onUpdated();
-        onClose();
+
+        if (moveToQr) {
+          if (onNavigateToQR) {
+            onNavigateToQR();
+          }
+        }
       } else {
         error(res.message || 'Failed to save question bank.');
       }
@@ -531,6 +549,46 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
 
         {/* Question List Content - 2-Column Wide Grid on Desktop */}
         <div className="p-6 overflow-y-auto flex-1 bg-slate-50/40 text-xs">
+          {/* Meaningful Real-Time Processing Status in Main Content Area */}
+          {isGenerating && (
+            <div className="p-6 bg-purple-50/80 border border-purple-200 rounded-2xl flex flex-col items-center justify-center text-center space-y-3 shadow-xs mb-6">
+              <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
+                <Loader2 className="w-5 h-5 animate-spin" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-purple-950">
+                  Synthesizing Standardized Clinical MCQs
+                </h4>
+                <p className="text-xs font-semibold text-purple-700 mt-1">
+                  {generationStage || 'Processing learning resource...'}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1 text-[10px]">
+                {[
+                  'Learning resource received',
+                  'Reading & analyzing resource',
+                  'Preparing quota reservation',
+                  'Generating 5 MCQs',
+                  'Finalizing questions'
+                ].map((stg, i) => {
+                  const isCurrent = generationStage.toLowerCase().includes(stg.toLowerCase().slice(0, 8));
+                  return (
+                    <span
+                      key={i}
+                      className={`px-2.5 py-0.5 rounded-full font-semibold transition-all ${
+                        isCurrent
+                          ? 'bg-purple-700 text-white shadow-xs'
+                          : 'bg-purple-100/80 text-purple-800'
+                      }`}
+                    >
+                      {i + 1}. {stg}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {loading ? (
             <div className="py-20 flex flex-col items-center justify-center gap-2 text-slate-500">
               <Loader2 className="w-6 h-6 animate-spin text-purple-600" />
@@ -822,24 +880,49 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
 
           <div className="flex items-center gap-2.5">
             {!isLocked && isAuthorized && (
-              <button
-                type="button"
-                onClick={handleSaveQuestions}
-                disabled={isSaving || isGenerating || activeQuestions.length < 5}
-                className="flex items-center gap-1.5 px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl font-bold text-xs shadow-xs disabled:opacity-50 cursor-pointer transition-colors"
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Saving Questions...</span>
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-3.5 h-3.5" />
-                    <span>Save</span>
-                  </>
-                )}
-              </button>
+              <>
+                {/* Button 1: Save (stays on Questions) */}
+                <button
+                  type="button"
+                  onClick={() => performSaveQuestions(false)}
+                  disabled={isSaving || isGenerating || activeQuestions.length < 5}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold text-xs cursor-pointer transition-colors disabled:opacity-50"
+                  title="Save questions and remain on this page"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-3.5 h-3.5 text-slate-600" />
+                      <span>Save</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Button 2: Save & Next (moves to QR) */}
+                <button
+                  type="button"
+                  onClick={() => performSaveQuestions(true)}
+                  disabled={isSaving || isGenerating || activeQuestions.length < 5}
+                  className="flex items-center gap-1.5 px-5 py-2 bg-purple-700 hover:bg-purple-800 text-white rounded-xl font-bold text-xs shadow-xs disabled:opacity-50 cursor-pointer transition-colors"
+                  title="Save questions and advance to QR stage"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving &amp; Moving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Save &amp; Next</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </>
+                  )}
+                </button>
+              </>
             )}
           </div>
         </div>

@@ -12,6 +12,7 @@ import { Dashboard } from './components/Dashboard';
 import { MyCNE } from './components/MyCNE';
 import { CNECalendar } from './components/CNECalendar';
 import { UpcomingClasses } from './components/UpcomingClasses';
+import { LearningResourcesPage } from './components/cne/LearningResourcesPage';
 import { Gallery } from './components/Gallery';
 import { AdminCNEData } from './components/AdminCNEData';
 import { AdminAreas } from './components/AdminAreas';
@@ -101,6 +102,13 @@ const AppContent: React.FC = () => {
 
           {user && user.employeeId && activeView === 'upcoming' && (
             <UpcomingClasses user={user} />
+          )}
+
+          {user && user.employeeId && activeView === 'learning-resources' && (
+            <LearningResourcesPage
+              user={user}
+              onNavigateToSchedule={() => setActiveView('upcoming')}
+            />
           )}
 
           {user && user.employeeId && activeView === 'gallery' && <Gallery user={user} />}

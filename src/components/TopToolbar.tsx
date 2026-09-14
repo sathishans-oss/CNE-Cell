@@ -9,7 +9,8 @@ import {
   ShieldCheck,
   BarChart3,
   Shield,
-  FileText
+  FileText,
+  BookOpen
 } from 'lucide-react';
 import { SessionUser, ViewMode } from '../types';
 
@@ -39,6 +40,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
       icon: Sparkles,
       badge: upcomingCount > 0 ? upcomingCount : undefined
     },
+    { id: 'learning-resources' as ViewMode, label: 'Learning Resources', icon: BookOpen },
     { id: 'my-cne' as ViewMode, label: 'My CNE Records', icon: Award }
   ];
 

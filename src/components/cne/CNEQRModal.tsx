@@ -79,20 +79,12 @@ export const CNEQRModal: React.FC<CNEQRModalProps> = ({
   return (
     <div className="fixed inset-0 z-[60] overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
       <div className="bg-white rounded-2xl w-[90vw] max-w-[1050px] max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
-        {/* Modal Header */}
-        <div className="px-6 py-3.5 border-b border-slate-200 flex items-center justify-between shrink-0 bg-slate-50/80">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
-              <QrCode className="w-5 h-5" />
-            </div>
-            <h3 className="text-sm sm:text-base font-bold text-slate-900 leading-snug">
-              QR Evaluation Access
-            </h3>
-          </div>
-
+        {/* Modal Header - Clean header with only top-right X button */}
+        <div className="px-6 py-3 border-b border-slate-100 flex items-center justify-end shrink-0 bg-white">
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200/60 cursor-pointer transition-colors"
+            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors"
+            title="Close"
           >
             <X className="w-5 h-5" />
           </button>

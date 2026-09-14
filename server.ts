@@ -280,15 +280,6 @@ async function startServer() {
       });
     }
 
-    if (!cleanMaterial || cleanMaterial.length < 15) {
-      console.warn('[AI Service] Material too short or missing in request');
-      return res.status(400).json({
-        success: false,
-        errorCode: 'MATERIAL_REQUIRED',
-        message: 'CNE Class Content / Learning Material is required (minimum 15 characters) to generate questions.'
-      });
-    }
-
     // 2. Authoritative backend URL check (strictly from server environment or client payload)
     const appsScriptUrl = (
       process.env.APPS_SCRIPT_URL ||
@@ -377,9 +368,25 @@ async function startServer() {
       });
     }
 
+    const authoritativeResourcePerson = String(authResult.data?.resourcePersonName || '').trim();
+    // Authoritative learning content is retrieved from the Phase 2 backend pipeline:
+    // If an uploaded Drive Learning Resource exists, it is authoritative (already extracted by backend).
+    // Client-supplied legacy/reference text is NEVER used to override or supplement authoritative Drive content.
+    // If no uploaded Drive Learning Resource exists, fallback to authoritative content from backend CNE_Reference record.
+    const authoritativeMaterial = String(authResult.data?.authoritativeLearningContent || '').trim();
+
+    if (!authoritativeMaterial || authoritativeMaterial.length < 15) {
+      console.warn('[AI Service] Authoritative material missing or too short');
+      return res.status(400).json({
+        success: false,
+        errorCode: 'MATERIAL_REQUIRED',
+        message: 'CNE Class Content / Learning Material is required (minimum 15 characters) before AI questions can be generated. Please attach a learning resource or enter reference material first.'
+      });
+    }
+
     // Cache Check: Return cached AI questions if identical CNE request was already generated
     // Protects free-tier usage by avoiding redundant Gemini API calls
-    const cacheKey = computeContentKey(cleanCneId, authoritativeTopic, cleanMaterial);
+    const cacheKey = computeContentKey(cleanCneId, authoritativeTopic, authoritativeMaterial);
     const cachedEntry = aiQuestionCache.get(cacheKey);
     if (cachedEntry && Array.isArray(cachedEntry.questions) && cachedEntry.questions.length === 5) {
       console.log(`[AI Question Cache] Cache HIT for CNE ${cleanCneId}. Reusing existing questions to protect free-tier API.`);
@@ -431,10 +438,10 @@ Your task is to generate EXACTLY 5 high-quality Multiple Choice Questions (MCQs)
 
 CNE Topic:
 "${authoritativeTopic}"
-
+${authoritativeResourcePerson ? `Resource Person / Speaker:\n"${authoritativeResourcePerson}"\n` : ''}
 Authoritative CNE Session Content / Learning Material (PRIMARY GROUNDING SOURCE):
 """
-${cleanMaterial}
+${authoritativeMaterial}
 """
 
 GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
@@ -552,7 +559,7 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
       // utilize the grounded clinical question synthesis engine
       if (!rawQuestionsList || rawQuestionsList.length !== 5) {
         console.info(`[AI Service] Synthesizing 5 clinical MCQs deeply grounded in session material for "${authoritativeTopic}"...`);
-        rawQuestionsList = synthesizeGroundedClinicalQuestions(cleanCneId, authoritativeTopic, cleanMaterial);
+        rawQuestionsList = synthesizeGroundedClinicalQuestions(cleanCneId, authoritativeTopic, authoritativeMaterial);
         usedModel = 'CNE Clinical Knowledge Engine (Material Grounded)';
       }
 

@@ -527,6 +527,18 @@ function handleRequest(e, method) {
         output = handleGetLearningResource(params, session);
         break;
 
+      case 'listLearningResources':
+        output = handleListLearningResources(params, session);
+        break;
+
+      case 'downloadLearningResource':
+        output = handleDownloadLearningResource(params, session);
+        break;
+
+      case 'extractLearningResourceContent':
+        output = handleExtractLearningResourceContent(params, session);
+        break;
+
       case 'getReferenceMaterial':
         output = handleGetReferenceMaterial(params, session);
         break;
@@ -6017,14 +6029,18 @@ function handleUploadLearningResource(params, session) {
  * Retrieve metadata for uploaded CNE learning resource
  */
 function handleGetLearningResource(params, session) {
-  var cneId = sanitizeCellInput(params.cneId);
-  if (!cneId) return { success: false, message: 'CNE ID is required.' };
+  var cneId = sanitizeCellInput(params ? params.cneId : '');
+  if (!cneId) {
+    return { success: false, errorCode: 'CNE_NOT_FOUND', message: 'CNE ID is required.' };
+  }
 
   var record = getCNEClassRecord(cneId);
-  if (record) {
-    var authErr = checkCNEActionAuthorized(session, record);
-    if (authErr) return authErr;
+  if (!record) {
+    return { success: false, errorCode: 'CNE_NOT_FOUND', message: 'CNE record not found for ID: ' + cneId };
   }
+
+  var authErr = checkCNEActionAuthorized(session, record);
+  if (authErr) return authErr;
 
   var sheet = getOrCreateSheet('CNE_Reference');
   var data = sheet.getDataRange().getValues();
@@ -6091,6 +6107,986 @@ function handleGetLearningResource(params, session) {
       hasFile: false
     }
   };
+}
+
+/**
+ * List all CNE Learning Resources for authenticated user
+ * Enforces authoritative CNE existence and access control.
+ * Fails closed for unauthenticated or unauthorized users.
+ */
+function handleListLearningResources(params, session) {
+  if (!session || !session.employeeId) {
+    return { success: false, errorCode: 'UNAUTHORIZED', message: 'Authentication required. Please sign in.' };
+  }
+
+  var sheet = getOrCreateSheet('CNE_Reference');
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) {
+    return { success: true, data: [] };
+  }
+  var colMap = getHeaderMap(sheet);
+
+  var idCol = colMap['cneid'] !== undefined ? colMap['cneid'] : 0;
+  var topicCol = colMap['topic'] !== undefined ? colMap['topic'] : 1;
+  var updatedCol = colMap['updatedat'] !== undefined ? colMap['updatedat'] : 3;
+  var byCol = colMap['updatedby'] !== undefined ? colMap['updatedby'] : 4;
+  var driveFileIdCol = colMap['drivefileid'];
+  var fileNameCol = colMap['filename'];
+  var fileTypeCol = colMap['filetype'];
+  var rpNameCol = colMap['resourcepersonname'];
+  var fileSizeCol = colMap['filesize'];
+
+  // Efficient batched read of Upcoming Classes sheet (single read instead of N+1)
+  var ss = getSpreadsheet('CNE');
+  var classSheet = ss ? ss.getSheetByName('Upcoming Classes') : null;
+  var cneMap = {};
+  if (classSheet) {
+    var classData = classSheet.getDataRange().getValues();
+    if (classData.length > 1) {
+      var classColMap = getHeaderMap(classSheet);
+      var classIdCol = classColMap['cneid'] !== undefined ? classColMap['cneid'] : (classColMap['classid'] !== undefined ? classColMap['classid'] : 0);
+
+      for (var c = 1; c < classData.length; c++) {
+        var cRow = classData[c];
+        var cneKey = String(cRow[classIdCol] || '').trim().toUpperCase();
+        if (!cneKey) continue;
+
+        var rawType = classColMap['typeofcne'] !== undefined ? cRow[classColMap['typeofcne']] : cRow[12];
+        var rawStatus = classColMap['status'] !== undefined ? cRow[classColMap['status']] : cRow[11];
+        var durVal = classColMap['duration'] !== undefined ? cRow[classColMap['duration']] : cRow[6];
+        var maxP = classColMap['maxparticipants'] !== undefined ? cRow[classColMap['maxparticipants']] : cRow[10];
+
+        cneMap[cneKey] = {
+          rowIndex: c + 1,
+          cneId: String(cRow[classIdCol] || '').trim(),
+          topic: String((classColMap['topic'] !== undefined ? cRow[classColMap['topic']] : cRow[1]) || '').trim(),
+          area: String((classColMap['area'] !== undefined ? cRow[classColMap['area']] : cRow[2]) || '').trim(),
+          date: formatDateValue(classColMap['fromdate'] !== undefined ? cRow[classColMap['fromdate']] : (classColMap['date'] !== undefined ? cRow[classColMap['date']] : cRow[3])),
+          toDate: formatDateValue(classColMap['todate'] !== undefined ? cRow[classColMap['todate']] : (cRow[4] || cRow[3])),
+          time: String((classColMap['time'] !== undefined ? cRow[classColMap['time']] : cRow[5]) || '').trim(),
+          duration: durVal ? Number(durVal) : 60,
+          instructor: String((classColMap['resourcepersonempid'] !== undefined ? cRow[classColMap['resourcepersonempid']] : cRow[7]) || '').trim(),
+          mode: String((classColMap['modeofteaching'] !== undefined ? cRow[classColMap['modeofteaching']] : (classColMap['mode'] !== undefined ? cRow[classColMap['mode']] : cRow[8])) || 'Offline').trim(),
+          description: String((classColMap['description'] !== undefined ? cRow[classColMap['description']] : cRow[9]) || '').trim(),
+          maxParticipants: maxP ? Number(maxP) : 50,
+          status: normalizeCNEStatus(rawStatus),
+          externalResourcePersons: String((classColMap['externalresourcepersons'] !== undefined ? cRow[classColMap['externalresourcepersons']] : cRow[13]) || '').trim(),
+          proposedBy: String((classColMap['proposedby'] !== undefined ? cRow[classColMap['proposedby']] : cRow[14]) || '').trim(),
+          adminRemarks: String((classColMap['adminremarks'] !== undefined ? cRow[classColMap['adminremarks']] : cRow[15]) || '').trim(),
+          cneType: normalizeCNEType(rawType)
+        };
+      }
+    }
+  }
+
+  var officerMap = getOfficerNameMap();
+  var results = [];
+
+  for (var r = 1; r < data.length; r++) {
+    var cneId = String(data[r][idCol] || '').trim();
+    var driveFileId = driveFileIdCol !== undefined ? String(data[r][driveFileIdCol] || '').trim() : '';
+    if (!cneId || !driveFileId) continue;
+
+    var record = cneMap[cneId.toUpperCase()];
+    if (!record) continue; // Fail closed if CNE cannot be resolved
+
+    var authErr = checkCNEActionAuthorized(session, record);
+    if (authErr) continue; // Fail closed: only authorized CNEs returned
+
+    var fileName = fileNameCol !== undefined ? String(data[r][fileNameCol] || '').trim() : '';
+    var fileType = fileTypeCol !== undefined ? String(data[r][fileTypeCol] || '').trim() : '';
+    var rpName = rpNameCol !== undefined ? String(data[r][rpNameCol] || '').trim() : '';
+    var fileSize = fileSizeCol !== undefined ? (Number(data[r][fileSizeCol]) || 0) : 0;
+    var rawUpdatedBy = String(data[r][byCol] || '').trim();
+    var displayName = 'Coordinator';
+    if (rawUpdatedBy) {
+      var norm = normalizeEmpId(rawUpdatedBy);
+      if (officerMap && officerMap[norm]) {
+        displayName = officerMap[norm];
+      }
+    }
+
+    results.push({
+      cneId: cneId,
+      topic: String(data[r][topicCol] || record.topic),
+      area: record.area || '',
+      cneType: record.cneType || 'DEPARTMENTAL',
+      fileName: fileName,
+      fileType: fileType,
+      fileSize: fileSize,
+      resourcePersonName: rpName || record.instructor || 'Department Faculty',
+      updatedAt: String(data[r][updatedCol] || ''),
+      updatedBy: displayName,
+      hasFile: true
+    });
+  }
+
+  return {
+    success: true,
+    data: results
+  };
+}
+
+/**
+ * Securely download or stream an authoritative Learning Resource file
+ * Fails closed if CNE does not exist, caller is unauthorized, or file is outside Learning Resources folder.
+ */
+function handleDownloadLearningResource(params, session) {
+  var cneId = sanitizeCellInput(params ? params.cneId : '');
+  if (!cneId) {
+    return { success: false, errorCode: 'CNE_NOT_FOUND', message: 'CNE ID is required.' };
+  }
+
+  var record = getCNEClassRecord(cneId);
+  if (!record) {
+    return { success: false, errorCode: 'CNE_NOT_FOUND', message: 'CNE record not found for ID: ' + cneId };
+  }
+
+  var authErr = checkCNEActionAuthorized(session, record);
+  if (authErr) return authErr;
+
+  var sheet = getOrCreateSheet('CNE_Reference');
+  var data = sheet.getDataRange().getValues();
+  var colMap = getHeaderMap(sheet);
+  var idCol = colMap['cneid'] !== undefined ? colMap['cneid'] : 0;
+  var driveFileIdCol = colMap['drivefileid'];
+  var fileNameCol = colMap['filename'];
+  var fileTypeCol = colMap['filetype'];
+
+  var targetDriveFileId = '';
+  var targetFileName = '';
+  var targetFileType = '';
+
+  for (var r = 1; r < data.length; r++) {
+    if (String(data[r][idCol] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+      targetDriveFileId = driveFileIdCol !== undefined ? String(data[r][driveFileIdCol] || '').trim() : '';
+      targetFileName = fileNameCol !== undefined ? String(data[r][fileNameCol] || '').trim() : '';
+      targetFileType = fileTypeCol !== undefined ? String(data[r][fileTypeCol] || '').trim() : '';
+      break;
+    }
+  }
+
+  if (!targetDriveFileId) {
+    return { success: false, errorCode: 'NO_RESOURCE_FILE', message: 'No learning resource file attached to this CNE.' };
+  }
+
+  var folderRes = getOrCreateLearningResourcesFolder();
+  if (!folderRes.success || !folderRes.folder) {
+    return { success: false, errorCode: 'DRIVE_STORAGE_ERROR', message: folderRes.message };
+  }
+
+  var file;
+  try {
+    file = DriveApp.getFileById(targetDriveFileId);
+  } catch (e) {
+    return { success: false, errorCode: 'LEARNING_RESOURCE_FILE_NOT_FOUND', message: 'File not found in Drive.' };
+  }
+
+  var parents = file.getParents();
+  var inFolder = false;
+  while (parents.hasNext()) {
+    if (parents.next().getId() === folderRes.folder.getId()) {
+      inFolder = true;
+      break;
+    }
+  }
+
+  if (!inFolder) {
+    return { success: false, errorCode: 'FILE_OUTSIDE_REPOSITORY', message: 'Resource file does not belong to the authoritative Learning Resources directory.' };
+  }
+
+  var blob = file.getBlob();
+  var base64 = Utilities.base64Encode(blob.getBytes());
+  var mimeType = blob.getContentType();
+
+  logAuditAction('DOWNLOAD_LEARNING_RESOURCE', session.employeeId, 'Downloaded learning resource: ' + (targetFileName || file.getName()) + ' for CNE: ' + cneId, 'SUCCESS');
+
+  return {
+    success: true,
+    data: {
+      cneId: cneId,
+      fileName: targetFileName || file.getName(),
+      fileType: targetFileType,
+      mimeType: mimeType,
+      fileBase64: base64
+    }
+  };
+}
+
+/**
+ * ============================================================================
+ * PHASE 2: CNE LEARNING RESOURCES CONTENT EXTRACTION SERVICE
+ * ============================================================================
+ * Extracts readable textual content from stored Google Drive learning resource
+ * files (PDF, DOCX, PPT, PPTX) for AI MCQ generation grounding.
+ * Authoritative source of truth remains the Drive file stored in the configured
+ * Learning Resources directory.
+ */
+
+/**
+ * Handle action: extractLearningResourceContent
+ */
+function handleExtractLearningResourceContent(params, session) {
+  var cneId = sanitizeCellInput(params ? params.cneId : '');
+  if (!cneId) {
+    return { success: false, errorCode: 'CNE_NOT_FOUND', message: 'CNE ID is required.' };
+  }
+  return extractLearningResourceContentCore(cneId, session);
+}
+
+/**
+ * Core extraction service for CNE Learning Resource
+ * Fails closed on any security, authorization, or structural defect.
+ */
+function extractLearningResourceContentCore(cneId, session) {
+  if (!cneId) {
+    return { success: false, errorCode: 'CNE_NOT_FOUND', message: 'CNE ID is required.' };
+  }
+
+  // 1. Authoritative CNE Record lookup
+  var record = getCNEClassRecord(cneId);
+  if (!record) {
+    return { success: false, errorCode: 'CNE_NOT_FOUND', message: 'CNE record not found for ID: ' + cneId };
+  }
+
+  // 2. Authorization verification
+  var authErr = checkCNEActionAuthorized(session, record);
+  if (authErr) {
+    return authErr;
+  }
+
+  // 3. Authoritative CNE_Reference lookup
+  var refSheet = getSpreadsheet('CNE').getSheetByName('CNE_Reference');
+  if (!refSheet || refSheet.getLastRow() <= 1) {
+    return {
+      success: false,
+      errorCode: 'LEARNING_RESOURCE_NOT_FOUND',
+      message: 'No learning resource is associated with this CNE.'
+    };
+  }
+
+  var refData = refSheet.getDataRange().getValues();
+  var refColMap = getHeaderMap(refSheet);
+  var idCol = refColMap['cneid'] !== undefined ? refColMap['cneid'] : 0;
+  var driveCol = refColMap['drivefileid'];
+  var fileNameCol = refColMap['filename'];
+  var fileTypeCol = refColMap['filetype'];
+  var rpNameCol = refColMap['resourcepersonname'];
+
+  var driveFileId = '';
+  var storedFileName = '';
+  var storedFileType = '';
+  var storedRpName = '';
+
+  for (var r = 1; r < refData.length; r++) {
+    if (String(refData[r][idCol] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+      driveFileId = driveCol !== undefined ? String(refData[r][driveCol] || '').trim() : '';
+      storedFileName = fileNameCol !== undefined ? String(refData[r][fileNameCol] || '').trim() : '';
+      storedFileType = fileTypeCol !== undefined ? String(refData[r][fileTypeCol] || '').trim() : '';
+      storedRpName = rpNameCol !== undefined ? String(refData[r][rpNameCol] || '').trim() : '';
+      break;
+    }
+  }
+
+  if (!driveFileId) {
+    return {
+      success: false,
+      errorCode: 'LEARNING_RESOURCE_NOT_FOUND',
+      message: 'No learning resource file has been uploaded for this CNE.'
+    };
+  }
+
+  // 4. Retrieve Drive File & verify existence
+  var file;
+  try {
+    file = DriveApp.getFileById(driveFileId);
+  } catch (driveErr) {
+    return {
+      success: false,
+      errorCode: 'LEARNING_RESOURCE_FILE_NOT_FOUND',
+      message: 'Associated learning resource file could not be found in Google Drive.'
+    };
+  }
+
+  if (!file || file.isTrashed()) {
+    return {
+      success: false,
+      errorCode: 'LEARNING_RESOURCE_FILE_NOT_FOUND',
+      message: 'Associated learning resource file has been deleted or trashed.'
+    };
+  }
+
+  // 5. Verify file belongs strictly to configured Learning Resources folder
+  var folderRes = getOrCreateLearningResourcesFolder();
+  if (!folderRes.success) {
+    return folderRes;
+  }
+  var targetFolderId = folderRes.folder.getId();
+  var parents = file.getParents();
+  var isInsideTargetFolder = false;
+  while (parents.hasNext()) {
+    if (parents.next().getId() === targetFolderId) {
+      isInsideTargetFolder = true;
+      break;
+    }
+  }
+
+  if (!isInsideTargetFolder) {
+    return {
+      success: false,
+      errorCode: 'LEARNING_RESOURCE_INVALID',
+      message: 'Learning resource file does not belong to the authoritative Learning Resources directory.'
+    };
+  }
+
+  // 6. Validate supported format (PDF, DOCX, PPT, PPTX only)
+  var nameForExt = file.getName() || storedFileName;
+  var ext = '';
+  var dotIdx = nameForExt.lastIndexOf('.');
+  if (dotIdx !== -1) {
+    ext = nameForExt.substring(dotIdx + 1).toLowerCase().trim();
+  }
+  if (!ext && storedFileType) {
+    ext = storedFileType.toLowerCase().trim();
+  }
+
+  var ALLOWED_EXTS = ['pdf', 'docx', 'ppt', 'pptx'];
+  if (ALLOWED_EXTS.indexOf(ext) === -1) {
+    return {
+      success: false,
+      errorCode: 'UNSUPPORTED_FILE_TYPE',
+      message: 'Unsupported file type. Only PDF, DOCX, PPT, and PPTX documents are permitted.'
+    };
+  }
+
+  // 7. Validate size (Max 10 MB)
+  if (file.getSize() > 10 * 1024 * 1024) {
+    return {
+      success: false,
+      errorCode: 'CONTENT_TOO_LARGE',
+      message: 'Learning resource exceeds maximum allowed size of 10 MB.'
+    };
+  }
+
+  // 8. Temporary Cache check using CacheService (best effort)
+  var safeFileId = driveFileId.replace(/[^a-zA-Z0-9_-]/g, '');
+  var lastUpdated = 0;
+  try {
+    lastUpdated = file.getLastUpdated().getTime();
+  } catch (timeErr) {
+    lastUpdated = 0;
+  }
+  var cacheKey = ('cne_res_' + safeFileId + '_' + lastUpdated).substring(0, 240);
+  var cache = null;
+  try {
+    cache = CacheService.getScriptCache();
+    var cachedJson = cache.get(cacheKey);
+    if (cachedJson) {
+      var parsedCache = JSON.parse(cachedJson);
+      if (parsedCache && parsedCache.extractedText && parsedCache.extractedText.length >= 15) {
+        return {
+          success: true,
+          data: {
+            cneId: cneId,
+            topic: record.topic,
+            resourcePersonName: storedRpName,
+            driveFileId: driveFileId,
+            fileName: file.getName(),
+            fileType: ext.toUpperCase(),
+            extractedText: parsedCache.extractedText,
+            charCount: parsedCache.extractedText.length,
+            isTruncated: Boolean(parsedCache.isTruncated),
+            originalCharCount: parsedCache.originalCharCount || parsedCache.extractedText.length,
+            cached: true
+          }
+        };
+      }
+    }
+  } catch (cacheErr) {
+    // Cache failure must never cause functional failure
+  }
+
+  // 9. Extract textual content based on file type
+  var rawExtracted = '';
+  var blob = file.getBlob();
+
+  try {
+    if (ext === 'docx') {
+      rawExtracted = extractTextFromDocx(blob);
+    } else if (ext === 'pptx') {
+      rawExtracted = extractTextFromPptx(blob);
+    } else if (ext === 'ppt') {
+      rawExtracted = extractTextFromPpt(blob);
+    } else if (ext === 'pdf') {
+      rawExtracted = extractTextFromPdf(blob);
+    }
+  } catch (extractErr) {
+    logAuditAction('CONTENT_EXTRACTION_FAILED', {
+      cneId: cneId,
+      driveFileId: driveFileId,
+      ext: ext,
+      error: String(extractErr && extractErr.message ? extractErr.message : extractErr)
+    });
+    return {
+      success: false,
+      errorCode: 'CONTENT_EXTRACTION_FAILED',
+      message: 'Failed to extract textual content from ' + ext.toUpperCase() + ' document: ' + (extractErr.message || 'Malformed structure')
+    };
+  }
+
+  // 10. Check if extracted content is empty or unusable
+  if (!rawExtracted || rawExtracted.trim().length < 15) {
+    return {
+      success: false,
+      errorCode: 'NO_EXTRACTABLE_CONTENT',
+      message: 'No readable textual content could be extracted from the uploaded document.'
+    };
+  }
+
+  var cleanText = rawExtracted.trim();
+  var maxChars = 40000;
+  var isTruncated = false;
+  var originalCharCount = cleanText.length;
+  var finalText = cleanText;
+
+  // 11. Deterministic size limit safeguard
+  if (cleanText.length > maxChars) {
+    isTruncated = true;
+    var headChars = 25000;
+    var tailChars = 15000;
+    var head = cleanText.substring(0, headChars);
+    var tail = cleanText.substring(cleanText.length - tailChars);
+    finalText = head + '\n\n[... Content deterministically truncated for AI processing: omitted ' + (originalCharCount - (headChars + tailChars)) + ' characters ...]\n\n' + tail;
+  }
+
+  // 12. Populate temporary cache (TTL 6 hours)
+  if (cache) {
+    try {
+      var cachePayload = JSON.stringify({
+        extractedText: finalText,
+        isTruncated: isTruncated,
+        originalCharCount: originalCharCount
+      });
+      if (cachePayload.length < 95000) {
+        cache.put(cacheKey, cachePayload, 21600);
+      }
+    } catch (cacheWriteErr) {
+      // Non-blocking
+    }
+  }
+
+  return {
+    success: true,
+    data: {
+      cneId: cneId,
+      topic: record.topic,
+      resourcePersonName: storedRpName,
+      driveFileId: driveFileId,
+      fileName: file.getName(),
+      fileType: ext.toUpperCase(),
+      extractedText: finalText,
+      charCount: finalText.length,
+      isTruncated: isTruncated,
+      originalCharCount: originalCharCount,
+      cached: false
+    }
+  };
+}
+
+/**
+ * Extract readable document text and tables from DOCX
+ */
+function extractTextFromDocx(blob) {
+  var zipBlobs;
+  try {
+    zipBlobs = Utilities.unzip(blob.setContentType('application/zip'));
+  } catch (unzipErr) {
+    throw new Error('CORRUPT_PACKAGE');
+  }
+
+  var docXmlBlob = null;
+  for (var i = 0; i < zipBlobs.length; i++) {
+    if (zipBlobs[i].getName().toLowerCase() === 'word/document.xml') {
+      docXmlBlob = zipBlobs[i];
+      break;
+    }
+  }
+
+  if (!docXmlBlob) {
+    throw new Error('MISSING_WORD_DOCUMENT');
+  }
+
+  var xmlStr = docXmlBlob.getDataAsString('UTF-8');
+  return parseWordDocumentXml(xmlStr);
+}
+
+function parseWordDocumentXml(xmlStr) {
+  function decodeXml(s) {
+    return s
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&#(\d+);/g, function(_, n) { return String.fromCharCode(parseInt(n, 10)); })
+      .replace(/&#x([0-9a-fA-F]+);/g, function(_, h) { return String.fromCharCode(parseInt(h, 16)); });
+  }
+
+  var paragraphs = [];
+  var pRegex = /<w:p\b[^>]*>([\s\S]*?)<\/w:p>/g;
+  var pMatch;
+  while ((pMatch = pRegex.exec(xmlStr)) !== null) {
+    var pContent = pMatch[1];
+    var pText = '';
+    var tRegex = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>|<w:tab\/>|<w:br\/>/g;
+    var tMatch;
+    while ((tMatch = tRegex.exec(pContent)) !== null) {
+      if (tMatch[0] === '<w:tab/>') {
+        pText += ' ';
+      } else if (tMatch[0] === '<w:br/>') {
+        pText += '\n';
+      } else if (tMatch[1]) {
+        pText += tMatch[1];
+      }
+    }
+    var cleanP = decodeXml(pText).trim();
+    if (cleanP) {
+      paragraphs.push(cleanP);
+    }
+  }
+
+  return paragraphs.join('\n\n');
+}
+
+/**
+ * Extract readable text from PPTX slides in natural order
+ */
+function extractTextFromPptx(blob) {
+  var zipBlobs;
+  try {
+    zipBlobs = Utilities.unzip(blob.setContentType('application/zip'));
+  } catch (unzipErr) {
+    throw new Error('CORRUPT_PACKAGE');
+  }
+
+  var slideBlobs = [];
+  for (var i = 0; i < zipBlobs.length; i++) {
+    var bName = zipBlobs[i].getName().toLowerCase();
+    var match = bName.match(/^ppt\/slides\/slide(\d+)\.xml$/);
+    if (match) {
+      slideBlobs.push({
+        num: parseInt(match[1], 10),
+        blob: zipBlobs[i]
+      });
+    }
+  }
+
+  if (slideBlobs.length === 0) {
+    throw new Error('NO_SLIDES_FOUND');
+  }
+
+  slideBlobs.sort(function(a, b) { return a.num - b.num; });
+
+  var slideTexts = [];
+  for (var s = 0; s < slideBlobs.length; s++) {
+    var sXml = slideBlobs[s].blob.getDataAsString('UTF-8');
+    var sText = parsePptxSlideXml(sXml);
+    if (sText && sText.trim()) {
+      slideTexts.push('--- Slide ' + slideBlobs[s].num + ' ---\n' + sText.trim());
+    }
+  }
+
+  return slideTexts.join('\n\n');
+}
+
+function parsePptxSlideXml(xmlStr) {
+  function decodeXml(s) {
+    return s
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&#(\d+);/g, function(_, n) { return String.fromCharCode(parseInt(n, 10)); })
+      .replace(/&#x([0-9a-fA-F]+);/g, function(_, h) { return String.fromCharCode(parseInt(h, 16)); });
+  }
+
+  var lines = [];
+  var pRegex = /<a:p\b[^>]*>([\s\S]*?)<\/a:p>/g;
+  var pMatch;
+  while ((pMatch = pRegex.exec(xmlStr)) !== null) {
+    var pContent = pMatch[1];
+    var pText = '';
+    var tRegex = /<a:t\b[^>]*>([\s\S]*?)<\/a:t>|<a:br\/>/g;
+    var tMatch;
+    while ((tMatch = tRegex.exec(pContent)) !== null) {
+      if (tMatch[0] === '<a:br/>') {
+        pText += '\n';
+      } else if (tMatch[1]) {
+        pText += tMatch[1];
+      }
+    }
+    var cleanL = decodeXml(pText).trim();
+    if (cleanL) {
+      lines.push(cleanL);
+    }
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Extract readable text from legacy PPT binary file
+ */
+function extractTextFromPpt(blob) {
+  var bytes = blob.getBytes();
+  if (!bytes || bytes.length < 512) {
+    throw new Error('CORRUPT_FILE');
+  }
+
+  var extracted = [];
+  var len = bytes.length;
+  var i = 0;
+
+  while (i + 8 <= len) {
+    var recType = (bytes[i + 2] & 0xFF) | ((bytes[i + 3] & 0xFF) << 8);
+    var recLen = ((bytes[i + 4] & 0xFF) |
+                  ((bytes[i + 5] & 0xFF) << 8) |
+                  ((bytes[i + 6] & 0xFF) << 16) |
+                  ((bytes[i + 7] & 0xFF) << 24)) >>> 0;
+
+    if (recLen > 0 && recLen < 200000 && i + 8 + recLen <= len) {
+      if (recType === 0x0FA0 || recType === 0x0FBA) { // TextCharsAtom / CString (UTF-16LE)
+        var utf16Chars = [];
+        for (var c = 0; c < recLen; c += 2) {
+          var code = (bytes[i + 8 + c] & 0xFF) | ((bytes[i + 8 + c + 1] & 0xFF) << 8);
+          if ((code >= 32 && code <= 126) || code === 10 || code === 13 || (code > 126 && code < 0xFFFE)) {
+            utf16Chars.push(String.fromCharCode(code));
+          }
+        }
+        var s16 = utf16Chars.join('').trim();
+        if (s16.length >= 3) extracted.push(s16);
+        i += 8 + recLen;
+        continue;
+      } else if (recType === 0x0FA8) { // TextBytesAtom (single-byte)
+        var asciiChars = [];
+        for (var a = 0; a < recLen; a++) {
+          var byteCode = bytes[i + 8 + a] & 0xFF;
+          if ((byteCode >= 32 && byteCode <= 126) || byteCode === 10 || byteCode === 13) {
+            asciiChars.push(String.fromCharCode(byteCode));
+          }
+        }
+        var s8 = asciiChars.join('').trim();
+        if (s8.length >= 3) extracted.push(s8);
+        i += 8 + recLen;
+        continue;
+      }
+    }
+    i++;
+  }
+
+  var deduped = [];
+  var last = '';
+  for (var d = 0; d < extracted.length; d++) {
+    if (extracted[d] !== last) {
+      deduped.push(extracted[d]);
+      last = extracted[d];
+    }
+  }
+
+  return deduped.join('\n');
+}
+
+/**
+ * Extract readable text from PDF
+ */
+function extractTextFromPdf(blob) {
+  var bytes = blob.getBytes();
+  if (!bytes || bytes.length < 30) {
+    throw new Error('CORRUPT_FILE');
+  }
+
+  // Validate PDF header (%PDF)
+  if ((bytes[0] & 0xFF) !== 0x25 || (bytes[1] & 0xFF) !== 0x50 || (bytes[2] & 0xFF) !== 0x44 || (bytes[3] & 0xFF) !== 0x46) {
+    throw new Error('INVALID_PDF_HEADER');
+  }
+
+  var textBlocks = [];
+  var rawString = '';
+  try {
+    rawString = blob.getDataAsString('ISO-8859-1');
+  } catch (e) {
+    rawString = '';
+  }
+
+  var streamRegex = /<<([\s\S]*?)>>\s*stream[\r\n|\n]([\s\S]*?)[\r\n|\n]endstream/g;
+  var match;
+  var streamCount = 0;
+
+  while ((match = streamRegex.exec(rawString)) !== null && streamCount < 200) {
+    streamCount++;
+    var dict = match[1];
+    var streamRaw = match[2];
+    var isFlate = /Filter\s*(?:\/\w+)*\s*\/FlateDecode/i.test(dict);
+
+    var decompressedText = '';
+    if (isFlate) {
+      var streamBytes = [];
+      for (var b = 0; b < streamRaw.length; b++) {
+        streamBytes.push(streamRaw.charCodeAt(b) & 0xFF);
+      }
+      try {
+        var inflatedBytes = inflatePdfStreamBytes(streamBytes);
+        if (inflatedBytes && inflatedBytes.length > 0) {
+          var charArray = [];
+          for (var ic = 0; ic < inflatedBytes.length; ic++) {
+            charArray.push(String.fromCharCode(inflatedBytes[ic]));
+          }
+          decompressedText = charArray.join('');
+        }
+      } catch (infErr) {
+        decompressedText = '';
+      }
+    } else {
+      decompressedText = streamRaw;
+    }
+
+    if (decompressedText) {
+      var extractedStreamText = parsePdfStreamText(decompressedText);
+      if (extractedStreamText && extractedStreamText.trim()) {
+        textBlocks.push(extractedStreamText.trim());
+      }
+    }
+  }
+
+  if (textBlocks.length === 0 && rawString) {
+    var fallbackText = parsePdfStreamText(rawString);
+    if (fallbackText && fallbackText.trim()) {
+      textBlocks.push(fallbackText.trim());
+    }
+  }
+
+  return textBlocks.join('\n\n');
+}
+
+function parsePdfStreamText(content) {
+  var textPieces = [];
+  function unescapePdfStr(str) {
+    return str.replace(/\\([()nrtbf\\]|[0-7]{1,3})/g, function(m, esc) {
+      if (esc === 'n') return '\n';
+      if (esc === 'r') return '\r';
+      if (esc === 't') return '\t';
+      if (esc === 'b') return '\b';
+      if (esc === 'f') return '\f';
+      if (esc === '(' || esc === ')' || esc === '\\') return esc;
+      if (/^[0-7]{1,3}$/.test(esc)) return String.fromCharCode(parseInt(esc, 8));
+      return esc;
+    });
+  }
+
+  var btEtRegex = /BT[\s\S]*?ET/g;
+  var match;
+  while ((match = btEtRegex.exec(content)) !== null) {
+    var block = match[0];
+    
+    // Tj: (text) Tj
+    var tjRegex = /\(((?:[^()\\]|\\.)*)\)\s*Tj/g;
+    var m;
+    while ((m = tjRegex.exec(block)) !== null) {
+      var t = unescapePdfStr(m[1]).trim();
+      if (t) textPieces.push(t);
+    }
+
+    // TJ: [(text) 10 (text)] TJ
+    var tjArrRegex = /\[([\s\S]*?)\]\s*TJ/g;
+    while ((m = tjArrRegex.exec(block)) !== null) {
+      var inner = m[1];
+      var strRegex = /\(((?:[^()\\]|\\.)*)\)|(-?\d+(?:\.\d+)?)/g;
+      var s;
+      var line = '';
+      while ((s = strRegex.exec(inner)) !== null) {
+        if (s[1] !== undefined) {
+          line += unescapePdfStr(s[1]);
+        } else if (Number(s[2]) < -150) {
+          line += ' ';
+        }
+      }
+      if (line.trim()) textPieces.push(line.trim());
+    }
+  }
+  return textPieces.join('\n');
+}
+
+/**
+ * Pure JavaScript RFC 1951 Deflate / zlib Inflate implementation for PDF streams
+ */
+function inflatePdfStreamBytes(input) {
+  var inPos = 0;
+  if (input.length > 2 && (input[0] & 0x0F) === 8 && (((input[0] << 8) | input[1]) % 31 === 0)) {
+    inPos = 2; // Skip 2-byte zlib header
+  }
+
+  var bitBuf = 0;
+  var bitLen = 0;
+
+  function getBits(n) {
+    while (bitLen < n) {
+      if (inPos >= input.length) return -1;
+      bitBuf |= (input[inPos++] & 0xFF) << bitLen;
+      bitLen += 8;
+    }
+    var val = bitBuf & ((1 << n) - 1);
+    bitBuf >>>= n;
+    bitLen -= n;
+    return val;
+  }
+
+  function getBit() {
+    return getBits(1);
+  }
+
+  var output = [];
+  var isLast = 0;
+
+  function buildHuffmanTree(lengths) {
+    var maxLen = 0;
+    for (var ml = 0; ml < lengths.length; ml++) {
+      if (lengths[ml] > maxLen) maxLen = lengths[ml];
+    }
+    if (maxLen === 0) return null;
+    var blCount = new Array(maxLen + 1);
+    for (var bc = 0; bc <= maxLen; bc++) blCount[bc] = 0;
+    for (var l = 0; l < lengths.length; l++) {
+      if (lengths[l] > 0) blCount[lengths[l]]++;
+    }
+    var nextCode = new Array(maxLen + 1);
+    for (var nc = 0; nc <= maxLen; nc++) nextCode[nc] = 0;
+    var code = 0;
+    for (var bits = 1; bits <= maxLen; bits++) {
+      code = (code + blCount[bits - 1]) << 1;
+      nextCode[bits] = code;
+    }
+    var tree = {};
+    for (var i = 0; i < lengths.length; i++) {
+      var len = lengths[i];
+      if (len !== 0) {
+        var c = nextCode[len]++;
+        var rev = 0;
+        for (var b = 0; b < len; b++) {
+          rev = (rev << 1) | ((c >>> b) & 1);
+        }
+        tree[(len << 16) | rev] = i;
+      }
+    }
+    return { tree: tree, maxLen: maxLen };
+  }
+
+  function decodeSymbol(huff) {
+    var code = 0;
+    for (var len = 1; len <= huff.maxLen; len++) {
+      var bit = getBit();
+      if (bit === -1) return -1;
+      code |= (bit << (len - 1));
+      var key = (len << 16) | code;
+      if (huff.tree[key] !== undefined) {
+        return huff.tree[key];
+      }
+    }
+    return -1;
+  }
+
+  var fixedLitLens = new Array(288);
+  for (var i0 = 0; i0 <= 143; i0++) fixedLitLens[i0] = 8;
+  for (var i1 = 144; i1 <= 255; i1++) fixedLitLens[i1] = 9;
+  for (var i2 = 256; i2 <= 279; i2++) fixedLitLens[i2] = 7;
+  for (var i3 = 280; i3 <= 287; i3++) fixedLitLens[i3] = 8;
+  var fixedLitTree = buildHuffmanTree(fixedLitLens);
+
+  var fixedDistLens = new Array(32);
+  for (var fd = 0; fd < 32; fd++) fixedDistLens[fd] = 5;
+  var fixedDistTree = buildHuffmanTree(fixedDistLens);
+
+  var order = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+  var lengthBases = [3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258];
+  var lengthExtra = [0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
+  var distBases = [1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577];
+  var distExtra = [0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
+
+  while (!isLast) {
+    isLast = getBit();
+    var btype = getBits(2);
+    if (btype === 0) {
+      bitBuf = 0; bitLen = 0;
+      if (inPos + 4 > input.length) break;
+      var len = (input[inPos] & 0xFF) | ((input[inPos + 1] & 0xFF) << 8);
+      inPos += 4;
+      for (var u = 0; u < len && inPos < input.length; u++) {
+        output.push(input[inPos++] & 0xFF);
+      }
+    } else if (btype === 1 || btype === 2) {
+      var litTree, distTree;
+      if (btype === 1) {
+        litTree = fixedLitTree;
+        distTree = fixedDistTree;
+      } else {
+        var hlit = getBits(5) + 257;
+        var hdist = getBits(5) + 1;
+        var hclen = getBits(4) + 4;
+        var codeLengths = new Array(19);
+        for (var cl = 0; cl < 19; cl++) codeLengths[cl] = 0;
+        for (var o = 0; o < hclen; o++) codeLengths[order[o]] = getBits(3);
+        var codeTree = buildHuffmanTree(codeLengths);
+        var allLengths = [];
+        while (allLengths.length < hlit + hdist) {
+          var sym = decodeSymbol(codeTree);
+          if (sym < 16) {
+            allLengths.push(sym);
+          } else if (sym === 16) {
+            var repeat = getBits(2) + 3;
+            var prev = allLengths[allLengths.length - 1] || 0;
+            for (var r16 = 0; r16 < repeat; r16++) allLengths.push(prev);
+          } else if (sym === 17) {
+            var rep17 = getBits(3) + 3;
+            for (var r17 = 0; r17 < rep17; r17++) allLengths.push(0);
+          } else if (sym === 18) {
+            var rep18 = getBits(7) + 11;
+            for (var r18 = 0; r18 < rep18; r18++) allLengths.push(0);
+          } else {
+            break;
+          }
+        }
+        litTree = buildHuffmanTree(allLengths.slice(0, hlit));
+        distTree = buildHuffmanTree(allLengths.slice(hlit));
+      }
+
+      while (true) {
+        var dSym = decodeSymbol(litTree);
+        if (dSym === -1 || dSym === 256) break;
+        if (dSym < 256) {
+          output.push(dSym);
+        } else {
+          var lenIdx = dSym - 257;
+          var length = lengthBases[lenIdx];
+          var extraL = lengthExtra[lenIdx];
+          if (extraL > 0) length += getBits(extraL);
+
+          var distSym = decodeSymbol(distTree);
+          if (distSym === -1) break;
+          var dist = distBases[distSym];
+          var extraD = distExtra[distSym];
+          if (extraD > 0) dist += getBits(extraD);
+
+          var src = output.length - dist;
+          for (var k = 0; k < length; k++) {
+            output.push(output[src + k]);
+          }
+        }
+      }
+    } else {
+      break;
+    }
+  }
+
+  return output;
 }
 
 /**
@@ -6431,9 +7427,30 @@ function handleReserveAiQuota(params, session) {
     };
   }
 
-  // Material-First rule: Material must exist (minimum 15 characters)
+  // Material-First rule: Learning Material must exist in Drive learning resource or reference text (minimum 15 characters)
   var learningMaterial = getCNELearningMaterial(cneId);
-  if (!learningMaterial || learningMaterial.length < 15) {
+  var hasDriveResource = false;
+  try {
+    var refSheet = getSpreadsheet('CNE').getSheetByName('CNE_Reference');
+    if (refSheet && refSheet.getLastRow() > 1) {
+      var refData = refSheet.getDataRange().getValues();
+      var refColMap = getHeaderMap(refSheet);
+      var idCol = refColMap['cneid'] !== undefined ? refColMap['cneid'] : 0;
+      var driveCol = refColMap['drivefileid'];
+      for (var r = 1; r < refData.length; r++) {
+        if (String(refData[r][idCol] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+          if (driveCol !== undefined && String(refData[r][driveCol] || '').trim()) {
+            hasDriveResource = true;
+          }
+          break;
+        }
+      }
+    }
+  } catch (e) {
+    hasDriveResource = false;
+  }
+
+  if (!hasDriveResource && (!learningMaterial || learningMaterial.length < 15)) {
     return {
       success: false,
       errorCode: 'MATERIAL_REQUIRED',
@@ -6964,7 +7981,60 @@ function handleValidateAiQuotaReservation(params, session) {
     };
   }
 
-  var learningMaterial = getCNELearningMaterial(cneId);
+  var learningMaterial = '';
+  var authoritativeExtracted = null;
+  var hasLearningResource = false;
+  var authoritativeRpName = record.instructor || '';
+
+  // 1. Resolve from authoritative CNE_Reference
+  var dFileId = '';
+  var refTxt = '';
+
+  var refSheet = getSpreadsheet('CNE').getSheetByName('CNE_Reference');
+  if (refSheet && refSheet.getLastRow() > 1) {
+    var refData = refSheet.getDataRange().getValues();
+    var refColMap = getHeaderMap(refSheet);
+    var idCol = refColMap['cneid'] !== undefined ? refColMap['cneid'] : 0;
+    var driveCol = refColMap['drivefileid'];
+    var textCol = refColMap['referencetextclinicalguides'] !== undefined ? refColMap['referencetextclinicalguides'] : (refColMap['referencetext'] !== undefined ? refColMap['referencetext'] : 2);
+    var rpCol = refColMap['resourcepersonname'];
+
+    for (var r = 1; r < refData.length; r++) {
+      if (String(refData[r][idCol] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+        dFileId = driveCol !== undefined ? String(refData[r][driveCol] || '').trim() : '';
+        refTxt = textCol !== undefined ? String(refData[r][textCol] || '').trim() : '';
+        var rpTxt = rpCol !== undefined ? String(refData[r][rpCol] || '').trim() : '';
+        if (rpTxt) authoritativeRpName = rpTxt;
+        break;
+      }
+    }
+  }
+
+  // 2. If a CNE has an associated Learning Resource / Drive File ID:
+  if (dFileId) {
+    hasLearningResource = true;
+    // Attempt the existing Phase 2 extraction path.
+    // If lookup, authorization, file validation, or extraction fails, return the existing structured error.
+    // Do NOT silently substitute legacy/text material.
+    // Do NOT continue to AI generation using another content source.
+    var extResult = extractLearningResourceContentCore(cneId, session);
+    if (!extResult || !extResult.success) {
+      return extResult || {
+        success: false,
+        errorCode: 'CONTENT_EXTRACTION_FAILED',
+        message: 'Failed to extract content from authoritative learning resource.'
+      };
+    }
+    authoritativeExtracted = extResult.data;
+    learningMaterial = extResult.data.extractedText;
+    if (extResult.data.resourcePersonName) {
+      authoritativeRpName = extResult.data.resourcePersonName;
+    }
+  } else {
+    // Only use the existing legacy/text material path when NO uploaded Learning Resource is associated with that CNE
+    learningMaterial = refTxt || getCNELearningMaterial(cneId);
+  }
+
   if (!learningMaterial || learningMaterial.length < 15) {
     return {
       success: false,
@@ -7035,7 +8105,11 @@ function handleValidateAiQuotaReservation(params, session) {
         authorizedEmployeeId: session.employeeId,
         role: session.role,
         reservationToken: reservationToken,
-        remaining: 1
+        remaining: 1,
+        authoritativeLearningContent: authoritativeExtracted ? authoritativeExtracted.extractedText : (learningMaterial || ''),
+        resourcePersonName: authoritativeRpName || '',
+        hasLearningResource: hasLearningResource,
+        learningResourceMetadata: authoritativeExtracted || null
       }
     };
   } finally {
