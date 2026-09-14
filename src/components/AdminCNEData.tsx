@@ -746,7 +746,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
             className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
           >
             <PlusCircle className="w-4 h-4 text-emerald-400" />
-            <span>Record Unscheduled CNE</span>
+            <span>Unscheduled CNE</span>
           </button>
         </div>
       </div>
@@ -1007,7 +1007,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
       </div>
 
       {/* ========================================================= */}
-      {/* 1. Record Unscheduled CNE Modal                          */}
+      {/* 1. Unscheduled CNE Modal                                  */}
       {/* ========================================================= */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
@@ -1019,7 +1019,7 @@ export const AdminCNEData: React.FC<AdminCNEDataProps> = ({
                   <PlusCircle className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Record Unscheduled CNE</h3>
+                  <h3 className="text-base font-bold text-slate-900">Unscheduled CNE</h3>
                   <p className="text-xs text-slate-500">Records a CNE session conducted outside the web scheduling workflow.</p>
                 </div>
               </div>

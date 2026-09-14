@@ -242,6 +242,45 @@ function logAuditAction(action, employeeId, details, status) {
 }
 
 /**
+ * Batch Audit Logger (Writes all audit records in one setValues call)
+ */
+function logAuditActionsBatch(entries) {
+  if (!entries || !entries.length) return;
+  try {
+    var auditSheet = getOrCreateSheet('Audit Log');
+    var nowIso = new Date().toISOString();
+    var auditRows = [];
+    for (var a = 0; a < entries.length; a++) {
+      var entry = entries[a];
+      auditRows.push([
+        nowIso,
+        entry.action || '',
+        normalizeEmpId(entry.employeeId),
+        sanitizeCellInput(entry.details || ''),
+        entry.status || 'SUCCESS'
+      ]);
+    }
+    var startRow = auditSheet.getLastRow() + 1;
+    if (startRow === 1) {
+      var headers = ['Timestamp', 'Action', 'Employee ID', 'Details', 'Status'];
+      auditSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      startRow = 2;
+    }
+    var maxRows = auditSheet.getMaxRows();
+    if (startRow + auditRows.length - 1 > maxRows) {
+      auditSheet.insertRowsAfter(maxRows, (startRow + auditRows.length - 1) - maxRows);
+    }
+    var maxCols = auditSheet.getMaxColumns();
+    if (maxCols < 5) {
+      auditSheet.insertColumnsAfter(maxCols, 5 - maxCols);
+    }
+    auditSheet.getRange(startRow, 1, auditRows.length, 5).setValues(auditRows);
+  } catch (e) {
+    console.warn('Batch audit log write error: ' + e.message);
+  }
+}
+
+/**
  * Handle HTTP GET / POST Requests
  */
 function doGet(e) {
@@ -533,6 +572,7 @@ function handleRequest(e, method) {
         break;
 
       case 'addManualParticipant':
+      case 'addManualParticipants':
         output = handleAddManualParticipant(params, session);
         break;
 
@@ -3073,6 +3113,8 @@ function handleAddDepartmentalSchedule(params, session) {
     var colMap = getHeaderMap(sheet);
     var curYear = new Date().getFullYear();
     var createdIds = [];
+    var allRows = [];
+    var targetCols = Math.max(sheet.getLastColumn(), 16);
 
     for (var j = 0; j < validatedList.length; j++) {
       var item = validatedList[j];
@@ -3081,8 +3123,7 @@ function handleAddDepartmentalSchedule(params, session) {
       var cneId = 'CLS-' + curYear + '-D-' + timestampSuffix + randSuffix;
 
       var rowData = [];
-      var maxCol = Math.max(sheet.getLastColumn(), 16);
-      for (var col = 0; col < maxCol; col++) rowData.push('');
+      for (var col = 0; col < targetCols; col++) rowData.push('');
 
       var setCell = function(key, fallbackCol, val) {
         var idx = colMap[key] !== undefined ? colMap[key] : fallbackCol;
@@ -3112,8 +3153,36 @@ function handleAddDepartmentalSchedule(params, session) {
       setCell('proposedby', 14, session.employeeId || '');
       setCell('adminremarks', 15, item.adminRemarks);
 
-      sheet.appendRow(rowData);
+      allRows.push(rowData);
       createdIds.push(cneId);
+    }
+
+    if (allRows.length > 0) {
+      var numColumns = targetCols;
+      for (var r = 0; r < allRows.length; r++) {
+        if (allRows[r].length > numColumns) {
+          numColumns = allRows[r].length;
+        }
+      }
+      for (var r = 0; r < allRows.length; r++) {
+        while (allRows[r].length < numColumns) {
+          allRows[r].push('');
+        }
+      }
+
+      var startRow = sheet.getLastRow() + 1;
+      var numRows = allRows.length;
+
+      var maxRows = sheet.getMaxRows();
+      if (startRow + numRows - 1 > maxRows) {
+        sheet.insertRowsAfter(maxRows, (startRow + numRows - 1) - maxRows);
+      }
+      var maxCols = sheet.getMaxColumns();
+      if (numColumns > maxCols) {
+        sheet.insertColumnsAfter(maxCols, numColumns - maxCols);
+      }
+
+      sheet.getRange(startRow, 1, numRows, numColumns).setValues(allRows);
     }
 
     logAuditAction('ADD_DEPARTMENTAL_SCHEDULE', session.employeeId, 'Scheduled ' + createdIds.length + ' departmental CNE(s): ' + createdIds.join(', '), 'SUCCESS');
@@ -5797,6 +5866,7 @@ function handleCommitAiQuota(params, session) {
     // 1. RE-CHECK AUTHORITATIVE GENERATION STATE
     // Idempotency: If this token was already committed, return success immediately
     if (rowIndex > 0 && lastCommittedToken === reservationToken) {
+      invalidateCNEQuestionsCache(cneId);
       return {
         success: true,
         alreadyCommitted: true,
@@ -6045,6 +6115,9 @@ function handleCommitAiQuota(params, session) {
 
     logAuditAction('AI_QUESTION_GENERATION_SUCCESS', session.employeeId, 'Generated, verified, and saved exactly 5 clinical MCQs for CNE: ' + cneId, 'SUCCESS');
     
+    // Invalidate CNE questions read cache upon successful AI question commit
+    invalidateCNEQuestionsCache(cneId);
+
     return {
       success: true,
       message: 'AI question generation completed and saved successfully (One-time generation marked USED).',
@@ -6241,6 +6314,94 @@ function handleValidateAiQuotaReservation(params, session) {
   } finally {
     lock.releaseLock();
   }
+}
+
+/**
+ * Normalize CNE ID consistently across operations
+ */
+function normalizeCneId(cneId) {
+  return String(cneId || '').trim().toUpperCase();
+}
+
+/**
+ * Invalidate CNE Questions Cache
+ * Called whenever questions for a CNE are mutated (saved, edited, added, replaced, deactivated, finalized, or committed by AI).
+ */
+function invalidateCNEQuestionsCache(cneId) {
+  var normCneId = normalizeCneId(cneId);
+  if (!normCneId) return;
+  try {
+    var cacheKey = 'cne_questions_' + normCneId;
+    CacheService.getScriptCache().remove(cacheKey);
+  } catch (e) {
+    console.warn('Failed to invalidate CNE questions cache: ' + e.message);
+  }
+}
+
+/**
+ * Read and Cache Sanitized Finalized Post-Test Questions (Short-lived 60s CacheService)
+ * STRICT SECURITY:
+ * - Cache key: 'cne_questions_' + normalizeCneId(cneId)
+ * - Cache payload: Sanitized question array ONLY (id, question, options A/B/C/D).
+ * - NEVER contains correct answers, answer keys, explanations, or authoritative sources.
+ * - Best-effort: On any cache read/parse/write error, gracefully falls back to Google Sheets.
+ */
+function getCachedSanitizedQuestions(cneId) {
+  var normCneId = normalizeCneId(cneId);
+  if (!normCneId) return [];
+
+  var cacheKey = 'cne_questions_' + normCneId;
+  try {
+    var cached = CacheService.getScriptCache().get(cacheKey);
+    if (cached) {
+      var parsed = JSON.parse(cached);
+      if (Array.isArray(parsed) && parsed.length >= 5) {
+        return parsed;
+      }
+    }
+  } catch (cacheReadErr) {
+    console.warn('CacheService read error for ' + cacheKey + ': ' + (cacheReadErr.message || cacheReadErr));
+  }
+
+  // Fallback to reading authoritative Google Sheet
+  var qSheet = getQuestionsSheet();
+  if (!qSheet || qSheet.getLastRow() <= 1) return [];
+
+  var qData = qSheet.getDataRange().getValues();
+  var sanitized = [];
+
+  for (var r = 1; r < qData.length; r++) {
+    var qCne = String(qData[r][0] || '').trim().toUpperCase();
+    var isFin = String(qData[r][9] || 'NO').toUpperCase() === 'YES';
+    var qStatus = String(qData[r][14] || 'ACTIVE').trim().toUpperCase();
+    if (qCne === normCneId && isFin && qStatus !== 'INACTIVE' && qStatus !== 'REPLACED') {
+      sanitized.push({
+        id: String(qData[r][1] || ''),
+        question: String(qData[r][2] || ''),
+        options: {
+          A: String(qData[r][3] || ''),
+          B: String(qData[r][4] || ''),
+          C: String(qData[r][5] || ''),
+          D: String(qData[r][6] || '')
+        }
+        // STRICT SECURITY: Correct Option, Explanation, and Authoritative Source are NEVER included in sanitized payload!
+      });
+    }
+  }
+
+  // Only cache if valid minimum question count (>= 5) and safe size (< 90KB)
+  if (sanitized.length >= 5) {
+    try {
+      var payloadStr = JSON.stringify(sanitized);
+      if (payloadStr.length < 90000) {
+        CacheService.getScriptCache().put(cacheKey, payloadStr, 60);
+      }
+    } catch (cacheWriteErr) {
+      console.warn('CacheService write error for ' + cacheKey + ': ' + (cacheWriteErr.message || cacheWriteErr));
+    }
+  }
+
+  return sanitized;
 }
 
 /**
@@ -6526,6 +6687,9 @@ function handleSaveCNEQuestions(params, session) {
 
     logAuditAction('SAVE_QUESTIONS', session.employeeId, 'Saved ' + validatedList.length + ' questions (' + activeCount + ' active, ' + finalizedCount + ' finalized) for CNE: ' + cneId, 'SUCCESS');
 
+    // Invalidate CNE questions read cache upon successful mutation
+    invalidateCNEQuestionsCache(cneId);
+
     return {
       success: true,
       message: 'Question set validated and saved successfully.',
@@ -6704,28 +6868,8 @@ function handleResolveQRToken(params) {
   
   var isLocked = isCNEQuestionsLocked(matchedCneId);
   
-  // Read finalized questions for public participant view (NO answers, NO explanations)
-  var qSheet = getQuestionsSheet();
-  var qData = qSheet.getDataRange().getValues();
-  var sanitizedQuestions = [];
-  
-  for (var r = 1; r < qData.length; r++) {
-    var qCne = String(qData[r][0] || '').trim().toUpperCase();
-    var isFin = String(qData[r][9] || 'NO').toUpperCase() === 'YES';
-    var qStatus = String(qData[r][14] || 'ACTIVE').trim().toUpperCase();
-    if (qCne === matchedCneId.toUpperCase() && isFin && qStatus !== 'INACTIVE' && qStatus !== 'REPLACED') {
-      sanitizedQuestions.push({
-        id: String(qData[r][1] || ''),
-        question: String(qData[r][2] || ''),
-        options: {
-          A: String(qData[r][3] || ''),
-          B: String(qData[r][4] || ''),
-          C: String(qData[r][5] || ''),
-          D: String(qData[r][6] || '')
-        }
-      });
-    }
-  }
+  // Read finalized questions for public participant view (with 60s CacheService cache; NO answers, NO explanations)
+  var sanitizedQuestions = getCachedSanitizedQuestions(matchedCneId);
   
   // Check already submitted if employeeId provided
   var alreadySubmitted = false;
@@ -6853,29 +6997,8 @@ function handleGetPostTestQuestions(params, session) {
     }
   }
   
-  // Read finalized questions from CNE Post Test Questions
-  var qSheet = getQuestionsSheet();
-  var qData = qSheet.getDataRange().getValues();
-  var sanitizedQuestions = [];
-  
-  for (var r = 1; r < qData.length; r++) {
-    var qCne = String(qData[r][0] || '').trim().toUpperCase();
-    var isFin = String(qData[r][9] || 'NO').toUpperCase() === 'YES';
-    var qStatus = String(qData[r][14] || 'ACTIVE').trim().toUpperCase();
-    if (qCne === cneId.toUpperCase() && isFin && qStatus !== 'INACTIVE' && qStatus !== 'REPLACED') {
-      sanitizedQuestions.push({
-        id: String(qData[r][1] || ''),
-        question: String(qData[r][2] || ''),
-        options: {
-          A: String(qData[r][3] || ''),
-          B: String(qData[r][4] || ''),
-          C: String(qData[r][5] || ''),
-          D: String(qData[r][6] || '')
-        }
-        // NOTE: Correct Answer and Explanation are STRICTLY NOT sent before submission!
-      });
-    }
-  }
+  // Read finalized questions from CNE Post Test Questions (with 60s CacheService cache; NO answers, NO explanations)
+  var sanitizedQuestions = getCachedSanitizedQuestions(cneId);
   
   if (sanitizedQuestions.length < 5) {
     return {
@@ -7096,9 +7219,10 @@ function handleSubmitPostTest(params, session) {
 }
 
 /**
- * Add Manual Participant (Admin or Area Incharge)
+ * Add Manual Participant(s) (Admin, Area Incharge, or Authorized Resource Person)
  * Manual attendees receive Participant Source = MANUAL.
  * They have no score and are NOT treated as failed or assigned 0%.
+ * Supports both single participant and batch participant addition with ONE ScriptLock and ONE setValues write.
  */
 function handleAddManualParticipant(params, session) {
   var cneId = sanitizeCellInput(params.cneId);
@@ -7109,69 +7233,198 @@ function handleAddManualParticipant(params, session) {
   
   var authErr = checkCNEActionAuthorized(session, record);
   if (authErr) return authErr;
-  
-  var empId = normalizeEmpId(params.employeeId);
-  var manualName = sanitizeCellInput(params.name || '');
-  var designation = sanitizeCellInput(params.designation || 'Staff Nurse');
-  var department = sanitizeCellInput(params.department || record.area);
-  var remarks = sanitizeCellInput(params.remarks || 'Manual Attendance Recorded');
-  
-  if (!empId && !manualName) {
+
+  var submittedList = [];
+  if (params.participants && Array.isArray(params.participants)) {
+    submittedList = params.participants;
+    if (submittedList.length === 0) {
+      return { success: false, message: 'At least one participant is required.' };
+    }
+  } else if (params.employeeId || params.name) {
+    submittedList = [{
+      employeeId: params.employeeId,
+      name: params.name,
+      designation: params.designation,
+      department: params.department,
+      remarks: params.remarks
+    }];
+  } else {
     return { success: false, message: 'Employee ID or Participant Name is required.' };
   }
-  
-  if (empId) {
-    var officer = findOfficerById(empId);
-    if (officer) {
+
+  var validatedList = [];
+  var seenBatchEmpIds = {};
+  var seenBatchNames = {};
+
+  for (var i = 0; i < submittedList.length; i++) {
+    var rawItem = submittedList[i];
+    if (!rawItem || typeof rawItem !== 'object') {
+      return { success: false, message: 'Invalid participant entry at position ' + (i + 1) + '.' };
+    }
+
+    var empId = normalizeEmpId(rawItem.employeeId);
+    var manualName = sanitizeCellInput(rawItem.name || '');
+    var designation = sanitizeCellInput(rawItem.designation || 'Staff Nurse');
+    var department = sanitizeCellInput(rawItem.department || record.area);
+    var remarks = sanitizeCellInput(rawItem.remarks || 'Manual Attendance Recorded');
+
+    if (!empId && !manualName) {
+      return { success: false, message: 'Employee ID or Participant Name is required for participant #' + (i + 1) + '.' };
+    }
+
+    if (empId) {
+      var officer = findOfficerById(empId);
+      if (!officer) {
+        return {
+          success: false,
+          errorCode: 'INVALID_EMPLOYEE_ID',
+          message: 'Employee ID ' + empId + ' not found in official staff roster.'
+        };
+      }
       manualName = officer.name;
       designation = officer.designation || designation;
       department = officer.department || department;
+
+      if (seenBatchEmpIds[empId]) {
+        return {
+          success: false,
+          errorCode: 'DUPLICATE_PARTICIPANT',
+          message: 'Employee ID ' + empId + ' appears more than once in the submitted list.'
+        };
+      }
+      seenBatchEmpIds[empId] = true;
+    } else if (manualName) {
+      var lowerName = manualName.toLowerCase();
+      if (seenBatchNames[lowerName]) {
+        return {
+          success: false,
+          errorCode: 'DUPLICATE_PARTICIPANT',
+          message: 'Participant ' + manualName + ' appears more than once in the submitted list.'
+        };
+      }
+      seenBatchNames[lowerName] = true;
     }
+
+    validatedList.push({
+      empId: empId,
+      manualName: manualName,
+      designation: designation,
+      department: department,
+      remarks: remarks
+    });
   }
-  
+
   var lock = LockService.getScriptLock();
   try {
-    lock.waitLock(10000);
+    lock.waitLock(15000);
   } catch (e) {
     return { success: false, message: 'Server is busy. Please try again.' };
   }
-  
+
   try {
     var partSheet = getResponsesSheet();
     var pData = partSheet.getDataRange().getValues();
+
+    var existingEmpIds = {};
+    var existingNames = {};
     for (var p = 1; p < pData.length; p++) {
       if (String(pData[p][1] || '').trim().toUpperCase() === cneId.toUpperCase()) {
-        if (empId && normalizeEmpId(pData[p][2]) === empId) {
-          return { success: false, errorCode: 'DUPLICATE_PARTICIPANT', message: 'Employee ID ' + empId + ' is already recorded as a participant for this CNE.' };
+        var existingEmp = normalizeEmpId(pData[p][2]);
+        if (existingEmp) {
+          existingEmpIds[existingEmp] = true;
         }
-        if (!empId && String(pData[p][3] || '').trim().toLowerCase() === manualName.toLowerCase()) {
-          return { success: false, errorCode: 'DUPLICATE_PARTICIPANT', message: 'Participant ' + manualName + ' is already recorded for this CNE.' };
+        var existingNm = String(pData[p][3] || '').trim().toLowerCase();
+        if (existingNm) {
+          existingNames[existingNm] = true;
         }
       }
     }
-    
-    var participantId = 'MAN-' + Date.now();
+
+    for (var v = 0; v < validatedList.length; v++) {
+      var vItem = validatedList[v];
+      if (vItem.empId && existingEmpIds[vItem.empId]) {
+        return {
+          success: false,
+          errorCode: 'DUPLICATE_PARTICIPANT',
+          message: 'Employee ID ' + vItem.empId + ' is already recorded as a participant for this CNE.'
+        };
+      }
+      if (!vItem.empId && existingNames[vItem.manualName.toLowerCase()]) {
+        return {
+          success: false,
+          errorCode: 'DUPLICATE_PARTICIPANT',
+          message: 'Participant ' + vItem.manualName + ' is already recorded for this CNE.'
+        };
+      }
+    }
+
+    var baseTime = Date.now();
     var now = new Date().toISOString();
-    
-    partSheet.appendRow([
-      participantId,
-      cneId,
-      empId,
-      manualName,
-      designation,
-      department,
-      '',
-      '',
-      '',
-      'MANUAL',
-      now,
-      '',
-      'ATTENDED',
-      remarks
-    ]);
-    
-    logAuditAction('ADD_MANUAL_PARTICIPANT', session.employeeId, 'Added participant ' + (empId || manualName) + ' to CNE: ' + cneId, 'SUCCESS');
-    return { success: true, message: 'Participant added successfully.' };
+    var allRows = [];
+    var auditEntries = [];
+
+    for (var k = 0; k < validatedList.length; k++) {
+      var item = validatedList[k];
+      var participantId = validatedList.length === 1
+        ? ('MAN-' + baseTime)
+        : ('MAN-' + baseTime + '-' + (k + 1));
+
+      allRows.push([
+        participantId,
+        cneId,
+        item.empId,
+        item.manualName,
+        item.designation,
+        item.department,
+        '',
+        '',
+        '',
+        'MANUAL',
+        now,
+        '',
+        'ATTENDED',
+        item.remarks
+      ]);
+
+      auditEntries.push({
+        action: 'ADD_MANUAL_PARTICIPANT',
+        employeeId: session.employeeId,
+        details: 'Added participant ' + (item.empId || item.manualName) + ' to CNE: ' + cneId,
+        status: 'SUCCESS'
+      });
+    }
+
+    if (allRows.length > 0) {
+      var startRow = partSheet.getLastRow() + 1;
+      var numRows = allRows.length;
+      var numColumns = 14;
+
+      if (startRow === 1) {
+        var defaultHeaders = ['Response ID', 'CNE ID', 'Employee ID', 'Employee Name', 'Designation', 'Department', 'Score', 'Total Questions', 'Percentage', 'Source', 'Submitted At', 'Answers JSON', 'Status', 'Remarks'];
+        partSheet.getRange(1, 1, 1, defaultHeaders.length).setValues([defaultHeaders]);
+        startRow = 2;
+      }
+
+      var maxRows = partSheet.getMaxRows();
+      if (startRow + numRows - 1 > maxRows) {
+        partSheet.insertRowsAfter(maxRows, (startRow + numRows - 1) - maxRows);
+      }
+      var maxCols = partSheet.getMaxColumns();
+      if (numColumns > maxCols) {
+        partSheet.insertColumnsAfter(maxCols, numColumns - maxCols);
+      }
+
+      partSheet.getRange(startRow, 1, numRows, numColumns).setValues(allRows);
+    }
+
+    logAuditActionsBatch(auditEntries);
+
+    return {
+      success: true,
+      message: allRows.length === 1 ? 'Participant added successfully.' : 'Successfully recorded ' + allRows.length + ' participants.',
+      count: allRows.length,
+      addedCount: allRows.length
+    };
   } finally {
     lock.releaseLock();
   }

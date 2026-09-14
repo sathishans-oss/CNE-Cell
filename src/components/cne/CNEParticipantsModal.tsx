@@ -198,62 +198,54 @@ export const CNEParticipantsModal: React.FC<CNEParticipantsModalProps> = ({
 
     submittingRef.current = true;
     setIsSubmitting(true);
-    let addedCount = 0;
-    let failedCount = 0;
 
     try {
-      // 1. Add internal staff
+      const participantsToSubmit: Array<{
+        employeeId?: string;
+        name?: string;
+        designation?: string;
+        department?: string;
+        remarks?: string;
+      }> = [];
+
+      // 1. Internal staff
       for (const empId of selectedStaffIds) {
         const off = effectiveOfficers.find((o) => o.employeeId === empId);
-        try {
-          const res = await ApiService.addManualParticipant({
-            cneId,
-            employeeId: empId,
-            name: off ? off.name : empId,
-            designation: off?.designation || 'Staff Nurse',
-            department: off?.department || cne.area || '',
-            remarks: 'In-person attendee'
-          });
-          if (res.success) {
-            addedCount++;
-          } else {
-            failedCount++;
-          }
-        } catch {
-          failedCount++;
-        }
+        participantsToSubmit.push({
+          employeeId: empId,
+          name: off ? off.name : empId,
+          designation: off?.designation || 'Staff Nurse',
+          department: off?.department || cne.area || '',
+          remarks: 'In-person attendee'
+        });
       }
 
-      // 2. Add external participants
+      // 2. External participants
       for (const extName of externalStaffList) {
-        try {
-          const res = await ApiService.addManualParticipant({
-            cneId,
-            name: extName,
-            designation: 'Guest / External Participant',
-            department: cne.area || '',
-            remarks: 'External attendee'
-          });
-          if (res.success) {
-            addedCount++;
-          } else {
-            failedCount++;
-          }
-        } catch {
-          failedCount++;
-        }
+        participantsToSubmit.push({
+          name: extName,
+          designation: 'Guest / External Participant',
+          department: cne.area || '',
+          remarks: 'External attendee'
+        });
       }
 
-      if (addedCount > 0) {
-        success(`Successfully recorded ${addedCount} participant${addedCount > 1 ? 's' : ''}.`);
+      const res = await ApiService.addManualParticipants({
+        cneId,
+        participants: participantsToSubmit
+      });
+
+      if (res.success) {
+        const count = res.data?.count || participantsToSubmit.length;
+        success(`Successfully recorded ${count} participant${count > 1 ? 's' : ''}.`);
         setSelectedStaffIds([]);
         setExternalStaffList([]);
         setExternalStaffInput('');
         setIsAddingManual(false);
         await loadParticipants();
         if (onUpdated) onUpdated();
-      } else if (failedCount > 0) {
-        error('Failed to record participants. Please verify if they were already recorded.');
+      } else {
+        error(res.message || 'Failed to record participants. Please verify if they were already recorded.');
       }
     } catch (e: any) {
       error(e?.message || 'Error occurred while saving attendance.');

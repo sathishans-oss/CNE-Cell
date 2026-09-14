@@ -919,6 +919,19 @@ export class ApiService {
     return this.executeAction('addManualParticipant', params);
   }
 
+  static async addManualParticipants(params: {
+    cneId: string;
+    participants: Array<{
+      employeeId?: string;
+      name?: string;
+      designation?: string;
+      department?: string;
+      remarks?: string;
+    }>;
+  }): Promise<ApiResponse<{ count?: number; addedCount?: number }>> {
+    return this.executeAction<{ count?: number; addedCount?: number }>('addManualParticipant', params);
+  }
+
   static async getCNEParticipants(cneId: string): Promise<ApiResponse<CNEParticipantsSummary>> {
     return this.executeAction<CNEParticipantsSummary>('getCNEParticipants', { cneId });
   }
