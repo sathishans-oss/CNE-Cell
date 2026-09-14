@@ -17,6 +17,7 @@ import {
   CoordinatorDeskInfo,
   CNEQuestion,
   CNEReferenceMaterial,
+  CNELearningResourceMetadata,
   CNEAiQuotaInfo,
   CNEParticipant,
   CNEParticipantsSummary,
@@ -843,6 +844,29 @@ export class ApiService {
 
   static async getReferenceMaterial(cneId: string): Promise<ApiResponse<CNEReferenceMaterial>> {
     return this.executeAction<CNEReferenceMaterial>('getReferenceMaterial', { cneId });
+  }
+
+  /**
+   * Upload CNE Learning Resource File (PDF, DOCX, PPT, PPTX)
+   */
+  static async uploadLearningResource(params: {
+    cneId: string;
+    base64Data: string;
+    fileName: string;
+    fileType?: string;
+    extension?: string;
+    resourcePersonName?: string;
+    unifiedContent?: string;
+    referenceText?: string;
+  }): Promise<ApiResponse<CNELearningResourceMetadata>> {
+    return this.executeAction<CNELearningResourceMetadata>('uploadLearningResource', params);
+  }
+
+  /**
+   * Retrieve metadata for uploaded CNE learning resource
+   */
+  static async getLearningResource(cneId: string): Promise<ApiResponse<CNELearningResourceMetadata>> {
+    return this.executeAction<CNELearningResourceMetadata>('getLearningResource', { cneId });
   }
 
   /**

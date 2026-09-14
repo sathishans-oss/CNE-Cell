@@ -188,6 +188,26 @@ export interface CNEReferenceMaterial {
   updatedAt?: string;
   linkUrl?: string;
   syllabus?: string;
+  driveFileId?: string;
+  fileName?: string;
+  fileType?: string;
+  resourcePersonName?: string;
+  fileSize?: number;
+  hasFile?: boolean;
+}
+
+export interface CNELearningResourceMetadata {
+  cneId: string;
+  topic: string;
+  driveFileId: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  resourcePersonName: string;
+  uploadedAt?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+  hasFile?: boolean;
 }
 
 export interface CNEAiQuotaInfo {
