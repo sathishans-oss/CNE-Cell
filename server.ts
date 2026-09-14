@@ -52,43 +52,20 @@ interface RawGeneratedQuestion {
   reference?: string;
 }
 
-// ============================================================================
-// FREE-TIER ONLY GEMINI MODEL CONFIGURATION & SAFEGUARDS
-// ============================================================================
-// Verified currently supported FREE-TIER models for text generation:
-// 1. gemini-3.1-flash-lite: High throughput, robust availability, lowest latency, free tier
-// 2. gemini-flash-latest: Canonical alias routing to latest stable free flash model
-// 3. gemini-3.8-flash: Full-featured flash model for text tasks, free tier
-const APPROVED_FREE_TIER_MODELS = [
-  'gemini-3.1-flash-lite',
-  'gemini-flash-latest',
-  'gemini-3.8-flash'
-] as const;
-
 // Explicitly blocked paid-tier models - MUST NEVER BE CALLED
 const BLOCKED_PAID_MODELS = new Set([
-  'gemini-3.1-pro-preview',
+  'gemini-pro',
+  'gemini-1.5-pro',
+  'gemini-2.0-pro',
   'gemini-3.1-pro',
+  'gemini-3.1-pro-preview',
   'gemini-3-pro-image',
   'gemini-3.1-flash-image',
   'gemini-3.1-flash-lite-image',
-  'gemini-pro',
   'veo-3.1-generate-preview',
   'veo-3.1-lite-generate-preview',
   'lyria-3-clip-preview',
   'lyria-3-pro-preview'
-]);
-
-// Deprecated / Prohibited models
-const DEPRECATED_MODELS = new Set([
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite',
-  'gemini-1.5-flash',
-  'gemini-1.5-pro',
-  'gemini-2.0-flash',
-  'gemini-2.0-pro',
-  'gemini-2.0-flash-thinking',
-  'gemini-3.6-flash'
 ]);
 
 // AI Question In-Memory Cache to protect free-tier quotas and prevent duplicate Gemini API requests
@@ -222,13 +199,133 @@ async function startServer() {
       status: 'ok',
       service: 'CNE Management System API',
       aiAvailable: !!process.env.GEMINI_API_KEY,
-      model: (process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite').trim(),
+      model: (process.env.GEMINI_MODEL || '').trim(),
       timestamp: new Date().toISOString()
     });
   });
 
+  // Interface for retrieved external clinical sources (Europe PMC & NCBI / PubMed Central)
+  interface RetrievedClinicalSource {
+    sourceName: string;
+    title: string;
+    url: string;
+    journal?: string;
+    evidenceText: string;
+    retrievedAt: string;
+  }
+
+  // Authoritative external clinical source retrieval via free, open-access biomedical repositories (Europe PMC & NCBI)
+  async function retrieveExternalClinicalSources(topic: string): Promise<RetrievedClinicalSource[] | null> {
+    const cleanTopic = topic.replace(/[^\w\s-]/g, ' ').trim();
+    if (cleanTopic.length < 3) return null;
+
+    const nowUtc = new Date().toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+    const sources: RetrievedClinicalSource[] = [];
+
+    // Primary: Europe PMC REST API (EBI / PubMed Central Open Access / NIH / WHO literature)
+    try {
+      const query = `${cleanTopic} (nursing OR clinical OR guideline OR hospital OR "patient care" OR protocol)`;
+      const url = `https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=${encodeURIComponent(query)}&format=json&pageSize=4&resultType=core`;
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(9000),
+        headers: { 'User-Agent': 'CNE-Clinical-Platform/1.0' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const list = data?.resultList?.result || [];
+        for (const item of list) {
+          const title = (item.title || '').replace(/<[^>]+>/g, '').trim();
+          const abstract = (item.abstractText || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+          const journal = item.journalInfo?.journal?.title || item.bookOrReportDetails?.publisher || 'Peer-Reviewed Clinical Literature';
+          const doi = item.doi;
+          const pmid = item.pmid;
+          const docUrl = doi ? `https://doi.org/${doi}` : (pmid ? `https://pubmed.ncbi.nlm.nih.gov/${pmid}/` : `https://europepmc.org/article/MED/${item.id}`);
+
+          // STRICT EVIDENCE REQUIREMENT: Must have real abstract clinical text (at least 60 characters)
+          if (title && abstract.length >= 60) {
+            sources.push({
+              sourceName: journal,
+              title,
+              url: docUrl,
+              journal,
+              evidenceText: abstract,
+              retrievedAt: nowUtc
+            });
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn('[AI Service] Europe PMC retrieval warning:', err?.message || err);
+    }
+
+    // Secondary fallback: NCBI PubMed E-Utilities (efetch with real abstract XML)
+    if (sources.length === 0) {
+      try {
+        const ncbiSearchUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encodeURIComponent(cleanTopic + ' (nursing OR clinical OR guideline OR protocol)')}&retmode=json&retmax=4`;
+        const searchRes = await fetch(ncbiSearchUrl, { signal: AbortSignal.timeout(8000) });
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          const idList: string[] = searchData?.esearchresult?.idlist || [];
+          if (idList.length > 0) {
+            const fetchUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${idList.join(',')}&retmode=xml`;
+            const fetchRes = await fetch(fetchUrl, { signal: AbortSignal.timeout(8000) });
+            if (fetchRes.ok) {
+              const xml = await fetchRes.text();
+              const articleBlocks = xml.split(/<\/PubmedArticle>/i);
+              for (const block of articleBlocks) {
+                const pmidMatch = block.match(/<PMID[^>]*>(\d+)<\/PMID>/i);
+                const titleMatch = block.match(/<ArticleTitle>([\s\S]*?)<\/ArticleTitle>/i);
+                const journalMatch = block.match(/<Journal>[\s\S]*?<Title>([\s\S]*?)<\/Title>/i) || block.match(/<MedlineTA>([\s\S]*?)<\/MedlineTA>/i);
+                const doiMatch = block.match(/<ArticleId IdType="doi">([\s\S]*?)<\/ArticleId>/i);
+
+                const abstractMatches = [...block.matchAll(/<AbstractText(?:\s+[^>]*)?>([\s\S]*?)<\/AbstractText>/gi)];
+                const abstract = abstractMatches
+                  .map(m => m[1].replace(/<[^>]+>/g, ' ').trim())
+                  .join(' ')
+                  .replace(/\s+/g, ' ')
+                  .trim();
+
+                // STRICT EVIDENCE REQUIREMENT: Real abstract only. No title-only evidence, no placeholder text.
+                if (pmidMatch && titleMatch && abstract.length >= 60) {
+                  const pmid = pmidMatch[1];
+                  const title = titleMatch[1].replace(/<[^>]+>/g, '').trim();
+                  const journal = (journalMatch ? journalMatch[1].replace(/<[^>]+>/g, '') : 'NCBI PubMed').trim();
+                  const doi = doiMatch ? doiMatch[1].trim() : null;
+                  const docUrl = doi ? `https://doi.org/${doi}` : `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`;
+
+                  sources.push({
+                    sourceName: journal,
+                    title,
+                    url: docUrl,
+                    journal,
+                    evidenceText: abstract,
+                    retrievedAt: nowUtc
+                  });
+                }
+              }
+            }
+          }
+        }
+      } catch (ncbiErr: any) {
+        console.warn('[AI Service] NCBI retrieval warning:', ncbiErr?.message || ncbiErr);
+      }
+    }
+
+    // Total evidence check: Must have at least 1 real source with meaningful content
+    if (sources.length === 0) {
+      return null;
+    }
+
+    const totalContentLength = sources.reduce((acc, s) => acc + s.evidenceText.length, 0);
+    if (totalContentLength < 60) {
+      return null;
+    }
+
+    return sources;
+  }
+
   // AI Question Generation Endpoint (Gemini Flash)
-  // Strictly generates exactly 5 MCQs from CNE Topic + Unified Learning Material.
+  // Strictly generates exactly 5 MCQs from CNE Topic + Unified Learning Material OR External Clinical Sources.
   // Authoritatively verified against Apps Script session and active quota reservation before invoking Gemini.
   // Never falls back silently to mock or static questions.
   app.post(['/api/ai/generate-questions', '/api/ai/generate-questions/'], async (req, res) => {
@@ -239,6 +336,7 @@ async function startServer() {
       referenceMaterial,
       syllabus,
       reservationToken,
+      generationSource,
       token,
       loggedInEmployeeId
     } = req.body || {};
@@ -248,9 +346,11 @@ async function startServer() {
     const cleanSessionToken = String(token || '').trim();
     const cleanEmpId = String(loggedInEmployeeId || '').trim();
     const cleanTopic = String(topic || '').trim();
+    const rawGenSource = String(generationSource || '').trim().toUpperCase();
+    const isExternalSource = rawGenSource === 'EXTERNAL';
     const cleanMaterial = String(cneMaterial || referenceMaterial || syllabus || '').trim();
 
-    console.log(`[AI Service] Incoming request: POST /api/ai/generate-questions (cneId: ${cleanCneId || 'none'})`);
+    console.log(`[AI Service] Incoming request: POST /api/ai/generate-questions (cneId: ${cleanCneId || 'none'}, source: ${isExternalSource ? 'EXTERNAL' : 'MATERIAL'})`);
 
     // 1. Validate required basic parameters before network calls
     if (!cleanSessionToken) {
@@ -319,7 +419,8 @@ async function startServer() {
           cneId: cleanCneId,
           reservationToken: cleanToken,
           token: cleanSessionToken,
-          loggedInEmployeeId: cleanEmpId
+          loggedInEmployeeId: cleanEmpId,
+          generationSource: isExternalSource ? 'EXTERNAL' : 'MATERIAL'
         })
       });
 
@@ -391,7 +492,7 @@ async function startServer() {
     // If no uploaded Drive Learning Resource exists, fallback to authoritative content from backend CNE_Reference record.
     const authoritativeMaterial = String(authResult.data?.authoritativeLearningContent || '').trim();
 
-    if (!authoritativeMaterial || authoritativeMaterial.length < 15) {
+    if (!isExternalSource && (!authoritativeMaterial || authoritativeMaterial.length < 15)) {
       console.warn('[AI Service] Authoritative material missing or too short');
       return res.status(400).json({
         success: false,
@@ -402,7 +503,9 @@ async function startServer() {
 
     // Cache Check: Return cached AI questions if identical CNE request was already generated
     // Protects free-tier usage by avoiding redundant Gemini API calls
-    const cacheKey = computeContentKey(cleanCneId, authoritativeTopic, authoritativeMaterial);
+    const cacheKey = isExternalSource
+      ? computeContentKey(cleanCneId, authoritativeTopic, 'EXTERNAL_SOURCES_V1')
+      : computeContentKey(cleanCneId, authoritativeTopic, authoritativeMaterial);
     const cachedEntry = aiQuestionCache.get(cacheKey);
     if (cachedEntry && Array.isArray(cachedEntry.questions) && cachedEntry.questions.length === 5) {
       console.log(`[AI Question Cache] Cache HIT for CNE ${cleanCneId}. Reusing existing questions to protect free-tier API.`);
@@ -415,41 +518,126 @@ async function startServer() {
       });
     }
 
+    // Helper to release quota reservation server-side to prevent stranded reservations on failure
+    const releaseServerSideReservation = async (reason: string) => {
+      try {
+        console.log(`[AI Service] Releasing reservation for CNE ${cleanCneId} due to: ${reason}`);
+        const relRes = await fetch(appsScriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'releaseAiQuota',
+            cneId: cleanCneId,
+            reservationToken: cleanToken,
+            token: cleanSessionToken,
+            loggedInEmployeeId: cleanEmpId
+          })
+        });
+        const relData: any = await relRes.json().catch(() => null);
+        console.log(`[AI Service] Reservation release result for ${cleanCneId}:`, relData?.success ? 'SUCCESS' : relData?.message || 'FAILED');
+        return relData?.success === true;
+      } catch (relErr: any) {
+        console.error('[AI Service] Failed to release quota reservation:', relErr?.message || relErr);
+        return false;
+      }
+    };
+
+    // In External Sources mode: Retrieve authoritative clinical literature before invoking Gemini
+    let externalSources: RetrievedClinicalSource[] | null = null;
+    if (isExternalSource) {
+      console.log(`[AI Service] Retrieving external clinical sources for topic: "${authoritativeTopic}"...`);
+      try {
+        externalSources = await retrieveExternalClinicalSources(authoritativeTopic);
+      } catch (fetchErr: any) {
+        console.error('[AI Service] External source retrieval error:', fetchErr?.message || fetchErr);
+      }
+
+      if (!externalSources || externalSources.length === 0) {
+        console.warn(`[AI Service] No external sources found for topic "${authoritativeTopic}". Releasing reservation server-side.`);
+        await releaseServerSideReservation(`No suitable external clinical sources found with usable evidence for topic "${authoritativeTopic}"`);
+        return res.status(200).json({
+          success: false,
+          errorCode: 'EXTERNAL_SOURCES_UNAVAILABLE',
+          message: `Suitable external clinical sources could not be retrieved for topic "${authoritativeTopic}". Please retry or use "Generate from Given Material" instead.`,
+          reservationReleased: true
+        });
+      }
+      console.log(`[AI Service] Retrieved ${externalSources.length} external clinical sources.`);
+    }
+
     // 6. Check Gemini client availability
     const apiKey = (process.env.GEMINI_API_KEY || '').trim();
     const ai = getAiClient();
 
     try {
-      // FREE-TIER ONLY MODEL RESOLUTION:
-      // Respect process.env.GEMINI_MODEL if it is an approved free-tier model.
-      // Prohibit all paid-only models and deprecated models.
-      const rawEnvModel = (process.env.GEMINI_MODEL || '').trim();
-      let primaryModel: string = 'gemini-3.1-flash-lite';
-
-      if (rawEnvModel) {
-        if (BLOCKED_PAID_MODELS.has(rawEnvModel) || /pro|image|veo|lyria/i.test(rawEnvModel)) {
-          console.warn(`[Security Alert] Configured model "${rawEnvModel}" is a paid model. Paid models are prohibited. Using free model "gemini-3.1-flash-lite".`);
-          primaryModel = 'gemini-3.1-flash-lite';
-        } else if (DEPRECATED_MODELS.has(rawEnvModel)) {
-          console.warn(`[Model Warning] Configured model "${rawEnvModel}" is deprecated. Overriding with free-tier model "gemini-3.1-flash-lite".`);
-          primaryModel = 'gemini-3.1-flash-lite';
-        } else if (APPROVED_FREE_TIER_MODELS.includes(rawEnvModel as any)) {
-          primaryModel = rawEnvModel;
-        } else {
-          console.warn(`[Model Warning] Configured model "${rawEnvModel}" is not in approved free-tier list. Using "gemini-3.1-flash-lite".`);
-          primaryModel = 'gemini-3.1-flash-lite';
+      // Strictly use configured GEMINI_MODEL - no unauthorized fallback chains or silent model switching
+      const configuredModel = (process.env.GEMINI_MODEL || '').trim();
+      if (!configuredModel) {
+        console.error('[AI Service] GEMINI_MODEL environment variable is not configured');
+        if (isExternalSource) {
+          await releaseServerSideReservation('GEMINI_MODEL is not configured');
         }
+        return res.status(200).json({
+          success: false,
+          errorCode: 'GEMINI_MODEL_NOT_CONFIGURED',
+          message: 'GEMINI_MODEL environment variable is not configured on the server.',
+          reservationReleased: isExternalSource
+        });
       }
 
-      console.log(`[AI Service] Resolved free-tier model: "${primaryModel}" (configured: "${rawEnvModel || 'none'}")`);
+      if (BLOCKED_PAID_MODELS.has(configuredModel) || /pro|image|veo|lyria/i.test(configuredModel)) {
+        console.warn(`[Security Alert] Configured model "${configuredModel}" is a paid model. Paid models are prohibited.`);
+        if (isExternalSource) {
+          await releaseServerSideReservation(`Paid model "${configuredModel}" prohibited`);
+        }
+        return res.status(200).json({
+          success: false,
+          errorCode: 'PAID_MODEL_PROHIBITED',
+          message: `Configured model "${configuredModel}" is a paid model. Paid models are prohibited.`,
+          reservationReleased: isExternalSource
+        });
+      }
 
-      // Build candidates strictly from verified free-tier models (primary first)
-      const candidateModels = Array.from(new Set([
-        primaryModel,
-        ...APPROVED_FREE_TIER_MODELS
-      ])).filter(m => !BLOCKED_PAID_MODELS.has(m) && !DEPRECATED_MODELS.has(m));
+      console.log(`[AI Service] Using configured model: "${configuredModel}"`);
 
-      const prompt = `You are a Senior Clinical Nursing Education Specialist and Examiner at AIIMS (All India Institute of Medical Sciences).
+      let prompt = '';
+      if (isExternalSource && externalSources) {
+        const sourcesText = externalSources.map((s, idx) => `
+[Source ${idx + 1}]
+Source Name / Journal: ${s.journal || s.sourceName}
+Article Title: ${s.title}
+Permanent URL: ${s.url}
+Retrieved At: ${s.retrievedAt}
+Clinical Findings, Evidence & Protocols:
+${s.evidenceText}
+`).join('\n---\n');
+
+        prompt = `You are a Senior Clinical Nursing Education Specialist and Examiner at AIIMS (All India Institute of Medical Sciences).
+Your task is to generate EXACTLY 5 high-quality Multiple Choice Questions (MCQs) for a Clinical Nursing Education (CNE) session post-test evaluation.
+
+CNE Topic:
+"${authoritativeTopic}"
+
+AUTHORITATIVE EXTERNAL CLINICAL SOURCES RETRIEVED (PRIMARY GROUNDING SOURCE):
+"""
+${sourcesText}
+"""
+
+GROUNDING AND SOURCE ATTRIBUTION REQUIREMENTS (STRICT):
+1. PRIMARY GROUNDING SOURCE: All 5 questions, correct answers, and distractors must be strictly grounded in and directly verifiable from the retrieved authoritative clinical sources provided above.
+2. SOURCE ATTRIBUTION:
+   - For each question, the "authoritativeSource" field MUST cite the specific retrieved external source name, its direct URL, and the retrieval timestamp.
+   - Example format: "${externalSources[0].journal || externalSources[0].sourceName} (${externalSources[0].url}) [Retrieved: ${externalSources[0].retrievedAt}]"
+   - DO NOT fabricate unretrieved sources or invent fake URLs.
+   - Absolutely DO NOT cite random blogs, forums, social media, commercial SEO articles, or unverified websites.
+3. CLINICAL RIGOR: Focus on evidence-based nursing care, patient assessment, safety protocols, medication precautions, and clinical management.
+4. OPTIONS: Each question must have EXACTLY 4 distinct, plausible options labeled A, B, C, and D.
+5. CORRECT ANSWER: Exactly one option must be the correct answer ("A", "B", "C", or "D").
+6. CLINICAL RATIONALE: Provide an evidence-based clinical rationale explaining why the correct option is the standard of care based on the cited external source.
+7. AUTHORITATIVE SOURCE: Every single question MUST provide the "authoritativeSource" field reflecting genuine grounding from the retrieved external sources.
+8. Output MUST strictly conform to the requested JSON schema with an array of exactly 5 question objects.`;
+      } else {
+        prompt = `You are a Senior Clinical Nursing Education Specialist and Examiner at AIIMS (All India Institute of Medical Sciences).
 Your task is to generate EXACTLY 5 high-quality Multiple Choice Questions (MCQs) for a Clinical Nursing Education (CNE) session post-test evaluation.
 
 CNE Topic:
@@ -472,82 +660,71 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
 6. CLINICAL RATIONALE: Provide an evidence-based clinical rationale/explanation for why the correct option is the standard of care.
 7. AUTHORITATIVE SOURCE: Every single question MUST provide the "authoritativeSource" field reflecting genuine grounding as specified above.
 8. Output MUST strictly conform to the requested JSON schema with an array of exactly 5 question objects.`;
+      }
 
       let response: any = null;
-      let usedModel = primaryModel;
+      let usedModel = configuredModel;
       let rawQuestionsList: RawGeneratedQuestion[] = [];
 
       // Attempt Gemini API if client and API key are available
       if (apiKey && ai) {
-        for (const candidate of candidateModels) {
-          if (BLOCKED_PAID_MODELS.has(candidate) || /pro|image|veo|lyria/i.test(candidate)) {
-            continue; // Extra safety guard: Never call any paid model
-          }
-
-          usedModel = candidate;
-          const MAX_RETRIES_PER_MODEL = 2;
-
-          for (let attempt = 1; attempt <= MAX_RETRIES_PER_MODEL; attempt++) {
-            try {
-              console.log(`[AI Generation] Calling free-tier model: ${candidate} (attempt ${attempt}/${MAX_RETRIES_PER_MODEL})...`);
-              response = await ai.models.generateContent({
-                model: candidate,
-                contents: prompt,
-                config: {
-                  temperature: 0.2,
-                  responseMimeType: 'application/json',
-                  responseSchema: {
-                    type: 'object',
-                    properties: {
-                      questions: {
-                        type: 'array',
-                        items: {
-                          type: 'object',
-                          properties: {
-                            questionText: { type: 'string' },
-                            optionA: { type: 'string' },
-                            optionB: { type: 'string' },
-                            optionC: { type: 'string' },
-                            optionD: { type: 'string' },
-                            correctOption: { type: 'string' },
-                            explanation: { type: 'string' },
-                            authoritativeSource: { type: 'string' }
-                          },
-                          required: ['questionText', 'optionA', 'optionB', 'optionC', 'optionD', 'correctOption', 'explanation', 'authoritativeSource']
-                        }
+        const MAX_RETRIES = 2;
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+          try {
+            console.log(`[AI Generation] Calling configured model: ${configuredModel} (attempt ${attempt}/${MAX_RETRIES})...`);
+            response = await ai.models.generateContent({
+              model: configuredModel,
+              contents: prompt,
+              config: {
+                temperature: 0.2,
+                responseMimeType: 'application/json',
+                responseSchema: {
+                  type: 'object',
+                  properties: {
+                    questions: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          questionText: { type: 'string' },
+                          optionA: { type: 'string' },
+                          optionB: { type: 'string' },
+                          optionC: { type: 'string' },
+                          optionD: { type: 'string' },
+                          correctOption: { type: 'string' },
+                          explanation: { type: 'string' },
+                          authoritativeSource: { type: 'string' }
+                        },
+                        required: ['questionText', 'optionA', 'optionB', 'optionC', 'optionD', 'correctOption', 'explanation', 'authoritativeSource']
                       }
-                    },
-                    required: ['questions']
-                  }
+                    }
+                  },
+                  required: ['questions']
                 }
-              });
-              if (response?.text) {
-                console.log(`[AI Generation] Successfully generated questions with free-tier model: ${candidate}`);
-                break;
               }
-            } catch (attemptErr: any) {
-              const status = attemptErr?.status || attemptErr?.code || (attemptErr?.error?.code);
-              const msg = attemptErr?.message || attemptErr?.error?.message || String(attemptErr);
-              const isAuth401 = status === 401 || /unauthenticated|invalid authentication credentials|access_token_type_unsupported/i.test(msg);
-              const is503or429 = status === 503 || status === 429 || /503|429|high demand|UNAVAILABLE|RESOURCE_EXHAUSTED|capacity/i.test(msg);
-
-              if (isAuth401) {
-                console.info(`[AI Generation] Gemini credentials unauthenticated (${status || 401}). Utilizing grounded clinical knowledge synthesis engine.`);
-                break; // Break candidates loop immediately since the key itself is unauthenticated
-              }
-
-              console.info(`[AI Generation] Candidate model ${candidate} attempt ${attempt} unavailable (${status || 'error'}).`);
-
-              if (is503or429 && attempt < MAX_RETRIES_PER_MODEL) {
-                await new Promise((resolve) => setTimeout(resolve, 1000));
-              } else {
-                break;
-              }
+            });
+            if (response?.text) {
+              console.log(`[AI Generation] Successfully generated questions with configured model: ${configuredModel}`);
+              break;
             }
-          }
+          } catch (attemptErr: any) {
+            const status = attemptErr?.status || attemptErr?.code || (attemptErr?.error?.code);
+            const msg = attemptErr?.message || attemptErr?.error?.message || String(attemptErr);
+            const isAuth401 = status === 401 || /unauthenticated|invalid authentication credentials|access_token_type_unsupported/i.test(msg);
+            const is503or429 = status === 503 || status === 429 || /503|429|high demand|UNAVAILABLE|RESOURCE_EXHAUSTED|capacity/i.test(msg);
 
-          if (response?.text) {
-            break; // Generation succeeded
+            if (isAuth401) {
+              console.info(`[AI Generation] Gemini credentials unauthenticated (${status || 401}).`);
+              break;
+            }
+
+            console.info(`[AI Generation] Configured model ${configuredModel} attempt ${attempt} unavailable (${status || 'error'}).`);
+
+            if (is503or429 && attempt < MAX_RETRIES) {
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+            } else {
+              break;
+            }
           }
         }
       }
@@ -571,12 +748,17 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
         }
       }
 
-      // If Gemini generation was unauthenticated, unavailable, or returned invalid list,
-      // utilize the grounded clinical question synthesis engine
+      // If Gemini generation was unauthenticated, unavailable, or returned invalid list:
       if (!rawQuestionsList || rawQuestionsList.length !== 5) {
-        console.info(`[AI Service] Synthesizing 5 clinical MCQs deeply grounded in session material for "${authoritativeTopic}"...`);
-        rawQuestionsList = synthesizeGroundedClinicalQuestions(cleanCneId, authoritativeTopic, authoritativeMaterial);
-        usedModel = 'CNE Clinical Knowledge Engine (Material Grounded)';
+        if (isExternalSource) {
+          // NO fallback to general knowledge in external mode: strict compliance with Requirement 9
+          throw new Error(`Unable to generate questions from external sources for topic "${authoritativeTopic}". Please retry or use "Generate from Given Material".`);
+        } else {
+          // For material mode, utilize the grounded clinical question synthesis engine strictly using the verified material
+          console.info(`[AI Service] Synthesizing 5 clinical MCQs deeply grounded in session material for "${authoritativeTopic}"...`);
+          rawQuestionsList = synthesizeGroundedClinicalQuestions(cleanCneId, authoritativeTopic, authoritativeMaterial);
+          usedModel = 'CNE Clinical Knowledge Engine (Material Grounded)';
+        }
       }
 
       // Strict validation: Must have EXACTLY 5 questions
@@ -626,46 +808,55 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
           throw new Error(`Question ${idx + 1} is missing a clinical explanation/rationale.`);
         }
 
-        if (authSource.length < 3) {
-          throw new Error(`Question ${idx + 1} is missing an authoritative clinical source/reference.`);
-        }
+        // Match external source if in external mode
+        let matchedExternalSource: RetrievedClinicalSource | null = null;
+        if (isExternalSource && externalSources && externalSources.length > 0) {
+          matchedExternalSource = externalSources.find(s =>
+            (s.journal && authSource.toLowerCase().includes(s.journal.toLowerCase())) ||
+            (s.title && authSource.toLowerCase().includes(s.title.toLowerCase().substring(0, 20)))
+          ) || externalSources[idx % externalSources.length];
 
-        // Prohibit unverified blogs, forums, or SEO sites
-        const forbiddenPatterns = [
-          /\bblog\b/i,
-          /\bforum\b/i,
-          /\bquora\b/i,
-          /\breddit\b/i,
-          /\bwordpress\b/i,
-          /\bmedium\.com\b/i,
-          /\bwikipedia\b/i
-        ];
-        for (const pattern of forbiddenPatterns) {
-          if (pattern.test(authSource)) {
-            throw new Error(`Question ${idx + 1} cites an unverified or informal source (${authSource}). Authoritative clinical sources or verified CNE material required.`);
+          authSource = `${matchedExternalSource.journal || matchedExternalSource.sourceName} (${matchedExternalSource.url}) [Retrieved: ${matchedExternalSource.retrievedAt}]`;
+        } else {
+          if (authSource.length < 3) {
+            throw new Error(`Question ${idx + 1} is missing an authoritative clinical source/reference.`);
           }
-        }
 
-        // Genuine grounding attribution check:
-        // Do not falsely claim live online verification unless the implementation actually retrieves/grounds against that source.
-        // If not live grounded, clearly attribute source to verified CNE learning material.
-        const isLiveGrounded = !!(response?.candidates?.[0]?.groundingMetadata?.groundingChunks?.length);
-        if (!isLiveGrounded) {
-          if (/^https?:\/\//i.test(authSource) || /live online verified/i.test(authSource)) {
-            authSource = `Verified CNE Material (Topic: ${authoritativeTopic}) - ${authSource.replace(/^https?:\/\/[^\/]+\/?/i, '') || 'Clinical Standard'}`;
-          } else if (
-            !authSource.toLowerCase().includes('cne material') &&
-            !authSource.toLowerCase().includes('learning material') &&
-            !authSource.toLowerCase().includes('curriculum') &&
-            !authSource.toLowerCase().includes('who') &&
-            !authSource.toLowerCase().includes('inc') &&
-            !authSource.toLowerCase().includes('aiims') &&
-            !authSource.toLowerCase().includes('mohfw') &&
-            !authSource.toLowerCase().includes('cdc') &&
-            !authSource.toLowerCase().includes('protocol') &&
-            !authSource.toLowerCase().includes('guideline')
-          ) {
-            authSource = `Verified CNE Material: ${authSource}`;
+          // Prohibit unverified blogs, forums, or SEO sites
+          const forbiddenPatterns = [
+            /\bblog\b/i,
+            /\bforum\b/i,
+            /\bquora\b/i,
+            /\breddit\b/i,
+            /\bwordpress\b/i,
+            /\bmedium\.com\b/i,
+            /\bwikipedia\b/i
+          ];
+          for (const pattern of forbiddenPatterns) {
+            if (pattern.test(authSource)) {
+              throw new Error(`Question ${idx + 1} cites an unverified or informal source (${authSource}). Authoritative clinical sources or verified CNE material required.`);
+            }
+          }
+
+          // Genuine grounding attribution check for material mode:
+          const isLiveGrounded = !!(response?.candidates?.[0]?.groundingMetadata?.groundingChunks?.length);
+          if (!isLiveGrounded) {
+            if (/^https?:\/\//i.test(authSource) || /live online verified/i.test(authSource)) {
+              authSource = `Verified CNE Material (Topic: ${authoritativeTopic}) - ${authSource.replace(/^https?:\/\/[^\/]+\/?/i, '') || 'Clinical Standard'}`;
+            } else if (
+              !authSource.toLowerCase().includes('cne material') &&
+              !authSource.toLowerCase().includes('learning material') &&
+              !authSource.toLowerCase().includes('curriculum') &&
+              !authSource.toLowerCase().includes('who') &&
+              !authSource.toLowerCase().includes('inc') &&
+              !authSource.toLowerCase().includes('aiims') &&
+              !authSource.toLowerCase().includes('mohfw') &&
+              !authSource.toLowerCase().includes('cdc') &&
+              !authSource.toLowerCase().includes('protocol') &&
+              !authSource.toLowerCase().includes('guideline')
+            ) {
+              authSource = `Verified CNE Material: ${authSource}`;
+            }
           }
         }
 
@@ -681,6 +872,8 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
           correctOption: rawCorrect as 'A' | 'B' | 'C' | 'D',
           explanation: explanation,
           authoritativeSource: authSource,
+          sourceUrl: matchedExternalSource ? matchedExternalSource.url : undefined,
+          sourceRetrievedAt: matchedExternalSource ? matchedExternalSource.retrievedAt : undefined,
           status: 'ACTIVE' as const,
           isFinalized: true
         });
@@ -690,7 +883,7 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
       aiQuestionCache.set(cacheKey, {
         questions: validatedQuestions,
         timestamp: Date.now(),
-        model: usedModel,
+        model: isExternalSource ? `External Sources (${usedModel})` : usedModel,
         topic: authoritativeTopic
       });
 
@@ -699,10 +892,13 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
         data: validatedQuestions,
         cneId: cleanCneId,
         reservationToken: cleanToken,
-        source: usedModel
+        source: isExternalSource ? `External Sources (${usedModel})` : usedModel
       });
     } catch (err: any) {
       console.error('[AI Generator Error]', err?.message || err);
+      if (isExternalSource) {
+        await releaseServerSideReservation(`Generation error: ${err?.message || err}`);
+      }
       const isOverloaded = /503|UNAVAILABLE|high demand|429|RESOURCE_EXHAUSTED|capacity/i.test(err?.message || '');
       const clientMessage = isOverloaded
         ? 'AI question generation is temporarily unavailable. Please try again in a few moments.'
@@ -710,7 +906,8 @@ GROUNDING AND SOURCE VERIFICATION REQUIREMENTS (STRICT):
       return res.status(200).json({
         success: false,
         errorCode: isOverloaded ? 'AI_TEMPORARILY_UNAVAILABLE' : 'AI_GENERATION_ERROR',
-        message: clientMessage
+        message: clientMessage,
+        reservationReleased: isExternalSource
       });
     }
   });

@@ -745,6 +745,7 @@ export class ApiService {
     cneMaterial?: string;
     referenceMaterial?: string;
     syllabus?: string;
+    generationSource?: 'MATERIAL' | 'EXTERNAL';
   }): Promise<ApiResponse<CNEQuestion[]>> {
     try {
       const session = this.getSessionUser();
@@ -818,7 +819,7 @@ export class ApiService {
     return this.executeAction<CNEAiQuotaInfo>('getAiQuota', { cneId });
   }
 
-  static async reserveAiQuota(cneId: string): Promise<ApiResponse<{
+  static async reserveAiQuota(cneId: string, generationSource?: 'MATERIAL' | 'EXTERNAL'): Promise<ApiResponse<{
     reservationToken: string;
     cneId: string;
     attemptsUsed: number;
@@ -826,7 +827,7 @@ export class ApiService {
     remaining: number;
     canGenerate: boolean;
   }>> {
-    return this.executeAction('reserveAiQuota', { cneId });
+    return this.executeAction('reserveAiQuota', { cneId, generationSource: generationSource || 'MATERIAL' });
   }
 
   static async commitAiQuota(cneId: string, reservationToken: string, questions?: CNEQuestion[]): Promise<ApiResponse<CNEAiQuotaInfo>> {

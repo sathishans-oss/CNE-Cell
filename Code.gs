@@ -5046,7 +5046,7 @@ var CNE_SHEET_HEADERS = {
   'News and Events': ['Event ID', 'Title', 'Category', 'Date', 'Summary', 'Full Content', 'Status', 'CreatedAt', 'CreatedBy'],
   'User Credentials': ['Employee ID', 'Password Hash', 'Password Salt', 'Must Change Password', 'Created At', 'Updated At', 'Last Login At', 'Account Status'],
   'Audit Log': ['Timestamp', 'Action', 'Employee ID', 'Details', 'Status'],
-  'CNE Post Test Questions': ['CNE ID', 'Question ID', 'Question Text', 'Option A', 'Option B', 'Option C', 'Option D', 'Correct Option', 'Explanation', 'Is Finalized', 'Is Locked', 'Created At', 'Created By', 'Authoritative Source', 'Status'],
+  'CNE Post Test Questions': ['CNE ID', 'Question ID', 'Question Text', 'Option A', 'Option B', 'Option C', 'Option D', 'Correct Option', 'Explanation', 'Is Finalized', 'Is Locked', 'Created At', 'Created By', 'Authoritative Source', 'Status', 'Source URL', 'Source Retrieved At'],
   'CNE Post Test Responses': ['Response ID', 'CNE ID', 'Employee ID', 'Employee Name', 'Designation', 'Department', 'Score', 'Total Questions', 'Percentage', 'Source', 'Submitted At', 'Answers JSON', 'Status', 'Remarks'],
   'CNE_Reference': ['CNE ID', 'Topic', 'Reference Text / Clinical Guides', 'Updated At', 'Updated By', 'Drive File ID', 'File Name', 'File Type', 'Resource Person Name', 'File Size'],
   'CNE_QR_Tokens': ['QR Token', 'CNE ID', 'Created At', 'Created By', 'Status'],
@@ -7869,35 +7869,51 @@ function handleReserveAiQuota(params, session) {
     };
   }
 
-  // Material-First rule: Learning Material must exist in Drive learning resource or reference text (minimum 15 characters)
-  var learningMaterial = getCNELearningMaterial(cneId);
-  var hasDriveResource = false;
-  try {
-    var refSheet = getSpreadsheet('CNE').getSheetByName('CNE_Reference');
-    if (refSheet && refSheet.getLastRow() > 1) {
-      var refData = refSheet.getDataRange().getValues();
-      var refColMap = getHeaderMap(refSheet);
-      var idCol = refColMap['cneid'] !== undefined ? refColMap['cneid'] : 0;
-      var driveCol = refColMap['drivefileid'];
-      for (var r = 1; r < refData.length; r++) {
-        if (String(refData[r][idCol] || '').trim().toUpperCase() === cneId.toUpperCase()) {
-          if (driveCol !== undefined && String(refData[r][driveCol] || '').trim()) {
-            hasDriveResource = true;
+  var genSource = String(params.generationSource || params.sourceMode || '').trim().toUpperCase();
+  var isExternalSource = genSource === 'EXTERNAL';
+
+  if (isExternalSource) {
+    // External Sources generation:
+    // Learning material is NOT required.
+    // CNE Topic is required.
+    if (!record.topic || String(record.topic).trim().length < 3) {
+      return {
+        success: false,
+        errorCode: 'TOPIC_REQUIRED',
+        message: 'CNE Topic is required for generating questions from external sources.'
+      };
+    }
+  } else {
+    // Material-First rule: Learning Material must exist in Drive learning resource or reference text (minimum 15 characters)
+    var learningMaterial = getCNELearningMaterial(cneId);
+    var hasDriveResource = false;
+    try {
+      var refSheet = getSpreadsheet('CNE').getSheetByName('CNE_Reference');
+      if (refSheet && refSheet.getLastRow() > 1) {
+        var refData = refSheet.getDataRange().getValues();
+        var refColMap = getHeaderMap(refSheet);
+        var idCol = refColMap['cneid'] !== undefined ? refColMap['cneid'] : 0;
+        var driveCol = refColMap['drivefileid'];
+        for (var r = 1; r < refData.length; r++) {
+          if (String(refData[r][idCol] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+            if (driveCol !== undefined && String(refData[r][driveCol] || '').trim()) {
+              hasDriveResource = true;
+            }
+            break;
           }
-          break;
         }
       }
+    } catch (e) {
+      hasDriveResource = false;
     }
-  } catch (e) {
-    hasDriveResource = false;
-  }
 
-  if (!hasDriveResource && (!learningMaterial || learningMaterial.length < 15)) {
-    return {
-      success: false,
-      errorCode: 'MATERIAL_REQUIRED',
-      message: 'CNE Class Content / Learning Material is required (minimum 15 characters) before AI questions can be generated.'
-    };
+    if (!hasDriveResource && (!learningMaterial || learningMaterial.length < 15)) {
+      return {
+        success: false,
+        errorCode: 'MATERIAL_REQUIRED',
+        message: 'CNE Class Content / Learning Material is required (minimum 15 characters) before AI questions can be generated.'
+      };
+    }
   }
   
   var lock = LockService.getScriptLock();
@@ -8229,14 +8245,17 @@ function handleCommitAiQuota(params, session) {
         allExistingSheetQIds[qId.toLowerCase()] = true;
         validatedQuestionIds.push(qId);
 
+        var srcUrl = sanitizeCellInput(qObj.sourceUrl || '').trim();
+        var srcRetrievedAt = sanitizeCellInput(qObj.sourceRetrievedAt || '').trim();
+
         rowsToSave.push([
-          cneId, qId, qText, optA, optB, optC, optD, rawCorrect, expl, 'YES', 'NO', nowIso, session.employeeId + ' ' + aiBatchTag, authSrc, 'ACTIVE'
+          cneId, qId, qText, optA, optB, optC, optD, rawCorrect, expl, 'YES', 'NO', nowIso, session.employeeId + ' ' + aiBatchTag, authSrc, 'ACTIVE', srcUrl, srcRetrievedAt
         ]);
       }
 
       try {
         var startRow = questionsSheet.getLastRow() + 1;
-        questionsSheet.getRange(startRow, 1, rowsToSave.length, 15).setValues(rowsToSave);
+        questionsSheet.getRange(startRow, 1, rowsToSave.length, rowsToSave[0].length).setValues(rowsToSave);
         SpreadsheetApp.flush();
       } catch (saveErr) {
         return {
@@ -8423,66 +8442,76 @@ function handleValidateAiQuotaReservation(params, session) {
     };
   }
 
+  var genSource = String(params.generationSource || params.sourceMode || '').trim().toUpperCase();
+  var isExternalSource = genSource === 'EXTERNAL';
+
   var learningMaterial = '';
   var authoritativeExtracted = null;
   var hasLearningResource = false;
   var authoritativeRpName = record.instructor || '';
 
-  // 1. Resolve from authoritative CNE_Reference
-  var dFileId = '';
-  var refTxt = '';
-
-  var refSheet = getSpreadsheet('CNE').getSheetByName('CNE_Reference');
-  if (refSheet && refSheet.getLastRow() > 1) {
-    var refData = refSheet.getDataRange().getValues();
-    var refColMap = getHeaderMap(refSheet);
-    var idCol = refColMap['cneid'] !== undefined ? refColMap['cneid'] : 0;
-    var driveCol = refColMap['drivefileid'];
-    var textCol = refColMap['referencetextclinicalguides'] !== undefined ? refColMap['referencetextclinicalguides'] : (refColMap['referencetext'] !== undefined ? refColMap['referencetext'] : 2);
-    var rpCol = refColMap['resourcepersonname'];
-
-    for (var r = 1; r < refData.length; r++) {
-      if (String(refData[r][idCol] || '').trim().toUpperCase() === cneId.toUpperCase()) {
-        dFileId = driveCol !== undefined ? String(refData[r][driveCol] || '').trim() : '';
-        refTxt = textCol !== undefined ? String(refData[r][textCol] || '').trim() : '';
-        var rpTxt = rpCol !== undefined ? String(refData[r][rpCol] || '').trim() : '';
-        if (rpTxt) authoritativeRpName = rpTxt;
-        break;
-      }
-    }
-  }
-
-  // 2. If a CNE has an associated Learning Resource / Drive File ID:
-  if (dFileId) {
-    hasLearningResource = true;
-    // Attempt the existing Phase 2 extraction path.
-    // If lookup, authorization, file validation, or extraction fails, return the existing structured error.
-    // Do NOT silently substitute legacy/text material.
-    // Do NOT continue to AI generation using another content source.
-    var extResult = extractLearningResourceContentCore(cneId, session);
-    if (!extResult || !extResult.success) {
-      return extResult || {
+  if (isExternalSource) {
+    // External source mode: Learning material is NOT required; CNE topic is required
+    if (!record.topic || String(record.topic).trim().length < 3) {
+      return {
         success: false,
-        errorCode: 'CONTENT_EXTRACTION_FAILED',
-        message: 'Failed to extract content from authoritative learning resource.'
+        errorCode: 'TOPIC_REQUIRED',
+        message: 'CNE Topic is required for generating questions from external sources.'
       };
     }
-    authoritativeExtracted = extResult.data;
-    learningMaterial = extResult.data.extractedText;
-    if (extResult.data.resourcePersonName) {
-      authoritativeRpName = extResult.data.resourcePersonName;
-    }
   } else {
-    // Only use the existing legacy/text material path when NO uploaded Learning Resource is associated with that CNE
-    learningMaterial = refTxt || getCNELearningMaterial(cneId);
-  }
+    // Material-First mode: Authoritative material or uploaded learning resource required
+    // 1. Resolve from authoritative CNE_Reference
+    var dFileId = '';
+    var refTxt = '';
 
-  if (!learningMaterial || learningMaterial.length < 15) {
-    return {
-      success: false,
-      errorCode: 'MATERIAL_REQUIRED',
-      message: 'CNE Class Content / Learning Material is required (minimum 15 characters) before AI questions can be generated.'
-    };
+    var refSheet = getSpreadsheet('CNE').getSheetByName('CNE_Reference');
+    if (refSheet && refSheet.getLastRow() > 1) {
+      var refData = refSheet.getDataRange().getValues();
+      var refColMap = getHeaderMap(refSheet);
+      var idCol = refColMap['cneid'] !== undefined ? refColMap['cneid'] : 0;
+      var driveCol = refColMap['drivefileid'];
+      var textCol = refColMap['referencetextclinicalguides'] !== undefined ? refColMap['referencetextclinicalguides'] : (refColMap['referencetext'] !== undefined ? refColMap['referencetext'] : 2);
+      var rpCol = refColMap['resourcepersonname'];
+
+      for (var r = 1; r < refData.length; r++) {
+        if (String(refData[r][idCol] || '').trim().toUpperCase() === cneId.toUpperCase()) {
+          dFileId = driveCol !== undefined ? String(refData[r][driveCol] || '').trim() : '';
+          refTxt = textCol !== undefined ? String(refData[r][textCol] || '').trim() : '';
+          var rpTxt = rpCol !== undefined ? String(refData[r][rpCol] || '').trim() : '';
+          if (rpTxt) authoritativeRpName = rpTxt;
+          break;
+        }
+      }
+    }
+
+    // 2. If a CNE has an associated Learning Resource / Drive File ID:
+    if (dFileId) {
+      hasLearningResource = true;
+      var extResult = extractLearningResourceContentCore(cneId, session);
+      if (!extResult || !extResult.success) {
+        return extResult || {
+          success: false,
+          errorCode: 'CONTENT_EXTRACTION_FAILED',
+          message: 'Failed to extract content from authoritative learning resource.'
+        };
+      }
+      authoritativeExtracted = extResult.data;
+      learningMaterial = extResult.data.extractedText;
+      if (extResult.data.resourcePersonName) {
+        authoritativeRpName = extResult.data.resourcePersonName;
+      }
+    } else {
+      learningMaterial = refTxt || getCNELearningMaterial(cneId);
+    }
+
+    if (!learningMaterial || learningMaterial.length < 15) {
+      return {
+        success: false,
+        errorCode: 'MATERIAL_REQUIRED',
+        message: 'CNE Class Content / Learning Material is required (minimum 15 characters) before AI questions can be generated.'
+      };
+    }
   }
 
   var lock = LockService.getScriptLock();
@@ -8551,7 +8580,8 @@ function handleValidateAiQuotaReservation(params, session) {
         authoritativeLearningContent: authoritativeExtracted ? authoritativeExtracted.extractedText : (learningMaterial || ''),
         resourcePersonName: authoritativeRpName || '',
         hasLearningResource: hasLearningResource,
-        learningResourceMetadata: authoritativeExtracted || null
+        learningResourceMetadata: authoritativeExtracted || null,
+        generationSource: isExternalSource ? 'EXTERNAL' : 'MATERIAL'
       }
     };
   } finally {
@@ -8648,6 +8678,25 @@ function getCachedSanitizedQuestions(cneId) {
 }
 
 /**
+ * Helper: Ensure Question Sheet has all necessary headers including Source URL & Source Retrieved At
+ */
+function ensureQuestionsSheetHeaders(sheet) {
+  if (!sheet) return;
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 1) return;
+  var colMap = getHeaderMap(sheet);
+  if (colMap['sourceurl'] === undefined) {
+    var nextCol = sheet.getLastColumn() + 1;
+    sheet.getRange(1, nextCol).setValue('Source URL').setFontWeight('bold');
+  }
+  colMap = getHeaderMap(sheet);
+  if (colMap['sourceretrievedat'] === undefined) {
+    var nextCol = sheet.getLastColumn() + 1;
+    sheet.getRange(1, nextCol).setValue('Source Retrieved At').setFontWeight('bold');
+  }
+}
+
+/**
  * Helper: Resolve Questions Sheet
  * Prefers 'CNE Post Test Questions' tab; falls back to 'CNE_Questions' if already present.
  */
@@ -8657,6 +8706,7 @@ function getQuestionsSheet() {
   if (!sheet) {
     sheet = getOrCreateSheet('CNE Post Test Questions');
   }
+  ensureQuestionsSheetHeaders(sheet);
   return sheet;
 }
 
@@ -8835,6 +8885,9 @@ function handleSaveCNEQuestions(params, session) {
       finalizedCount++;
     }
 
+    var srcUrl = sanitizeCellInput(q.sourceUrl || '').trim();
+    var srcRetrievedAt = sanitizeCellInput(q.sourceRetrievedAt || '').trim();
+
     validatedList.push({
       id: qId,
       question: qText,
@@ -8846,7 +8899,9 @@ function handleSaveCNEQuestions(params, session) {
       explanation: expl,
       isFinalized: isFin,
       authoritativeSource: authSrc,
-      status: qStatus
+      status: qStatus,
+      sourceUrl: srcUrl,
+      sourceRetrievedAt: srcRetrievedAt
     });
   }
 
@@ -8917,12 +8972,14 @@ function handleSaveCNEQuestions(params, session) {
         now,
         session.employeeId,
         item.authoritativeSource,
-        item.status
+        item.status,
+        item.sourceUrl || '',
+        item.sourceRetrievedAt || ''
       ];
 
       var targetRow = existingRowMap[item.id.toLowerCase()];
       if (targetRow) {
-        sheet.getRange(targetRow, 1, 1, 15).setValues([rowValues]);
+        sheet.getRange(targetRow, 1, 1, rowValues.length).setValues([rowValues]);
       } else {
         sheet.appendRow(rowValues);
       }
@@ -8962,6 +9019,9 @@ function handleGetCNEQuestions(params, session) {
   var isLocked = isCNEQuestionsLocked(cneId);
   var sheet = getQuestionsSheet();
   var data = sheet.getDataRange().getValues();
+  var colMap = getHeaderMap(sheet);
+  var srcUrlCol = colMap['sourceurl'] !== undefined ? colMap['sourceurl'] : 15;
+  var srcRetrievedAtCol = colMap['sourceretrievedat'] !== undefined ? colMap['sourceretrievedat'] : 16;
   var questions = [];
   var finalizedCount = 0;
   var activeCount = 0;
@@ -8971,6 +9031,8 @@ function handleGetCNEQuestions(params, session) {
       var isFin = String(data[r][9] || 'NO').toUpperCase() === 'YES';
       var authSrc = String(data[r][13] || '').trim();
       var qStatus = String(data[r][14] || 'ACTIVE').trim().toUpperCase();
+      var srcUrl = srcUrlCol < data[r].length ? String(data[r][srcUrlCol] || '').trim() : '';
+      var srcRetrievedAt = srcRetrievedAtCol < data[r].length ? String(data[r][srcRetrievedAtCol] || '').trim() : '';
       if (qStatus !== 'INACTIVE' && qStatus !== 'REPLACED') {
         qStatus = 'ACTIVE';
         activeCount++;
@@ -8990,7 +9052,9 @@ function handleGetCNEQuestions(params, session) {
         authoritativeSource: authSrc,
         status: qStatus,
         isFinalized: isFin,
-        isLocked: isLocked || String(data[r][10] || 'NO').toUpperCase() === 'YES'
+        isLocked: isLocked || String(data[r][10] || 'NO').toUpperCase() === 'YES',
+        sourceUrl: srcUrl,
+        sourceRetrievedAt: srcRetrievedAt
       });
     }
   }
