@@ -338,7 +338,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/70">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
               <PlusCircle className="w-5 h-5" />
             </div>
             <div>
@@ -386,7 +386,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                   {rows.length > 1 && (
                     <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                       <div className="flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center justify-center">
+                        <span className="w-6 h-6 rounded-lg bg-purple-100 text-purple-800 text-xs font-bold flex items-center justify-center">
                           {idx + 1}
                         </span>
                         <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
@@ -408,7 +408,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                     {/* Column 1: CNE Details */}
                     <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200 flex flex-col">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-900 border-b border-emerald-100 pb-2 flex items-center gap-1.5">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-purple-900 border-b border-purple-100 pb-2 flex items-center gap-1.5">
                         <span>1. CNE Details</span>
                       </h4>
 
@@ -423,7 +423,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                           placeholder="e.g. Infection Control & Hand Hygiene Protocols"
                           value={row.topic}
                           onChange={(e) => handleFieldChange(idx, 'topic', e.target.value)}
-                          className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                          className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
                         />
                       </div>
 
@@ -441,7 +441,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                                 value={assignedAreas[0]}
                                 className="w-full p-2.5 bg-slate-100 text-slate-600 border border-slate-200 rounded-lg text-xs font-semibold cursor-not-allowed"
                               />
-                              <span className="absolute right-2.5 top-2.5 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                              <span className="absolute right-2.5 top-2.5 text-[10px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded">
                                 Locked to Your Ward
                               </span>
                             </div>
@@ -450,7 +450,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                               required
                               value={row.area}
                               onChange={(e) => handleFieldChange(idx, 'area', e.target.value)}
-                              className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none text-emerald-900 font-semibold"
+                              className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none text-purple-900 font-semibold"
                             >
                               <option value="">Select from Your Assigned Wards</option>
                               {assignedAreas.map((a) => (
@@ -467,7 +467,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                                 value={user?.assignedArea || 'No Ward Assigned'}
                                 className="w-full p-2.5 bg-slate-100 text-slate-600 border border-slate-200 rounded-lg text-xs font-semibold cursor-not-allowed"
                               />
-                              <span className="absolute right-2.5 top-2.5 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                              <span className="absolute right-2.5 top-2.5 text-[10px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded">
                                 Locked
                               </span>
                             </div>
@@ -477,7 +477,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                             required
                             value={row.area}
                             onChange={(e) => handleFieldChange(idx, 'area', e.target.value)}
-                            className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                            className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
                           >
                             <option value="">Select Department / Ward...</option>
                             {areasList.map((a) => (
@@ -497,7 +497,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                         <select
                           value={row.modeOfTeaching}
                           onChange={(e) => handleFieldChange(idx, 'modeOfTeaching', e.target.value)}
-                          className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                          className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
                         >
                           <option value="Lecture Cum Discussion">Lecture Cum Discussion</option>
                           <option value="Demonstration">Demonstration</option>
@@ -518,15 +518,15 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                           placeholder="Outline clinical objectives, skills covered, or ward preparations..."
                           value={row.description || ''}
                           onChange={(e) => handleFieldChange(idx, 'description', e.target.value)}
-                          className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none flex-1 min-h-[72px]"
+                          className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none resize-none flex-1 min-h-[72px]"
                         />
                       </div>
                     </div>
 
                     {/* Column 2: Date & Duration */}
                     <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200 flex flex-col">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-teal-900 border-b border-teal-100 pb-2 flex items-center gap-1.5">
-                        <span>2. Date & Schedule</span>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-900 border-b border-indigo-100 pb-2 flex items-center gap-1.5">
+                        <span>2. Date &amp; Duration</span>
                       </h4>
 
                       <div className="space-y-3">
@@ -539,7 +539,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                           toTime={toParts.time}
                           minDate={todayStr}
                           compact={false}
-                          accentColor="emerald"
+                          accentColor="indigo"
                           onChange={({ fullFrom, fullTo, calculatedDuration }) => {
                             setRows((prev) => {
                               const updated = [...prev];
@@ -560,7 +560,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                             <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
                               Duration (HH:MM:SS) <span className="text-rose-500">*</span>
                             </label>
-                            <span className="text-[10px] text-teal-700 font-semibold">Auto-calculated • Editable</span>
+                            <span className="text-[10px] text-indigo-600 font-semibold">Auto-calculated • Editable</span>
                           </div>
                           <input
                             type="text"
@@ -568,7 +568,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                             placeholder="00:00:00"
                             value={row.duration}
                             onChange={(e) => handleFieldChange(idx, 'duration', e.target.value)}
-                            className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                            className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                           />
                           <p className="text-[10px] text-slate-500 mt-1">
                             Calculated from From/To dates. Max 8 hours per calendar day. Format: HH:MM:SS
@@ -579,7 +579,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
 
                     {/* Column 3: Resource Persons */}
                     <div className="space-y-3.5 bg-slate-50/60 p-4 rounded-xl border border-slate-200 flex flex-col">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-cyan-900 border-b border-cyan-100 pb-2 flex items-center justify-between">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-teal-900 border-b border-teal-100 pb-2 flex items-center justify-between">
                         <span>3. Resource Persons</span>
                         <span className="text-[10px] text-slate-500 font-semibold lowercase">
                           {selectedRowRpIds.length + (row.externalResourcePersons?.length || 0)} selected
@@ -592,7 +592,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                           <label className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
                             <span>Internal Faculty</span>
                             {isResourcePersonsLoading && (
-                              <Loader2 className="w-3 h-3 text-cyan-600 animate-spin" />
+                              <Loader2 className="w-3 h-3 text-teal-600 animate-spin" />
                             )}
                           </label>
                         </div>
@@ -631,10 +631,10 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                             onChange={(e) =>
                               setRpSearchMap((prev) => ({ ...prev, [row.id]: e.target.value }))
                             }
-                            className="w-full p-2 pr-8 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-cyan-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                            className="w-full p-2 pr-8 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
                           />
                           {isResourcePersonsLoading && (
-                            <Loader2 className="w-3.5 h-3.5 text-cyan-600 animate-spin absolute right-2.5 top-2.5" />
+                            <Loader2 className="w-3.5 h-3.5 text-teal-600 animate-spin absolute right-2.5 top-2.5" />
                           )}
                         </div>
 
@@ -642,7 +642,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                         <div className="max-h-28 overflow-y-auto border border-slate-200 rounded-lg bg-white divide-y divide-slate-100 flex-1">
                           {isResourcePersonsLoading ? (
                             <div className="p-3 text-center text-xs text-slate-500 flex items-center justify-center gap-1.5">
-                              <Loader2 className="w-3.5 h-3.5 text-cyan-600 animate-spin" />
+                              <Loader2 className="w-3.5 h-3.5 text-teal-600 animate-spin" />
                               <span>Loading Resource Persons...</span>
                             </div>
                           ) : filteredOfficers.length === 0 ? (
@@ -698,12 +698,12 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                                 handleAddExternalRp(row.id, idx);
                               }
                             }}
-                            className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-cyan-500 focus:outline-none"
+                            className="flex-1 p-2 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none"
                           />
                           <button
                             type="button"
                             onClick={() => handleAddExternalRp(row.id, idx)}
-                            className="px-3 py-1.5 bg-cyan-100 hover:bg-cyan-200 text-cyan-900 font-semibold rounded-lg text-xs cursor-pointer transition-colors shrink-0"
+                            className="px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-900 font-semibold rounded-lg text-xs cursor-pointer transition-colors shrink-0"
                           >
                             + Add
                           </button>
@@ -742,7 +742,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                 onClick={handleAddRow}
                 className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer shadow-xs"
               >
-                <Plus className="w-4 h-4 text-emerald-600" />
+                <Plus className="w-4 h-4 text-purple-600" />
                 <span>Add Another Schedule</span>
               </button>
             </div>
@@ -758,7 +758,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-300" />
                   <span>Publishing Schedule...</span>
                 </>
               ) : (

@@ -923,7 +923,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900">
-                    Central CNE
+                    Schedule Central CNE
                   </h3>
                   <p className="text-xs text-slate-500">
                     Publish training session to the institutional CNE Schedule
