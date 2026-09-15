@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
+import { CheckCircle2, AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
 
-export type ToastType = 'success' | 'error' | 'info';
+export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
 export interface ToastMessage {
   id: string;
@@ -14,6 +14,7 @@ interface ToastContextType {
   showToast: (message: string, type?: ToastType, title?: string) => void;
   success: (message: string, title?: string) => void;
   error: (message: string, title?: string) => void;
+  warning: (message: string, title?: string) => void;
   info: (message: string, title?: string) => void;
 }
 
@@ -36,10 +37,11 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const success = useCallback((message: string, title?: string) => showToast(message, 'success', title), [showToast]);
   const error = useCallback((message: string, title?: string) => showToast(message, 'error', title), [showToast]);
+  const warning = useCallback((message: string, title?: string) => showToast(message, 'warning', title), [showToast]);
   const info = useCallback((message: string, title?: string) => showToast(message, 'info', title), [showToast]);
 
   return (
-    <ToastContext.Provider value={{ showToast, success, error, info }}>
+    <ToastContext.Provider value={{ showToast, success, error, warning, info }}>
       {children}
       <div id="toast-container" className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 max-w-sm w-full px-4 pointer-events-none">
         {toasts.map((t) => (
@@ -51,12 +53,15 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
                 : t.type === 'error'
                 ? 'bg-rose-50 border-rose-200 text-rose-900'
+                : t.type === 'warning'
+                ? 'bg-amber-50 border-amber-200 text-amber-900'
                 : 'bg-slate-900 border-slate-800 text-white'
             }`}
           >
             <div className="shrink-0 mt-0.5">
               {t.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-600" />}
               {t.type === 'error' && <AlertCircle className="w-5 h-5 text-rose-600" />}
+              {t.type === 'warning' && <AlertTriangle className="w-5 h-5 text-amber-600" />}
               {t.type === 'info' && <Info className="w-5 h-5 text-sky-400" />}
             </div>
             <div className="flex-1">
