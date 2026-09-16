@@ -407,6 +407,7 @@ function handleRequest(e, method) {
         break;
         
       case 'createCNE':
+      case 'addUnscheduledCNE':
         if (!session) {
           output = { success: false, errorCode: 'UNAUTHORIZED', message: 'Authentication required. Please sign in.' };
         } else {
@@ -2982,7 +2983,7 @@ function validateCneDuration(durationStr, fromDtStr, toDtStr) {
 
 /**
  * Batch Schedule Departmental CNEs (Admin and Area Incharge)
- * Creates separate, independent records in Upcoming Classes for each schedule row.
+ * Creates separate, independent records in CNE Schedule for each schedule row.
  */
 function handleAddDepartmentalSchedule(params, session) {
   if (!session) {
@@ -4504,7 +4505,7 @@ function handleUpdateCoordinatorDesk(params, session) {
 
 /**
  * 13b. Institutional & User CNE Program Impact
- * Retrieves live impact metrics calculated strictly from the 'Data' tab.
+ * Retrieves live impact metrics calculated from the 'CNE Schedule' sheet.
  * - Unauthenticated (session is null): Returns institutional/global metrics across all completed classes.
  * - Authenticated (session exists): Returns personalized impact metrics for the authenticated user (RP or participant).
  * Uses server-side session identity exclusively; does not accept unverified client-supplied employee IDs.
@@ -4596,7 +4597,7 @@ function handleGetProgramImpact(params, session) {
     }
     
     if (!isUserLoggedIn) {
-      // INSTITUTIONAL: All valid completed classes in Data tab
+      // INSTITUTIONAL: All valid completed classes in CNE Schedule
       completedClasses++;
       totalDurationSeconds += durSec;
       if (area) {
@@ -4659,7 +4660,7 @@ function handleGetProgramImpact(params, session) {
       totalDurationSeconds: totalDurationSeconds,
       uniqueStaffTrained: totalStaff,
       uniqueWardsCount: totalWards,
-      attendanceComplianceRate: 'N/A', // Data sheet contains no verification/compliance percentage column
+      attendanceComplianceRate: 'N/A', // CNE Schedule sheet contains no verification/compliance percentage column
       scope: isUserLoggedIn ? 'user' : 'institutional'
     }
   };

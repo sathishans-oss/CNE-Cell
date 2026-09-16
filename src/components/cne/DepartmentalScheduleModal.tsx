@@ -453,8 +453,8 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                               className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none text-purple-900 font-semibold"
                             >
                               <option value="">Select from Your Assigned Wards</option>
-                              {assignedAreas.map((a) => (
-                                <option key={a} value={a}>
+                              {assignedAreas.map((a, aIdx) => (
+                                <option key={`dept-assigned-area-${a}-${aIdx}`} value={a}>
                                   {a}
                                 </option>
                               ))}
@@ -480,8 +480,8 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                             className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
                           >
                             <option value="">Select Department / Ward...</option>
-                            {areasList.map((a) => (
-                              <option key={a} value={a}>
+                            {areasList.map((a, aIdx) => (
+                              <option key={`dept-area-${a}-${aIdx}`} value={a}>
                                 {a}
                               </option>
                             ))}
@@ -600,11 +600,11 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                         {/* Selected RP Tags */}
                         {selectedRowRpIds.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1.5 bg-white rounded-lg border border-slate-200">
-                            {selectedRowRpIds.map((empId) => {
+                            {selectedRowRpIds.map((empId, rpIdx) => {
                               const officer = effectiveOfficers.find((o) => o.employeeId === empId);
                               return (
                                 <span
-                                  key={empId}
+                                  key={`dept-row-rp-${empId}-${rpIdx}`}
                                   className="inline-flex items-center gap-1 text-[11px] font-medium bg-emerald-50 text-emerald-900 px-2 py-0.5 rounded-md border border-emerald-200"
                                 >
                                   <span>{empId} - {officer ? officer.name : empId}</span>
@@ -648,11 +648,11 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                           ) : filteredOfficers.length === 0 ? (
                             <div className="p-2.5 text-center text-xs text-slate-400">No officers found</div>
                           ) : (
-                            filteredOfficers.slice(0, 50).map((officer) => {
+                            filteredOfficers.slice(0, 50).map((officer, oIdx) => {
                               const isSelected = selectedRowRpIds.includes(officer.employeeId);
                               return (
                                 <div
-                                  key={officer.employeeId}
+                                  key={`dept-officer-${officer.employeeId || oIdx}-${oIdx}`}
                                   onClick={() => toggleRowRpSelection(idx, officer.employeeId)}
                                   className={`flex items-center justify-between p-1.5 text-xs cursor-pointer transition-colors ${
                                     isSelected ? 'bg-emerald-50 text-emerald-900 font-semibold' : 'hover:bg-slate-50 text-slate-700'
@@ -712,7 +712,7 @@ export const DepartmentalScheduleModal: React.FC<DepartmentalScheduleModalProps>
                           <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
                             {row.externalResourcePersons.map((name, rpIdx) => (
                               <span
-                                key={rpIdx}
+                                key={`dept-ext-rp-${name}-${rpIdx}`}
                                 className="inline-flex items-center gap-1 text-[11px] font-medium bg-amber-50 text-amber-900 px-2 py-0.5 rounded-md border border-amber-200"
                               >
                                 <span>{name} (External)</span>

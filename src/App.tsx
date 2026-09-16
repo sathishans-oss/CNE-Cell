@@ -11,7 +11,7 @@ import { ForgotPasswordModal } from './components/ForgotPasswordModal';
 import { Dashboard } from './components/Dashboard';
 import { MyCNE } from './components/MyCNE';
 import { CNECalendar } from './components/CNECalendar';
-import { UpcomingClasses } from './components/UpcomingClasses';
+import { CNESchedule } from './components/CNESchedule';
 import { LearningResourcesPage } from './components/cne/LearningResourcesPage';
 import { Gallery } from './components/Gallery';
 import { AdminAreas } from './components/AdminAreas';
@@ -94,7 +94,7 @@ const AppContent: React.FC = () => {
           {user && user.employeeId && activeView === 'calendar' && <CNECalendar />}
 
           {user && user.employeeId && activeView === 'upcoming' && (
-            <UpcomingClasses user={user} />
+            <CNESchedule user={user} />
           )}
 
           {user && user.employeeId && activeView === 'learning-resources' && (

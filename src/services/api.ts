@@ -550,6 +550,10 @@ export class ApiService {
     return res;
   }
 
+  static async addUnscheduledCNE(cneData: Partial<CNERecord>): Promise<ApiResponse<{ cneId: string }>> {
+    return this.createCNE({ ...cneData, isUnscheduled: true, status: 'Completed' });
+  }
+
   static async updateCNE(cneId: string, cneData: Partial<CNERecord>): Promise<ApiResponse> {
     const res = await this.executeAction('updateCNE', { cneId, classId: cneId, dataId: cneId, ...cneData });
     if (res.success) {

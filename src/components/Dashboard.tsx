@@ -119,10 +119,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <span>Generate CNE PDF ({new Date().getFullYear()})</span>
             </button>
 
-            {isAdmin && onOpenAddCNE && (
+            {isAdmin && (
               <button
                 id="btn-dash-quick-add-cne"
-                onClick={onOpenAddCNE}
+                onClick={() => {
+                  if (onOpenAddCNE) {
+                    onOpenAddCNE();
+                  } else {
+                    onNavigate('upcoming');
+                  }
+                }}
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs sm:text-sm border border-slate-700 transition-all cursor-pointer"
               >
                 <PlusCircle className="w-4 h-4 text-emerald-400" />

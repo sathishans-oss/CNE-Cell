@@ -100,6 +100,7 @@ export interface CNERecord {
   time?: string;
   duration: string; // Duration in HH:MM:SS format
   resourcePersonEmpId: string;
+  resourcePersonEmpIds?: string[];
   resourcePersonName?: string;
   externalResourcePersons?: string[]; // Outside resource persons without employee ID
   modeOfTeaching: string;
@@ -112,12 +113,14 @@ export interface CNERecord {
   proposedByName?: string;
   adminRemarks?: string;
   remarks?: string;
+  staffEmpId?: string; // Comma-separated internal employee IDs
   staffEmpIds?: string[]; // List of internal employee IDs
   staffNames?: string[]; // Populated when authorized
   externalStaffParticipants?: string[]; // Outside staff participants without employee ID
   staffCount?: number;
   finalizedQuestionsCount?: number;
   isLocked?: boolean;
+  isUnscheduled?: boolean;
   qrToken?: string;
   createdAt?: string;
   createdBy?: string;

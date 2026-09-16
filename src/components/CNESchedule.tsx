@@ -45,15 +45,16 @@ import { CNEParticipantsModal } from './cne/CNEParticipantsModal';
 import { CNEPostTestModal } from './cne/CNEPostTestModal';
 import { CNEFinalizeModal } from './cne/CNEFinalizeModal';
 import { DepartmentalScheduleModal } from './cne/DepartmentalScheduleModal';
+import { AddUnscheduledCneModal } from './cne/AddUnscheduledCneModal';
 import { ConfirmDatePicker } from './cne/ConfirmDatePicker';
 import { loadOfficersSingleFlight, getCachedOfficers } from '../services/officerLoader';
 
-interface UpcomingClassesProps {
+interface CNEScheduleProps {
   user: SessionUser | null;
   onRequireLogin?: (cneId?: string) => void;
 }
 
-export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
+export const CNESchedule: React.FC<CNEScheduleProps> = ({
   user,
   onRequireLogin
 }) => {
@@ -65,6 +66,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   // Schedule Class Modal State
   const [isAddClassOpen, setIsAddClassOpen] = useState(false);
   const [isDeptScheduleOpen, setIsDeptScheduleOpen] = useState(false);
+  const [isUnscheduledOpen, setIsUnscheduledOpen] = useState(false);
   const [newTopic, setNewTopic] = useState('');
   const [newArea, setNewArea] = useState('');
   const [newDate, setNewDate] = useState('');
@@ -189,7 +191,10 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
         setClasses(clsRes.data);
       }
       if (areasRes.success && areasRes.data) {
-        setAreasList(areasRes.data.filter((a) => a.status === 'ACTIVE').map((a) => a.name));
+        const uniqueAreas = Array.from(
+          new Set(areasRes.data.filter((a) => a.status === 'ACTIVE').map((a) => a.name).filter(Boolean))
+        );
+        setAreasList(uniqueAreas);
       }
 
       // Asynchronously load officers in the background without blocking CNE Schedule rendering
@@ -356,7 +361,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
     syncNewDatesAndDuration(scheduleFromDate, scheduleFromTime, scheduleToDate, val);
   };
 
-  const handleCreateUpcomingClass = async (e: React.FormEvent) => {
+  const handleCreateCNE = async (e: React.FormEvent) => {
     e.preventDefault();
     if (submittingRef.current || isSubmitting) return;
 
@@ -728,6 +733,19 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                 <span>Central CNE</span>
               </button>
             )}
+
+            {/* Unscheduled CNE Button (Admin only) */}
+            {isAdmin && (
+              <button
+                id="btn-admin-add-unscheduled-cne"
+                type="button"
+                onClick={() => setIsUnscheduledOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
+              >
+                <PlusCircle className="w-4 h-4 text-amber-200" />
+                <span>Unscheduled CNE</span>
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -825,7 +843,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                  {availableClasses.map((cls) => {
+                  {availableClasses.map((cls, idx) => {
                     const rpDisplay = formatResourcePersonsDisplay({
                       resourcePersonEmpId: cls.resourcePersonEmpId,
                       resourcePersonName: cls.resourcePersonName,
@@ -835,7 +853,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
 
                     return (
                       <tr
-                        key={cls.cneId}
+                        key={cls.cneId ? `${cls.cneId}-${idx}` : `cne-class-${idx}`}
                         onClick={() => setSelectedDetailCne(cls)}
                         className="hover:bg-slate-50/90 cursor-pointer transition-colors group"
                       >
@@ -941,7 +959,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleCreateUpcomingClass} className="flex flex-col flex-1 overflow-hidden">
+            <form onSubmit={handleCreateCNE} className="flex flex-col flex-1 overflow-hidden">
               <div className="p-6 overflow-y-auto flex-1 space-y-4 text-xs">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                   {/* Column 1: Classification & Topic */}
@@ -975,8 +993,8 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                         className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
                       >
                         <option value="">Select Area...</option>
-                        {areasList.map((a) => (
-                          <option key={a} value={a}>{a}</option>
+                        {areasList.map((a, idx) => (
+                          <option key={`area-opt-${a}-${idx}`} value={a}>{a}</option>
                         ))}
                       </select>
                     </div>
@@ -1156,11 +1174,11 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                       {/* Selected RP Tags */}
                       {selectedRpEmpIds.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto p-1 bg-white rounded-lg border border-slate-200">
-                          {selectedRpEmpIds.map((empId) => {
+                          {selectedRpEmpIds.map((empId, idx) => {
                             const officer = officersList.find((o) => o.employeeId === empId);
                             return (
                               <span
-                                key={empId}
+                                key={`sel-rp-${empId}-${idx}`}
                                 className="inline-flex items-center gap-1 text-[11px] font-medium bg-emerald-50 text-emerald-900 px-2 py-0.5 rounded-md border border-emerald-200"
                               >
                                 <span>{empId} - {officer ? officer.name : ''}</span>
@@ -1202,11 +1220,11 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                         ) : filteredRpOfficers.length === 0 ? (
                           <div className="p-2 text-center text-xs text-slate-400">No officers found</div>
                         ) : (
-                          filteredRpOfficers.slice(0, 50).map((officer) => {
+                          filteredRpOfficers.slice(0, 50).map((officer, idx) => {
                             const isSelected = selectedRpEmpIds.includes(officer.employeeId);
                             return (
                               <div
-                                key={officer.employeeId}
+                                key={`rp-off-${officer.employeeId || idx}-${idx}`}
                                 onClick={() => toggleRpSelection(officer.employeeId)}
                                 className={`flex items-center justify-between p-1.5 text-xs cursor-pointer transition-colors ${
                                   isSelected ? 'bg-emerald-50 text-emerald-900 font-semibold' : 'hover:bg-slate-50 text-slate-700'
@@ -1264,7 +1282,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                         <div className="flex flex-wrap gap-1.5">
                           {newExternalRpList.map((rp, idx) => (
                             <span
-                              key={idx}
+                              key={`new-ext-rp-${rp}-${idx}`}
                               className="inline-flex items-center gap-1 text-[11px] font-medium bg-amber-50 text-amber-900 px-2 py-0.5 rounded-md border border-amber-200"
                             >
                               <span>{rp} (External)</span>
@@ -1887,8 +1905,8 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                         className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-none bg-white text-xs"
                       >
                         <option value="">Select Area / Unit</option>
-                        {(isAdmin ? areasList : (userAssignedAreas.length > 0 ? userAssignedAreas : areasList)).map((a) => (
-                          <option key={a} value={a}>
+                        {(isAdmin ? areasList : (userAssignedAreas.length > 0 ? userAssignedAreas : areasList)).map((a, idx) => (
+                          <option key={`edit-area-opt-${a}-${idx}`} value={a}>
                             {a}
                           </option>
                         ))}
@@ -2059,11 +2077,11 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                         ) : filteredEditRpOfficers.length === 0 ? (
                           <div className="p-2 text-center text-xs text-slate-400">No officers found</div>
                         ) : (
-                          filteredEditRpOfficers.slice(0, 40).map((o) => {
+                          filteredEditRpOfficers.slice(0, 40).map((o, idx) => {
                             const isSelected = editSelectedRpEmpIds.includes(o.employeeId);
                             return (
                               <div
-                                key={o.employeeId}
+                                key={`edit-rp-off-${o.employeeId || idx}-${idx}`}
                                 onClick={() => toggleEditRpSelection(o.employeeId)}
                                 className={`flex items-center justify-between p-1.5 rounded cursor-pointer text-xs ${
                                   isSelected ? 'bg-amber-50 text-amber-900 font-semibold' : 'hover:bg-slate-50 text-slate-700'
@@ -2115,7 +2133,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
                         <div className="flex flex-wrap gap-1">
                           {editExternalRpList.map((p, idx) => (
                             <span
-                              key={idx}
+                              key={`edit-ext-rp-${p}-${idx}`}
                               className="inline-flex items-center gap-1 text-[11px] bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-md"
                             >
                               {p} (Ext)
@@ -2250,6 +2268,17 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
           isOfficersLoading={isResourcePersonsLoading}
           onOfficersLoaded={(fresh) => setOfficersList(fresh)}
           onSuccess={loadData}
+        />
+      )}
+
+      {isUnscheduledOpen && (
+        <AddUnscheduledCneModal
+          isOpen={isUnscheduledOpen}
+          onClose={() => setIsUnscheduledOpen(false)}
+          onSuccess={() => loadData()}
+          areasList={areasList}
+          officersList={officersList}
+          user={user}
         />
       )}
     </div>
