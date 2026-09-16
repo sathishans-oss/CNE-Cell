@@ -30,6 +30,7 @@ import {
 import { ApiService } from '../services/api';
 import { INITIAL_COORDINATOR_DESK, INITIAL_QUICK_LINKS } from '../services/initialData';
 import { useToast } from './Toast';
+import { VerifySheetsButton } from './VerifySheetsButton';
 
 interface AdminContentProps {
   user: SessionUser;
@@ -542,7 +543,7 @@ export const AdminContent: React.FC<AdminContentProps> = ({
   return (
     <div className="space-y-6 pb-12">
       {/* Header */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold text-slate-900">Admin Content</h1>
@@ -555,8 +556,12 @@ export const AdminContent: React.FC<AdminContentProps> = ({
           </p>
         </div>
 
-        {/* Tab Switcher */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl overflow-x-auto text-xs font-semibold">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Verify / Initialize CNE Sheets (Admin Only) */}
+          <VerifySheetsButton user={user} />
+
+          {/* Tab Switcher */}
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl overflow-x-auto text-xs font-semibold">
           <button
             type="button"
             onClick={() => setActiveTab('news')}
@@ -609,6 +614,7 @@ export const AdminContent: React.FC<AdminContentProps> = ({
             <span>Class Photos & Moments</span>
           </button>
         </div>
+      </div>
       </div>
 
       {/* ========================================================= */}

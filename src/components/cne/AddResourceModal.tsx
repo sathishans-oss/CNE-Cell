@@ -352,7 +352,7 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
                 </div>
                 <div>
                   <div className="text-xs font-bold text-slate-900">
-                    CNE Learning Material
+                    Learning Materials
                   </div>
                   <div className="text-[11px] text-slate-500 mt-0.5 leading-snug">
                     Attach slides, guidelines, or handouts to a scheduled CNE topic
@@ -383,7 +383,7 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
                 </div>
                 <div>
                   <div className="text-xs font-bold text-slate-900">
-                    Nursing Reference Library
+                    Library
                   </div>
                   <div className="text-[11px] text-slate-500 mt-0.5 leading-snug">
                     Open RN textbook or standard clinical reference for AI grounding

@@ -105,10 +105,7 @@ const AppContent: React.FC = () => {
           )}
 
           {user && user.employeeId && activeView === 'learning-resources' && (
-            <LearningResourcesPage
-              user={user}
-              onNavigateToSchedule={() => setActiveView('upcoming')}
-            />
+            <LearningResourcesPage user={user} />
           )}
 
           {user && user.employeeId && activeView === 'gallery' && <Gallery user={user} />}

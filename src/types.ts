@@ -175,8 +175,6 @@ export interface CNEQuestion {
   correctOption: 'A' | 'B' | 'C' | 'D';
   explanation: string;
   authoritativeSource?: string;
-  sourceUrl?: string;
-  sourceRetrievedAt?: string;
   status?: 'ACTIVE' | 'INACTIVE' | 'REPLACED';
   isFinalized?: boolean;
   isLocked?: boolean;

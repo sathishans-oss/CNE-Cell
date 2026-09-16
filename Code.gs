@@ -5081,7 +5081,7 @@ var CNE_SHEET_HEADERS = {
   'News and Events': ['Event ID', 'Title', 'Category', 'Date', 'Summary', 'Full Content', 'Status', 'CreatedAt', 'CreatedBy'],
   'User Credentials': ['Employee ID', 'Password Hash', 'Password Salt', 'Must Change Password', 'Created At', 'Updated At', 'Last Login At', 'Account Status'],
   'Audit Log': ['Timestamp', 'Action', 'Employee ID', 'Details', 'Status'],
-  'CNE Post Test Questions': ['CNE ID', 'Question ID', 'Question Text', 'Option A', 'Option B', 'Option C', 'Option D', 'Correct Option', 'Explanation', 'Is Finalized', 'Is Locked', 'Created At', 'Created By', 'Authoritative Source', 'Status', 'Source URL', 'Source Retrieved At'],
+  'CNE Post Test Questions': ['CNE ID', 'Question ID', 'Question Text', 'Option A', 'Option B', 'Option C', 'Option D', 'Correct Option', 'Explanation', 'Is Finalized', 'Is Locked', 'Created At', 'Created By', 'Authoritative Source', 'Status'],
   'CNE Post Test Responses': ['Response ID', 'CNE ID', 'Employee ID', 'Employee Name', 'Designation', 'Department', 'Score', 'Total Questions', 'Percentage', 'Source', 'Submitted At', 'Answers JSON', 'Status', 'Remarks'],
   'CNE_Reference': ['CNE ID', 'Topic', 'Reference Text / Clinical Guides', 'Updated At', 'Updated By', 'Drive File ID', 'File Name', 'File Type', 'Resource Person Name', 'File Size', 'Visible To Users'],
   'CNE_QR_Tokens': ['QR Token', 'CNE ID', 'Created At', 'Created By', 'Status'],
@@ -11044,9 +11044,6 @@ function handleCommitAiQuota(params, session) {
         allExistingSheetQIds[qId.toLowerCase()] = true;
         validatedQuestionIds.push(qId);
 
-        var srcUrl = sanitizeCellInput(qObj.sourceUrl || '').trim();
-        var srcRetrievedAt = sanitizeCellInput(qObj.sourceRetrievedAt || '').trim();
-
         var item = {
           cneId: cneId,
           id: qId,
@@ -11062,9 +11059,7 @@ function handleCommitAiQuota(params, session) {
           createdAt: nowIso,
           createdBy: session.employeeId + ' ' + aiBatchTag,
           authoritativeSource: authSrc,
-          status: 'ACTIVE',
-          sourceUrl: srcUrl,
-          sourceRetrievedAt: srcRetrievedAt
+          status: 'ACTIVE'
         };
         rowsToSave.push(buildQuestionRowArray(qCols, item, qSheetData[0].length));
       }
@@ -11558,22 +11553,12 @@ function getCachedSanitizedQuestions(cneId) {
 }
 
 /**
- * Helper: Ensure Question Sheet has all necessary headers including Source URL & Source Retrieved At
+ * Helper: Ensure Question Sheet has all necessary headers
  */
 function ensureQuestionsSheetHeaders(sheet) {
-  if (!sheet) return;
-  var lastCol = sheet.getLastColumn();
-  if (lastCol < 1) return;
-  var colMap = getHeaderMap(sheet);
-  if (colMap['sourceurl'] === undefined) {
-    var nextCol = sheet.getLastColumn() + 1;
-    sheet.getRange(1, nextCol).setValue('Source URL').setFontWeight('bold');
-  }
-  colMap = getHeaderMap(sheet);
-  if (colMap['sourceretrievedat'] === undefined) {
-    var nextCol = sheet.getLastColumn() + 1;
-    sheet.getRange(1, nextCol).setValue('Source Retrieved At').setFontWeight('bold');
-  }
+  // Legacy external-source headers (Source URL, Source Retrieved At) are removed from dynamic creation.
+  // Existing sheet columns are preserved untouched.
+  return;
 }
 
 /**
@@ -11612,9 +11597,7 @@ function getQuestionColIndexes(sheet) {
     createdAt: colMap['createdat'] !== undefined ? colMap['createdat'] : 11,
     createdBy: colMap['createdby'] !== undefined ? colMap['createdby'] : 12,
     authoritativeSource: colMap['authoritativesource'] !== undefined ? colMap['authoritativesource'] : (colMap['source'] !== undefined ? colMap['source'] : 13),
-    status: colMap['status'] !== undefined ? colMap['status'] : 14,
-    sourceUrl: colMap['sourceurl'] !== undefined ? colMap['sourceurl'] : (colMap['url'] !== undefined ? colMap['url'] : 15),
-    sourceRetrievedAt: colMap['sourceretrievedat'] !== undefined ? colMap['sourceretrievedat'] : (colMap['retrievedat'] !== undefined ? colMap['retrievedat'] : 16)
+    status: colMap['status'] !== undefined ? colMap['status'] : 14
   };
 }
 
@@ -11623,7 +11606,7 @@ function getQuestionColIndexes(sheet) {
  */
 function buildQuestionRowArray(cols, item, totalCols, existingRow) {
   var row = existingRow ? existingRow.slice() : [];
-  var targetLen = Math.max(totalCols || 0, 17);
+  var targetLen = Math.max(totalCols || 0, 15);
   for (var k in cols) {
     if (cols[k] !== undefined && cols[k] >= targetLen) {
       targetLen = cols[k] + 1;
@@ -11647,8 +11630,6 @@ function buildQuestionRowArray(cols, item, totalCols, existingRow) {
   if (cols.createdBy !== undefined) row[cols.createdBy] = item.createdBy || '';
   if (cols.authoritativeSource !== undefined) row[cols.authoritativeSource] = item.authoritativeSource || '';
   if (cols.status !== undefined) row[cols.status] = item.status || 'ACTIVE';
-  if (cols.sourceUrl !== undefined) row[cols.sourceUrl] = item.sourceUrl || '';
-  if (cols.sourceRetrievedAt !== undefined) row[cols.sourceRetrievedAt] = item.sourceRetrievedAt || '';
   return row;
 }
 
@@ -11815,7 +11796,7 @@ function handleSaveCNEQuestions(params, session) {
 
     var authSrc = sanitizeCellInput(q.authoritativeSource || '').trim();
     if (!authSrc || authSrc.length < 3) {
-      authSrc = 'Clinical Nursing Protocol / INC Standards';
+      return { success: false, message: 'Question ' + qNum + ': Authoritative clinical source from local material is required.' };
     }
 
     var qStatus = String(q.status || 'ACTIVE').trim().toUpperCase();
@@ -11829,9 +11810,6 @@ function handleSaveCNEQuestions(params, session) {
       finalizedCount++;
     }
 
-    var srcUrl = sanitizeCellInput(q.sourceUrl || '').trim();
-    var srcRetrievedAt = sanitizeCellInput(q.sourceRetrievedAt || '').trim();
-
     validatedList.push({
       id: qId,
       question: qText,
@@ -11843,9 +11821,7 @@ function handleSaveCNEQuestions(params, session) {
       explanation: expl,
       isFinalized: isFin,
       authoritativeSource: authSrc,
-      status: qStatus,
-      sourceUrl: srcUrl,
-      sourceRetrievedAt: srcRetrievedAt
+      status: qStatus
     });
   }
 
@@ -11919,9 +11895,7 @@ function handleSaveCNEQuestions(params, session) {
         createdAt: now,
         createdBy: session.employeeId,
         authoritativeSource: item.authoritativeSource,
-        status: item.status,
-        sourceUrl: item.sourceUrl || '',
-        sourceRetrievedAt: item.sourceRetrievedAt || ''
+        status: item.status
       }, data[0].length, existingRowValues);
 
       if (targetRow) {
@@ -11975,8 +11949,6 @@ function handleGetCNEQuestions(params, session) {
       var isFin = String(data[r][cols.isFinalized] || 'NO').toUpperCase() === 'YES';
       var authSrc = String(data[r][cols.authoritativeSource] || '').trim();
       var qStatus = String(data[r][cols.status] || 'ACTIVE').trim().toUpperCase();
-      var srcUrl = cols.sourceUrl < data[r].length ? String(data[r][cols.sourceUrl] || '').trim() : '';
-      var srcRetrievedAt = cols.sourceRetrievedAt < data[r].length ? String(data[r][cols.sourceRetrievedAt] || '').trim() : '';
       if (qStatus !== 'INACTIVE' && qStatus !== 'REPLACED') {
         qStatus = 'ACTIVE';
         activeCount++;
@@ -11996,9 +11968,7 @@ function handleGetCNEQuestions(params, session) {
         authoritativeSource: authSrc,
         status: qStatus,
         isFinalized: isFin,
-        isLocked: isLocked || String(data[r][cols.isLocked] || 'NO').toUpperCase() === 'YES',
-        sourceUrl: srcUrl,
-        sourceRetrievedAt: srcRetrievedAt
+        isLocked: isLocked || String(data[r][cols.isLocked] || 'NO').toUpperCase() === 'YES'
       });
     }
   }

@@ -67,7 +67,6 @@ interface RawGeneratedQuestion {
   authoritativeSource?: string;
   source?: string;
   reference?: string;
-  sourceId?: string;
 }
 
 // Explicitly blocked paid-tier models - MUST NEVER BE CALLED

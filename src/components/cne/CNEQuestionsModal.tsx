@@ -53,7 +53,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
   const [showHistory, setShowHistory] = useState(false);
 
   // Real-time stage progress state for AI generation
-  const [generationStage, setGenerationStage] = useState<string>('');
+  const [generationStage, setGenerationStage] = useState<{ title: string; subtitle: string } | null>(null);
 
   // Authoritative AI Quota & Material State
   const [quotaInfo, setQuotaInfo] = useState<CNEAiQuotaInfo | null>(null);
@@ -113,17 +113,17 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
     if (isAiGenerationUsed) {
       generatingRef.current = false;
       setIsGenerating(false);
-      setGenerationStage('');
+      setGenerationStage(null);
       error('AI question generation has already been completed for this CNE.');
       return;
     }
 
     try {
-      // Stage 1: Reading learning material
-      setGenerationStage('Reading and analyzing learning resource');
-
-      // Stage 2: Preparing CNE session questions & quota reservation
-      setGenerationStage('Preparing CNE session questions & quota reservation');
+      // Stage: Reserving generation quota
+      setGenerationStage({
+        title: 'Reserving generation quota',
+        subtitle: 'Securing the quota required to generate your MCQs…'
+      });
       const reserveRes = await ApiService.reserveAiQuota(cneId, 'MATERIAL');
       if (!reserveRes.success || !reserveRes.data?.reservationToken) {
         error(reserveRes.message || 'Failed to reserve AI generation allowance.');
@@ -135,8 +135,11 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
 
       const reservationToken = reserveRes.data.reservationToken;
 
-      // Stage 3: Generating 5 MCQs
-      setGenerationStage('Generating 5 MCQs grounded in material');
+      // Stage: Generating MCQs
+      setGenerationStage({
+        title: 'Generating MCQs',
+        subtitle: 'Analyzing the learning content and CNE Library resources…'
+      });
       let aiRes: any;
       try {
         aiRes = await ApiService.generateAiQuestions({
@@ -168,8 +171,11 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
 
       setHasMaterial(true);
 
-      // Stage 4: Finalizing questions
-      setGenerationStage('Finalizing questions');
+      // Stage: Finalizing MCQs
+      setGenerationStage({
+        title: 'Finalizing MCQs',
+        subtitle: 'Almost ready…'
+      });
       const commitRes = await ApiService.commitAiQuota(cneId, reservationToken, aiRes.data);
 
       if (commitRes && commitRes.success && commitRes.data) {
@@ -204,7 +210,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
     } finally {
       generatingRef.current = false;
       setIsGenerating(false);
-      setGenerationStage('');
+      setGenerationStage(null);
     }
   };
 
@@ -232,7 +238,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
       },
       correctOption: 'A',
       explanation: '',
-      authoritativeSource: 'Clinical Nursing Protocol / INC Standards',
+      authoritativeSource: '',
       status: 'ACTIVE',
       isFinalized: true
     };
@@ -257,9 +263,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
       },
       correctOption: 'A',
       explanation: '',
-      authoritativeSource: targetQ.authoritativeSource || 'Clinical Nursing Protocol / INC Standards',
-      sourceUrl: targetQ.sourceUrl,
-      sourceRetrievedAt: targetQ.sourceRetrievedAt,
+      authoritativeSource: targetQ.authoritativeSource || '',
       status: 'ACTIVE',
       isFinalized: true
     };
@@ -364,7 +368,8 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
         return;
       }
       if (!q.authoritativeSource || q.authoritativeSource.trim().length < 3) {
-        q.authoritativeSource = 'Clinical Nursing Protocol / INC Standards';
+        error(`Active Question #${i + 1} requires an authoritative clinical source based on local CNE material.`);
+        return;
       }
     }
 
@@ -494,7 +499,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                 </button>
               )}
 
-              {/* Generate MCQs from Given Material */}
+              {/* AI Generate MCQs */}
               <button
                 type="button"
                 onClick={() => handleGenerateAi()}
@@ -504,7 +509,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                     ? 'AI generation already completed for this CNE (Locked)'
                     : hasMaterial === false
                     ? 'Please enter or upload CNE Class Content first'
-                    : 'Generate exactly 5 clinical MCQs strictly from saved CNE learning material'
+                    : 'AI Generate MCQs strictly from saved learning material and CNE Library resources'
                 }
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs shadow-xs transition-colors ${
                   isAiGenerationUsed
@@ -517,17 +522,17 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                 {isGenerating ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Generating from Material...</span>
+                    <span>Generating MCQs...</span>
                   </>
                 ) : isAiGenerationUsed ? (
                   <>
                     <Lock className="w-3.5 h-3.5 text-slate-400" />
-                    <span>From Given Material (Used)</span>
+                    <span>AI Generate MCQs (Used)</span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-3.5 h-3.5" />
-                    <span>Generate MCQs from Given Material</span>
+                    <span>AI Generate MCQs</span>
                   </>
                 )}
               </button>
@@ -557,58 +562,33 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
         )}
 
         {/* Question List Content - 2-Column Wide Grid on Desktop */}
-        <div className="p-6 overflow-y-auto flex-1 bg-slate-50/40 text-xs">
-          {/* Meaningful Real-Time Processing Status in Main Content Area */}
-          {isGenerating && (
-            <div className="p-6 bg-purple-50/80 border border-purple-200 rounded-2xl flex flex-col items-center justify-center text-center space-y-3 shadow-xs mb-6">
-              <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
-                <Loader2 className="w-5 h-5 animate-spin" />
+        <div className="p-6 overflow-y-auto flex-1 bg-slate-50/40 text-xs flex flex-col">
+          {/* Prominent Single-Stage Processing Status in Main Content Area */}
+          {isGenerating ? (
+            <div className="my-auto py-16 flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-4">
+              <div className="w-14 h-14 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center shadow-xs">
+                <Loader2 className="w-7 h-7 animate-spin text-purple-600" />
               </div>
-              <div>
-                <h4 className="text-sm font-bold text-purple-950">
-                  Synthesizing Standardized Clinical MCQs
-                </h4>
-                <p className="text-xs font-semibold text-purple-700 mt-1">
-                  {generationStage || 'Processing...'}
+              <div className="space-y-1.5">
+                <h3 className="text-base font-bold text-slate-900">
+                  {generationStage?.title || 'Generating MCQs'}
+                </h3>
+                <p className="text-xs text-slate-500 max-w-sm leading-relaxed">
+                  {generationStage?.subtitle || 'Analyzing the learning content and CNE Library resources…'}
                 </p>
               </div>
-              <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1 text-[10px]">
-                {[
-                  'Learning resource received',
-                  'Reading & analyzing resource',
-                  'Preparing quota reservation',
-                  'Generating 5 MCQs',
-                  'Finalizing questions'
-                ].map((stg, i) => {
-                  const isCurrent = generationStage.toLowerCase().includes(stg.toLowerCase().slice(0, 7));
-                  return (
-                    <span
-                      key={i}
-                      className={`px-2.5 py-0.5 rounded-full font-semibold transition-all ${
-                        isCurrent
-                          ? 'bg-purple-700 text-white shadow-xs'
-                          : 'bg-purple-100/80 text-purple-800'
-                      }`}
-                    >
-                      {i + 1}. {stg}
-                    </span>
-                  );
-                })}
-              </div>
             </div>
-          )}
-
-          {loading ? (
-            <div className="py-20 flex flex-col items-center justify-center gap-2 text-slate-500">
+          ) : loading ? (
+            <div className="my-auto py-20 flex flex-col items-center justify-center gap-2 text-slate-500">
               <Loader2 className="w-6 h-6 animate-spin text-purple-600" />
               <span>Loading questions...</span>
             </div>
           ) : activeQuestions.length === 0 && replacedQuestions.length === 0 ? (
-            <div className="py-16 text-center p-8 bg-white rounded-2xl border border-dashed border-slate-300 space-y-3 max-w-xl mx-auto my-8">
+            <div className="my-auto py-16 text-center p-8 bg-white rounded-2xl border border-dashed border-slate-300 space-y-3 max-w-xl mx-auto">
               <HelpCircle className="w-10 h-10 text-slate-300 mx-auto" />
-              <h4 className="text-sm font-bold text-slate-800">No Post-Test Questions Configured</h4>
+              <h4 className="text-sm font-bold text-slate-800">No AI-generated MCQs yet</h4>
               <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-                Save CNE Class Content in the Reference Material modal and click <strong>Auto-Generate 5 MCQs</strong> to synthesize evidence-based questions, or click <strong>Manual Question</strong> to craft custom assessment items.
+                AI analyzes the learning material along with relevant CNE Library resources to generate meaningful, content-based MCQs for review.
               </p>
             </div>
           ) : (
@@ -745,26 +725,13 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
 
                           <div>
                             <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                              Authoritative Clinical Source:
+                               Authoritative Clinical Source:
                             </label>
                             <input
                               type="text"
                               value={q.authoritativeSource || ''}
                               onChange={(e) => handleUpdateQuestion(idx, { authoritativeSource: e.target.value })}
-                              placeholder="e.g. AIIMS Nursing Procedure Manual / INC Curriculum / AHA 2025"
-                              className="w-full p-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                              Online Source URL (Optional):
-                            </label>
-                            <input
-                              type="url"
-                              value={q.sourceUrl || ''}
-                              onChange={(e) => handleUpdateQuestion(idx, { sourceUrl: e.target.value })}
-                              placeholder="https://europepmc.org/... or clinical guideline web link"
+                              placeholder="e.g. Learning Materials / Library"
                               className="w-full p-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs"
                             />
                           </div>

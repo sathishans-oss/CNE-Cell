@@ -39,9 +39,6 @@ interface RawGeneratedQuestion {
   authoritativeSource?: string;
   source?: string;
   reference?: string;
-  sourceUrl?: string;
-  sourceRetrievedAt?: string;
-  sourceId?: string;
 }
 
 const JSON_HEADERS = {

@@ -9,7 +9,9 @@ import {
   Info,
   X,
   List,
-  Grid
+  Grid,
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 import { CNERecord, UpcomingClass } from '../types';
 import { ApiService } from '../services/api';
@@ -123,7 +125,16 @@ export const CNECalendar: React.FC = () => {
       {/* Calendar Header & View Controls */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">CNE Calendar</h1>
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-xl font-bold text-slate-900">CNE Calendar</h1>
+            {loading && (
+              <Loader2
+                id="cne-calendar-loading-spinner"
+                className="w-4 h-4 text-teal-600 animate-spin"
+                aria-label="Loading calendar data..."
+              />
+            )}
+          </div>
           <p className="text-xs text-slate-500 mt-0.5">
             Interactive schedule for clinical workshops, nursing classes, and department training sessions.
           </p>
@@ -168,6 +179,15 @@ export const CNECalendar: React.FC = () => {
               className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
             >
               <ChevronRight className="w-4 h-4" />
+            </button>
+            <button
+              id="btn-calendar-refresh"
+              onClick={loadEvents}
+              disabled={loading}
+              title="Refresh calendar data"
+              className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-teal-600' : ''}`} />
             </button>
           </div>
         </div>
