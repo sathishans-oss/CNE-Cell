@@ -350,7 +350,8 @@ function handleRequest(e, method) {
         break;
         
       case 'getUpcomingClasses':
-        output = handleGetUpcomingClasses(params);
+      case 'getCNERecords':
+        output = handleGetCNERecords(params, session);
         break;
         
       case 'getGallery':
@@ -378,10 +379,6 @@ function handleRequest(e, method) {
         break;
         
       // Authenticated User Endpoints
-      case 'getCNERecords':
-        output = handleGetCNERecords(params, session);
-        break;
-        
       case 'applyForClass':
         output = handleApplyForClass(params, session);
         break;
@@ -415,24 +412,30 @@ function handleRequest(e, method) {
         output = handleAdminAction(params, session, handleUpdateRole, 'UPDATE_ROLE');
         break;
         
-      case 'addCNE':
-        output = handleAdminAction(params, session, handleAddCNE, 'ADD_CNE');
-        break;
-        
-      case 'updateCNE':
-        output = handleAdminAction(params, session, handleUpdateCNE, 'UPDATE_CNE');
-        break;
-        
-      case 'deleteCNE':
-        output = handleAdminAction(params, session, handleDeleteCNE, 'DELETE_CNE');
-        break;
-        
+      case 'createCNE':
       case 'addUpcomingClass':
         if (!session) {
           output = { success: false, errorCode: 'UNAUTHORIZED', message: 'Authentication required. Please sign in.' };
         } else {
           output = handleAddUpcomingClass(params, session);
         }
+        break;
+
+      case 'addCNE':
+        output = handleAdminAction(params, session, handleAddCNE, 'ADD_CNE');
+        break;
+        
+      case 'updateCNE':
+      case 'updateUpcomingClass':
+        if (!session) {
+          output = { success: false, errorCode: 'UNAUTHORIZED', message: 'Authentication required. Please sign in.' };
+        } else {
+          output = handleUpdateUpcomingClass(params, session);
+        }
+        break;
+        
+      case 'deleteCNE':
+        output = handleAdminAction(params, session, handleDeleteCNE, 'DELETE_CNE');
         break;
 
       case 'addDepartmentalSchedule':
@@ -442,21 +445,14 @@ function handleRequest(e, method) {
           output = handleAddDepartmentalSchedule(params, session);
         }
         break;
-        
-      case 'updateUpcomingClass':
-        if (!session) {
-          output = { success: false, errorCode: 'UNAUTHORIZED', message: 'Authentication required. Please sign in.' };
-        } else {
-          output = handleUpdateUpcomingClass(params, session);
-        }
-        break;
 
       case 'setupAndVerifyCNESheets':
         output = handleAdminAction(params, session, handleSetupAndVerifyCNESheets, 'SETUP_AND_VERIFY_SHEETS');
         break;
 
+      case 'reviewCNE':
       case 'reviewUpcomingClass':
-        output = handleAdminAction(params, session, handleReviewUpcomingClass, 'REVIEW_UPCOMING_CLASS');
+        output = handleAdminAction(params, session, handleReviewUpcomingClass, 'REVIEW_CNE');
         break;
         
       case 'getAllApplications':
@@ -703,7 +699,7 @@ function handleDiagnosticPing(params) {
     backendApi: 'PASS',
     cneSpreadsheet: 'FAIL',
     employeeMaster: 'FAIL',
-    dataTab: 'FAIL',
+    cneScheduleTab: 'FAIL',
     areaTab: 'FAIL',
     roleTab: 'FAIL',
     sessionConfig: 'FAIL',
@@ -721,7 +717,7 @@ function handleDiagnosticPing(params) {
     for (var i = 0; i < sheets.length; i++) {
       var sName = sheets[i].getName();
       sheetNames.push(sName);
-      if (sName === 'CNE Schedule' || sName === 'Data') diagnostics.dataTab = 'PASS';
+      if (sName === 'CNE Schedule') diagnostics.cneScheduleTab = 'PASS';
       if (sName === 'Area') diagnostics.areaTab = 'PASS';
       if (sName === 'Role') diagnostics.roleTab = 'PASS';
     }
@@ -2236,16 +2232,17 @@ function parseDurationToDayFraction(val) {
  * 6. CNE Records Retrieval with Strict Server-Side Role and Privacy Filtering
  */
 function handleGetCNERecords(params, session) {
-  if (!session) {
+  var isMyRecordsOnly = Boolean(params && (params.myRecordsOnly || params.scope === 'my-cne'));
+  if (isMyRecordsOnly && !session) {
     return { success: false, errorCode: 'UNAUTHORIZED', message: 'Unauthorized session.' };
   }
   
   var startedAt = Date.now();
-  var isAdmin = session.role === 'ADMIN';
-  var loggedInId = normalizeEmpId(session.employeeId);
+  var isAdmin = session ? (session.role === 'ADMIN') : false;
+  var loggedInId = session ? normalizeEmpId(session.employeeId) : null;
   
   var ss = getSpreadsheet('CNE');
-  var sheet = ss.getSheetByName('CNE Schedule') || ss.getSheetByName('Data');
+  var sheet = ss.getSheetByName('CNE Schedule');
   if (!sheet) return { success: true, data: [] };
   
   var dataRange = sheet.getDataRange();
@@ -2254,20 +2251,24 @@ function handleGetCNERecords(params, session) {
   var officerMap = getOfficerNameMap();
   var colMap = getHeaderMap(sheet);
   
-  var idCol = colMap['cneid'] !== undefined ? colMap['cneid'] : (colMap['dataid'] !== undefined ? colMap['dataid'] : (colMap['classid'] !== undefined ? colMap['classid'] : 0));
+  var idCol = colMap['cneid'] !== undefined ? colMap['cneid'] : (colMap['classid'] !== undefined ? colMap['classid'] : (colMap['dataid'] !== undefined ? colMap['dataid'] : 0));
   var areaCol = colMap['area'] !== undefined ? colMap['area'] : (colMap['wardnamearea'] !== undefined ? colMap['wardnamearea'] : 1);
   var fromDateCol = colMap['fromdate'] !== undefined ? colMap['fromdate'] : (colMap['date'] !== undefined ? colMap['date'] : 2);
   var toDateCol = colMap['todate'] !== undefined ? colMap['todate'] : 3;
+  var timeCol = colMap['time'] !== undefined ? colMap['time'] : -1;
   var durCol = colMap['duration'] !== undefined ? colMap['duration'] : 4;
   var topicCol = colMap['topic'] !== undefined ? colMap['topic'] : 5;
   var rpCol = colMap['resourcepersonempid'] !== undefined ? colMap['resourcepersonempid'] : 6;
   var modeCol = colMap['modeofteaching'] !== undefined ? colMap['modeofteaching'] : (colMap['mode'] !== undefined ? colMap['mode'] : 7);
+  var descCol = colMap['description'] !== undefined ? colMap['description'] : -1;
+  var maxPartCol = colMap['maxparticipants'] !== undefined ? colMap['maxparticipants'] : -1;
   var staffCol = colMap['staffempid'] !== undefined ? colMap['staffempid'] : 8;
   var countCol = colMap['staffcount'] !== undefined ? colMap['staffcount'] : 9;
   var remarksCol = colMap['adminremarks'] !== undefined ? colMap['adminremarks'] : (colMap['remarks'] !== undefined ? colMap['remarks'] : 10);
   var typeCol = colMap['typeofcne'] !== undefined ? colMap['typeofcne'] : (colMap['cnetype'] !== undefined ? colMap['cnetype'] : 15);
   var extRpCol = colMap['externalresourcepersons'] !== undefined ? colMap['externalresourcepersons'] : 13;
   var extStaffCol = colMap['externalstaffparticipants'] !== undefined ? colMap['externalstaffparticipants'] : 14;
+  var proposedByCol = colMap['proposedby'] !== undefined ? colMap['proposedby'] : -1;
   var statusCol = colMap['status'] !== undefined ? colMap['status'] : -1;
 
   var records = [];
@@ -2279,16 +2280,20 @@ function handleGetCNERecords(params, session) {
     var area = String(row[areaCol] || '').trim();
     var fromDate = formatDateValue(row[fromDateCol]);
     var toDate = formatDateValue(row[toDateCol] || row[fromDateCol]);
+    var time = timeCol !== -1 ? String(row[timeCol] || '').trim() : '';
     var duration = formatDurationValue(row[durCol]);
     var topic = String(row[topicCol] || '').trim();
     var resourcePersonEmpId = normalizeEmpId(row[rpCol]);
     var mode = String(row[modeCol] || 'Lecture Cum Discussion').trim();
+    var description = descCol !== -1 ? String(row[descCol] || '').trim() : '';
+    var maxParticipants = maxPartCol !== -1 ? (parseInt(row[maxPartCol], 10) || 50) : 50;
     var staffIdsRaw = String(row[staffCol] || '').trim();
     var staffCount = parseInt(row[countCol], 10) || 0;
     var remarks = String(row[remarksCol] || '').trim();
     var rawType = row[typeCol];
     var cneType = normalizeCNEType(rawType);
-    var status = statusCol !== -1 ? normalizeCNEStatus(row[statusCol]) : 'Completed';
+    var status = statusCol !== -1 ? normalizeCNEStatus(row[statusCol]) : 'Scheduled';
+    var proposedBy = proposedByCol !== -1 ? String(row[proposedByCol] || '').trim() : '';
     
     // Strict exact participant parsing
     var staffArray = staffIdsRaw.split(',').map(function(s) {
@@ -2303,19 +2308,34 @@ function handleGetCNERecords(params, session) {
       return normalizeEmpId(s);
     }).filter(Boolean);
     
-    var isResourcePerson = (rpArray.indexOf(loggedInId) !== -1);
-    var isStaffParticipant = (staffArray.indexOf(loggedInId) !== -1);
+    var isResourcePerson = loggedInId ? (rpArray.indexOf(loggedInId) !== -1) : false;
+    var isStaffParticipant = loggedInId ? (staffArray.indexOf(loggedInId) !== -1) : false;
     
-    // Ordinary employees ONLY receive records where they were RP or participant
-    if (!isAdmin && !isResourcePerson && !isStaffParticipant) {
-      continue;
+    // Ordinary employees querying My CNE ONLY receive records where they were RP or participant
+    if (isMyRecordsOnly) {
+      if (!isAdmin && !isResourcePerson && !isStaffParticipant) {
+        continue;
+      }
+    }
+
+    // Filter by query parameters if specified
+    if (params) {
+      if (params.status && params.status !== 'ALL' && status.toLowerCase() !== String(params.status).toLowerCase()) {
+        continue;
+      }
+      if (params.cneType && params.cneType !== 'ALL' && cneType !== normalizeCNEType(params.cneType)) {
+        continue;
+      }
+      if (params.area && params.area !== 'ALL' && area.toLowerCase() !== String(params.area).toLowerCase()) {
+        continue;
+      }
     }
     
     var extRp = extRpCol !== -1 && row[extRpCol] ? String(row[extRpCol]).split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
     var extStaff = extStaffCol !== -1 && row[extStaffCol] ? String(row[extStaffCol]).split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
 
     // PRIVACY HARDENING: Non-admins ONLY receive their own ID in staffEmpIds (never other staff IDs)
-    var sanitizedStaffEmpIds = isAdmin ? staffArray : (isStaffParticipant ? [session.employeeId] : []);
+    var sanitizedStaffEmpIds = isAdmin ? staffArray : (isStaffParticipant && session ? [session.employeeId] : []);
     
     var rpNames = rpArray.map(function(id) {
       return officerMap[id] || id;
@@ -2332,7 +2352,9 @@ function handleGetCNERecords(params, session) {
       classId: dataId,
       area: area,
       fromDate: fromDate,
+      date: fromDate,
       toDate: toDate,
+      time: time,
       duration: duration,
       topic: topic,
       resourcePersonEmpId: resourcePersonEmpId,
@@ -2340,13 +2362,16 @@ function handleGetCNERecords(params, session) {
       externalResourcePersons: extRp,
       externalStaffParticipants: isAdmin ? extStaff : [],
       modeOfTeaching: mode,
+      description: description,
+      maxParticipants: maxParticipants,
       staffEmpIds: sanitizedStaffEmpIds,
       staffNames: staffNameList,
       staffCount: staffCount,
       status: status,
       remarks: remarks,
       adminRemarks: remarks,
-      cneType: cneType
+      cneType: cneType,
+      proposedByEmpId: proposedBy
     });
   }
   
@@ -2551,7 +2576,7 @@ function handleUpdateCNE(params, session) {
   
   try {
     var ss = getSpreadsheet('CNE');
-    var sheet = ss.getSheetByName('CNE Schedule') || ss.getSheetByName('Data');
+    var sheet = ss.getSheetByName('CNE Schedule');
     if (!sheet) return { success: false, message: 'CNE Schedule sheet not found.' };
     
     var data = sheet.getDataRange().getValues();
@@ -2734,7 +2759,7 @@ function handleDeleteCNE(params, session) {
   
   try {
     var ss = getSpreadsheet('CNE');
-    var sheet = ss.getSheetByName('CNE Schedule') || ss.getSheetByName('Data');
+    var sheet = ss.getSheetByName('CNE Schedule');
     if (!sheet) return { success: false, message: 'CNE Schedule sheet not found.' };
     
     var data = sheet.getDataRange().getValues();
@@ -3323,7 +3348,7 @@ function handleUpdateUpcomingClass(params, session) {
   
   try {
     var ss = getSpreadsheet('CNE');
-    var sheet = ss.getSheetByName('CNE Schedule') || ss.getSheetByName('Upcoming Classes');
+    var sheet = ss.getSheetByName('CNE Schedule');
     if (!sheet) return { success: false, message: 'CNE Schedule sheet not found.' };
     
     var data = sheet.getDataRange().getValues();
@@ -3497,7 +3522,7 @@ function handleReviewUpcomingClass(params, session) {
 
   try {
     var ss = getSpreadsheet('CNE');
-    var sheet = ss.getSheetByName('CNE Schedule') || ss.getSheetByName('Upcoming Classes');
+    var sheet = ss.getSheetByName('CNE Schedule');
     if (!sheet) return { success: false, message: 'CNE Schedule sheet not found.' };
 
     var data = sheet.getDataRange().getValues();
@@ -3540,7 +3565,7 @@ function handleApplyForClass(params, session) {
   
   try {
     var ss = getSpreadsheet('CNE');
-    var classSheet = ss.getSheetByName('CNE Schedule') || ss.getSheetByName('Upcoming Classes');
+    var classSheet = ss.getSheetByName('CNE Schedule');
     if (!classSheet) return { success: false, message: 'CNE Schedule sheet not found.' };
     
     // 1. Confirm Class Exists and is Scheduled
@@ -4785,7 +4810,7 @@ function handleUpdateCoordinatorDesk(params, session) {
  */
 function handleGetProgramImpact(params, session) {
   var ss = getSpreadsheet('CNE');
-  var dataSheet = ss.getSheetByName('CNE Schedule') || ss.getSheetByName('Data');
+  var dataSheet = ss.getSheetByName('CNE Schedule');
   
   var isUserLoggedIn = Boolean(session && session.employeeId);
   var loggedInId = isUserLoggedIn ? normalizeEmpId(session.employeeId) : null;
@@ -4953,8 +4978,6 @@ function handleGetDashboardStats(params, session) {
   
   var ss = getSpreadsheet('CNE');
   var cneSheet = ss.getSheetByName('CNE Schedule');
-  var dataSheet = cneSheet || ss.getSheetByName('Data');
-  var upcomingSheet = cneSheet ? null : ss.getSheetByName('Upcoming Classes');
   var areaSheet = ss.getSheetByName('Area');
   var appSheet = ss.getSheetByName('CNE Applications');
   
@@ -4969,16 +4992,16 @@ function handleGetDashboardStats(params, session) {
   var areaMap = {};
   var modeMap = {};
   
-  if (dataSheet) {
-    var dataRange = dataSheet.getDataRange();
+  if (cneSheet) {
+    var dataRange = cneSheet.getDataRange();
     var data = dataRange.getValues();
     var displayValues = dataRange.getDisplayValues();
-    var dColMap = getHeaderMap(dataSheet);
-    var dIdCol = dColMap['cneid'] !== undefined ? dColMap['cneid'] : (dColMap['dataid'] !== undefined ? dColMap['dataid'] : (dColMap['classid'] !== undefined ? dColMap['classid'] : 0));
+    var dColMap = getHeaderMap(cneSheet);
+    var dIdCol = dColMap['cneid'] !== undefined ? dColMap['cneid'] : (dColMap['classid'] !== undefined ? dColMap['classid'] : 0);
     var dAreaCol = dColMap['area'] !== undefined ? dColMap['area'] : (dColMap['wardnamearea'] !== undefined ? dColMap['wardnamearea'] : 1);
     var dDateCol = dColMap['fromdate'] !== undefined ? dColMap['fromdate'] : (dColMap['date'] !== undefined ? dColMap['date'] : 2);
-    var dDurCol = dColMap['duration'] !== undefined ? dColMap['duration'] : (dColMap['dur'] !== undefined ? dColMap['dur'] : 4);
-    var dModeCol = dColMap['modeofteaching'] !== undefined ? dColMap['modeofteaching'] : (dColMap['mode'] !== undefined ? dColMap['mode'] : 7);
+    var dDurCol = dColMap['duration'] !== undefined ? dColMap['duration'] : 4;
+    var dModeCol = dColMap['modeofteaching'] !== undefined ? dColMap['modeofteaching'] : 7;
     var dCountCol = dColMap['staffcount'] !== undefined ? dColMap['staffcount'] : 9;
     var dStatusCol = dColMap['status'] !== undefined ? dColMap['status'] : -1;
 
@@ -5022,15 +5045,6 @@ function handleGetDashboardStats(params, session) {
       
       areaMap[area] = (areaMap[area] || 0) + 1;
       modeMap[mode] = (modeMap[mode] || 0) + 1;
-    }
-  }
-  
-  if (upcomingSheet) {
-    var uData = upcomingSheet.getDataRange().getValues();
-    var uColMap = getHeaderMap(upcomingSheet);
-    var uStatCol = uColMap['status'] !== undefined ? uColMap['status'] : 11;
-    for (var u = 1; u < uData.length; u++) {
-      if (normalizeCNEStatus(uData[u][uStatCol]) === 'Scheduled') upcomingCount++;
     }
   }
   
@@ -5132,18 +5146,8 @@ var CNE_SHEET_HEADERS = {
     'Type of CNE', 'External Resource Persons', 'Staff Emp ID', 'Staff Count', 'External Staff Participants',
     'Proposed By', 'Admin Remarks', 'Remarks', 'CreatedAt', 'CreatedBy'
   ],
-  'Data': [
-    'Data ID', 'Ward Name / Area', 'From Date', 'To Date', 'Duration',
-    'Topic', 'Resource Person Emp Id', 'Mode of Teaching', 'Staff Emp ID', 'Staff Count', 'Remarks', 'CreatedAt', 'CreatedBy',
-    'External Resource Persons', 'External Staff Participants', 'Type of CNE'
-  ],
   'Area': ['Area', 'Status', 'CreatedAt'],
   'Role': ['Employee ID No.', 'Name of the Officers', 'Designation', 'Role', 'Department / Area'],
-  'Upcoming Classes': [
-    'CNE ID', 'Topic', 'Area', 'From Date', 'To Date', 'Time', 'Duration',
-    'Resource Person Emp Id', 'Mode of Teaching', 'Description', 'Max Participants', 'Status',
-    'Type of CNE', 'External Resource Persons', 'Proposed By', 'Admin Remarks'
-  ],
   'CNE Applications': ['Application ID', 'CNE ID', 'Employee ID', 'Employee Name', 'Applied At', 'Status', 'Remarks'],
   'Gallery': ['Image ID', 'Title', 'Description', 'Date', 'Drive File ID', 'Image URL', 'Uploaded By', 'Uploaded At', 'Status'],
   'News and Events': ['Event ID', 'Title', 'Category', 'Date', 'Summary', 'Full Content', 'Status', 'CreatedAt', 'CreatedBy'],
@@ -5289,7 +5293,7 @@ function setupAndVerifyCNESheets(executorEmpId) {
           });
 
           // Non-destructive standardization: rename header 'Class ID' to 'CNE ID' in-place if present
-          if (tabName === 'Upcoming Classes' || tabName === 'CNE Applications') {
+          if (tabName === 'CNE Schedule' || tabName === 'CNE Applications') {
             for (var c = 0; c < existingHeaders.length; c++) {
               var rawH = String(existingHeaders[c] || '').trim();
               if (rawH.toLowerCase().replace(/[^a-z0-9]/g, '') === 'classid') {
@@ -5413,7 +5417,7 @@ function handleInitializeSheets(params, session) {
 function getCNEClassRecord(cneId) {
   if (!cneId) return null;
   var ss = getSpreadsheet('CNE');
-  var sheet = ss.getSheetByName('CNE Schedule') || ss.getSheetByName('Upcoming Classes');
+  var sheet = ss.getSheetByName('CNE Schedule');
   if (!sheet) return null;
   
   var data = sheet.getDataRange().getValues();
@@ -6657,7 +6661,7 @@ function handleListLearningResources(params, session) {
 
   // Efficient batched read of CNE Schedule sheet (single read instead of N+1)
   var ss = getSpreadsheet('CNE');
-  var classSheet = ss ? (ss.getSheetByName('CNE Schedule') || ss.getSheetByName('Upcoming Classes')) : null;
+  var classSheet = ss ? ss.getSheetByName('CNE Schedule') : null;
   var cneMap = {};
   if (classSheet) {
     var classData = classSheet.getDataRange().getValues();
@@ -9332,7 +9336,7 @@ function runLocalRetrievalValidation(params, session) {
   if (!testCneId) {
     try {
       var ss = getSpreadsheet('CNE');
-      var upcomingSheet = ss.getSheetByName('CNE Schedule') || ss.getSheetByName('Upcoming Classes');
+      var upcomingSheet = ss.getSheetByName('CNE Schedule');
       if (upcomingSheet && upcomingSheet.getLastRow() > 1) {
         var uData = upcomingSheet.getDataRange().getValues();
         var uMap = getHeaderMap(upcomingSheet);
@@ -12825,13 +12829,6 @@ function handleGetCNEParticipants(params, session) {
 }
 
 /**
- * Helper: Find Existing Data Master Record for CNE ID (Deprecated - Unified CNE Schedule Model)
- */
-function findExistingDataMasterRecord(ss, cneId) {
-  return null;
-}
-
-/**
  * Finalize CNE Session and Update CNE Schedule Record
  * Atomic & In-place lifecycle update via ScriptLock
  */
@@ -12867,7 +12864,7 @@ function handleFinalizeCNE(params, session) {
   
   try {
     var ss = getSpreadsheet('CNE');
-    var cneSheet = ss.getSheetByName('CNE Schedule') || ss.getSheetByName('Upcoming Classes');
+    var cneSheet = ss.getSheetByName('CNE Schedule');
     if (!cneSheet) {
       return { success: false, message: 'CNE Schedule sheet not found.' };
     }
@@ -13000,7 +12997,7 @@ function handleCancelCNE(params, session) {
     
     var reason = sanitizeCellInput(params.remarks || 'Cancelled by coordinator');
     var ss = getSpreadsheet('CNE');
-    var upcomingSheet = ss.getSheetByName('CNE Schedule') || ss.getSheetByName('Upcoming Classes');
+    var upcomingSheet = ss.getSheetByName('CNE Schedule');
     if (upcomingSheet) {
       var upColMap = getHeaderMap(upcomingSheet);
       var statusCol = upColMap['status'] !== undefined ? (upColMap['status'] + 1) : 12;

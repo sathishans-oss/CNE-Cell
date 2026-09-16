@@ -12,7 +12,6 @@ import {
   QuickLinkItem,
   RoleMapping,
   SessionUser,
-  UpcomingClass,
   UserRole,
   CoordinatorDeskInfo,
   CNEQuestion,
@@ -546,7 +545,6 @@ export class ApiService {
     const res = await this.executeAction<{ cneId: string }>('createCNE', cneData);
     if (res.success) {
       this.invalidateCache('getCNERecords');
-      this.invalidateCache('getUpcomingClasses');
       this.invalidateCache('getProgramImpact');
     }
     return res;
@@ -556,7 +554,6 @@ export class ApiService {
     const res = await this.executeAction('updateCNE', { cneId, classId: cneId, dataId: cneId, ...cneData });
     if (res.success) {
       this.invalidateCache('getCNERecords');
-      this.invalidateCache('getUpcomingClasses');
       this.invalidateCache('getProgramImpact');
     }
     return res;
@@ -566,7 +563,6 @@ export class ApiService {
     const res = await this.executeAction('deleteCNE', { cneId, classId: cneId, dataId: cneId });
     if (res.success) {
       this.invalidateCache('getCNERecords');
-      this.invalidateCache('getUpcomingClasses');
       this.invalidateCache('getProgramImpact');
     }
     return res;
@@ -580,7 +576,6 @@ export class ApiService {
     const res = await this.executeAction('reviewCNE', { cneId, classId: cneId, status, adminRemarks });
     if (res.success) {
       this.invalidateCache('getCNERecords');
-      this.invalidateCache('getUpcomingClasses');
       this.invalidateCache('getProgramImpact');
     }
     return res;
@@ -594,7 +589,6 @@ export class ApiService {
     });
     if (res.success) {
       this.invalidateCache('getCNERecords');
-      this.invalidateCache('getUpcomingClasses');
       this.invalidateCache('getProgramImpact');
     }
     return res;
@@ -602,31 +596,6 @@ export class ApiService {
 
   static async setupAndVerifyCNESheets(): Promise<ApiResponse<{ results?: Record<string, string>; auditReport?: SheetAuditItem[] }> & { auditReport?: SheetAuditItem[] }> {
     return this.executeAction('setupAndVerifyCNESheets');
-  }
-
-  // Unified aliases for seamless component compatibility
-  static async getUpcomingClasses(): Promise<ApiResponse<CNERecord[]>> {
-    return this.getCNERecords();
-  }
-
-  static async addUpcomingClass(classData: Partial<CNERecord>): Promise<ApiResponse<{ cneId?: string; classId?: string }>> {
-    return this.createCNE(classData);
-  }
-
-  static async updateUpcomingClass(cneId: string, classData: Partial<CNERecord>): Promise<ApiResponse> {
-    return this.updateCNE(cneId, classData);
-  }
-
-  static async reviewUpcomingClass(
-    cneId: string,
-    status: 'Scheduled' | 'Completed' | 'Canceled',
-    adminRemarks?: string
-  ): Promise<ApiResponse> {
-    return this.reviewCNE(cneId, status, adminRemarks);
-  }
-
-  static async addCNE(record: Partial<CNERecord>): Promise<ApiResponse<{ cneId: string }>> {
-    return this.createCNE(record);
   }
 
   static async applyForClass(cneId: string, remarks?: string): Promise<ApiResponse<CNEApplication>> {
@@ -1194,7 +1163,6 @@ export class ApiService {
   static async finalizeCNE(cneId: string, remarks?: string): Promise<ApiResponse<{ dataId: string }>> {
     const res = await this.executeAction<{ dataId: string }>('finalizeCNE', { cneId, remarks });
     if (res.success) {
-      this.invalidateCache('getUpcomingClasses');
       this.invalidateCache('getCNERecords');
       this.invalidateCache('getProgramImpact');
     }
@@ -1204,7 +1172,7 @@ export class ApiService {
   static async cancelCNE(cneId: string, remarks?: string): Promise<ApiResponse> {
     const res = await this.executeAction('cancelCNE', { cneId, remarks });
     if (res.success) {
-      this.invalidateCache('getUpcomingClasses');
+      this.invalidateCache('getCNERecords');
       this.invalidateCache('getProgramImpact');
     }
     return res;

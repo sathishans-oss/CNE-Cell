@@ -17,7 +17,7 @@ import {
   Layers
 } from 'lucide-react';
 import {
-  UpcomingClass,
+  CNERecord,
   CNENursingReferenceDriveFile
 } from '../../types';
 import { ApiService } from '../../services/api';
@@ -41,7 +41,7 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
   const [visibleToUsers, setVisibleToUsers] = useState<boolean>(true);
 
   // --- CNE Learning Material State ---
-  const [upcomingClasses, setUpcomingClasses] = useState<UpcomingClass[]>([]);
+  const [upcomingClasses, setUpcomingClasses] = useState<CNERecord[]>([]);
   const [loadingClasses, setLoadingClasses] = useState(false);
   const [selectedCneId, setSelectedCneId] = useState<string>('');
   const [resourcePerson, setResourcePerson] = useState<string>('');
@@ -77,7 +77,7 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
   const loadCneClasses = async () => {
     setLoadingClasses(true);
     try {
-      const res = await ApiService.getUpcomingClasses();
+      const res = await ApiService.getCNERecords();
       if (res.success && Array.isArray(res.data)) {
         setUpcomingClasses(res.data);
       }

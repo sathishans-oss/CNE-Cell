@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { QrCode, X, Copy, Check, Loader2, AlertCircle, Save } from 'lucide-react';
 import QRCode from 'qrcode';
-import { UpcomingClass } from '../../types';
+import { CNERecord } from '../../types';
 import { ApiService } from '../../services/api';
 import { useToast } from '../Toast';
 import { formatCneDateTimeDisplay } from '../../utils';
 
 interface CNEQRModalProps {
-  cne: UpcomingClass;
+  cne: CNERecord;
   onClose: () => void;
   onSaveSuccess?: (cneId: string) => void;
   onOpenPostTest?: (token: string) => void;

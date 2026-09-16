@@ -1,14 +1,14 @@
 import React from 'react';
 import { Sparkles, Calendar, Clock, ChevronRight, Loader2 } from 'lucide-react';
-import { UpcomingClass, ViewMode } from '../../types';
+import { CNERecord, ViewMode } from '../../types';
 import { formatCneDateTimeDisplay } from '../../utils';
 
 interface UpcomingClassesWidgetProps {
-  openClasses: UpcomingClass[];
+  openClasses: CNERecord[];
   totalCount?: number;
   loading: boolean;
   onNavigate: (view: ViewMode) => void;
-  onSelectClass: (c: UpcomingClass) => void;
+  onSelectClass: (c: CNERecord) => void;
   accentColor?: 'emerald' | 'blue' | 'amber' | 'teal';
   compact?: boolean;
 }

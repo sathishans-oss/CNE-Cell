@@ -20,12 +20,12 @@ import {
   ChevronUp,
   ArrowRight
 } from 'lucide-react';
-import { UpcomingClass, CNEQuestion, CNEAiQuotaInfo } from '../../types';
+import { CNERecord, CNEQuestion, CNEAiQuotaInfo } from '../../types';
 import { ApiService } from '../../services/api';
 import { useToast } from '../Toast';
 
 interface CNEQuestionsModalProps {
-  cne: UpcomingClass;
+  cne: CNERecord;
   isAuthorized: boolean;
   onClose: () => void;
   onUpdated?: () => void;

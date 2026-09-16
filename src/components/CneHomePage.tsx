@@ -11,7 +11,6 @@ import {
   ProgramImpactStats,
   QuickLinkItem,
   SessionUser,
-  UpcomingClass,
   ViewMode
 } from '../types';
 import { ApiService } from '../services/api';
@@ -43,7 +42,7 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
   onNavigate,
   onOpenLogin
 }) => {
-  const [upcomingClasses, setUpcomingClasses] = useState<UpcomingClass[]>(() => ApiService.getCachedData<UpcomingClass[]>('getUpcomingClasses') || []);
+  const [upcomingClasses, setUpcomingClasses] = useState<CNERecord[]>(() => ApiService.getCachedData<CNERecord[]>('getCNERecords') || []);
   const [gallery, setGallery] = useState<GalleryItem[]>(() => ApiService.getCachedData<GalleryItem[]>('getGallery') || []);
   const [newsEvents, setNewsEvents] = useState<NewsEventItem[]>(() => ApiService.getCachedData<NewsEventItem[]>('getNewsEvents') || []);
   const [quickLinks, setQuickLinks] = useState<QuickLinkItem[]>(() => ApiService.getCachedData<QuickLinkItem[]>('getQuickLinks') || []);
@@ -52,14 +51,14 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
   const [impactError, setImpactError] = useState<string | null>(null);
   const [cnoMessage, setCnoMessage] = useState<ChairpersonMessageData>(() => ApiService.getCachedData<ChairpersonMessageData>('getChairpersonMessage') || INITIAL_CHAIRPERSON_MESSAGE);
   
-  const [classesLoading, setClassesLoading] = useState(() => !ApiService.getCachedData('getUpcomingClasses'));
+  const [classesLoading, setClassesLoading] = useState(() => !ApiService.getCachedData('getCNERecords'));
   const [galleryLoading, setGalleryLoading] = useState(() => !ApiService.getCachedData('getGallery'));
 
   // Modals state
   const [selectedNews, setSelectedNews] = useState<NewsEventItem | null>(null);
   const [selectedQuickLink, setSelectedQuickLink] = useState<QuickLinkItem | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<GalleryItem | null>(null);
-  const [selectedClass, setSelectedClass] = useState<UpcomingClass | null>(null);
+  const [selectedClass, setSelectedClass] = useState<CNERecord | null>(null);
 
   const { success, error, info } = useToast();
   const isAdmin = user?.role === 'ADMIN';
@@ -78,7 +77,7 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
     // and render each section progressively as its data arrives.
 
     // 1. Upcoming Classes
-    ApiService.getUpcomingClasses()
+    ApiService.getCNERecords({ status: 'Scheduled' })
       .then((res) => {
         if (res.success && res.data) setUpcomingClasses(res.data);
       })

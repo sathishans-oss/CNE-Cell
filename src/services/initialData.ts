@@ -1,4 +1,4 @@
-import { Area, Employee, RoleMapping, CNERecord, UpcomingClass, CNEApplication, GalleryItem, ChairpersonMessageData, NewsEventItem, QuickLinkItem, CoordinatorDeskInfo } from '../types';
+import { Area, Employee, RoleMapping, CNERecord, CNEApplication, GalleryItem, ChairpersonMessageData, NewsEventItem, QuickLinkItem, CoordinatorDeskInfo } from '../types';
 
 export const INITIAL_AREAS: Area[] = [
   "216(OT-Complex)-(DSA & IR)",
@@ -303,12 +303,13 @@ export const INITIAL_CNE_RECORDS: CNERecord[] = [
   }
 ];
 
-export const INITIAL_UPCOMING_CLASSES: UpcomingClass[] = [
+export const INITIAL_UPCOMING_CLASSES: CNERecord[] = [
   {
     cneId: "CLS-2026-001",
     classId: "CLS-2026-001",
     topic: "Comprehensive Ventilator Care & Weaning Protocols in Intensive Care",
     area: "266(CCU)",
+    fromDate: "2026-09-08",
     date: "2026-09-08",
     time: "14:00 - 15:30",
     duration: "1:30:00",
@@ -325,6 +326,7 @@ export const INITIAL_UPCOMING_CLASSES: UpcomingClass[] = [
     classId: "CLS-2026-002",
     topic: "Medication Administration Safety: High-Alert Drugs & Double-Check Standards",
     area: "CNE Open Forum",
+    fromDate: "2026-09-15",
     date: "2026-09-15",
     time: "11:00 - 12:00",
     duration: "1:00:00",
@@ -341,6 +343,7 @@ export const INITIAL_UPCOMING_CLASSES: UpcomingClass[] = [
     classId: "CLS-2026-003",
     topic: "Neonatal Resuscitation Program (NRP) Skills Refresher",
     area: "231A(NICU)-(Inborn)",
+    fromDate: "2026-09-22",
     date: "2026-09-22",
     time: "15:00 - 16:30",
     duration: "1:30:00",
@@ -357,6 +360,7 @@ export const INITIAL_UPCOMING_CLASSES: UpcomingClass[] = [
     classId: "CLS-2026-004",
     topic: "Chemotherapy Safe Handling, Extravasation Management & PPE Protocols",
     area: "245(IPD)-(Med-Onco & Hemat)",
+    fromDate: "2026-09-29",
     date: "2026-09-29",
     time: "14:00 - 15:00",
     duration: "1:00:00",

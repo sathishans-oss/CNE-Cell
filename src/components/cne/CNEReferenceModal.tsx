@@ -14,12 +14,12 @@ import {
   AlertCircle,
   Trash2
 } from 'lucide-react';
-import { UpcomingClass, CNELearningResourceMetadata } from '../../types';
+import { CNERecord, CNELearningResourceMetadata } from '../../types';
 import { ApiService } from '../../services/api';
 import { useToast } from '../Toast';
 
 interface CNEReferenceModalProps {
-  cne: UpcomingClass;
+  cne: CNERecord;
   isAuthorized: boolean;
   onClose: () => void;
   onUpdated?: () => void;

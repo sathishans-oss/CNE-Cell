@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { CNERecord, SessionUser, UpcomingClass, CNEParticipant } from '../types';
+import { CNERecord, SessionUser, CNEParticipant } from '../types';
 import { formatCneDateRangeDisplay, formatCneDateDisplay, formatCneDateTimeDisplay } from '../utils';
 
 export function generateAnnualCNEPdf(
@@ -201,7 +201,7 @@ export function generateAnnualCNEPdf(
 }
 
 export function generateCNESessionPdf(
-  cne: UpcomingClass,
+  cne: CNERecord,
   participants: CNEParticipant[],
   averageScore?: number | null
 ): void {

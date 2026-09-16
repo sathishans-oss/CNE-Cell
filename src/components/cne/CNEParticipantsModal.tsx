@@ -14,14 +14,14 @@ import {
   AlertCircle,
   FileDown
 } from 'lucide-react';
-import { UpcomingClass, CNEParticipant, CNEParticipantsSummary, Employee } from '../../types';
+import { CNERecord, CNEParticipant, CNEParticipantsSummary, Employee } from '../../types';
 import { ApiService } from '../../services/api';
 import { useToast } from '../Toast';
 import { generateCNESessionPdf } from '../../services/pdfGenerator';
 import { getCachedOfficers, loadOfficersSingleFlight } from '../../services/officerLoader';
 
 interface CNEParticipantsModalProps {
-  cne: UpcomingClass;
+  cne: CNERecord;
   isAuthorized: boolean;
   officersList?: Employee[];
   onClose: () => void;

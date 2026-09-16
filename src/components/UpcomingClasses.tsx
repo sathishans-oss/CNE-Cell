@@ -24,7 +24,7 @@ import {
   HelpCircle,
   ClipboardCheck
 } from 'lucide-react';
-import { SessionUser, UpcomingClass, CNEActivityProgress } from '../types';
+import { SessionUser, CNERecord, CNEActivityProgress } from '../types';
 import { ApiService } from '../services/api';
 import { useToast } from './Toast';
 import {
@@ -57,7 +57,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   user,
   onRequireLogin
 }) => {
-  const [classes, setClasses] = useState<UpcomingClass[]>([]);
+  const [classes, setClasses] = useState<CNERecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'CENTRAL' | 'DEPARTMENTAL' | 'MY_WARDS'>('ALL');
@@ -88,13 +88,13 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   const submittingRef = useRef(false);
 
   // Part 2 Active Modals
-  const [selectedDetailCne, setSelectedDetailCne] = useState<UpcomingClass | null>(null);
-  const [activeReferenceCne, setActiveReferenceCne] = useState<UpcomingClass | null>(null);
-  const [activeQuestionsCne, setActiveQuestionsCne] = useState<UpcomingClass | null>(null);
+  const [selectedDetailCne, setSelectedDetailCne] = useState<CNERecord | null>(null);
+  const [activeReferenceCne, setActiveReferenceCne] = useState<CNERecord | null>(null);
+  const [activeQuestionsCne, setActiveQuestionsCne] = useState<CNERecord | null>(null);
   const [triggerAiOnQuestions, setTriggerAiOnQuestions] = useState(false);
-  const [activeQRCne, setActiveQRCne] = useState<UpcomingClass | null>(null);
-  const [activeParticipantsCne, setActiveParticipantsCne] = useState<UpcomingClass | null>(null);
-  const [activeFinalizeCne, setActiveFinalizeCne] = useState<UpcomingClass | null>(null);
+  const [activeQRCne, setActiveQRCne] = useState<CNERecord | null>(null);
+  const [activeParticipantsCne, setActiveParticipantsCne] = useState<CNERecord | null>(null);
+  const [activeFinalizeCne, setActiveFinalizeCne] = useState<CNERecord | null>(null);
   const [activePostTest, setActivePostTest] = useState<{ cneId?: string; qrToken?: string } | null>(null);
 
   // CNE Activity Progress State
@@ -103,7 +103,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
   const [activityError, setActivityError] = useState<string | null>(null);
 
   // Edit CNE Modal State
-  const [editingCne, setEditingCne] = useState<UpcomingClass | null>(null);
+  const [editingCne, setEditingCne] = useState<CNERecord | null>(null);
   const [editCneType, setEditCneType] = useState<'CENTRAL' | 'DEPARTMENTAL'>('CENTRAL');
   const [editTopic, setEditTopic] = useState('');
   const [editArea, setEditArea] = useState('');
@@ -177,11 +177,11 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
     fetchActivityProgress(selectedDetailCne.cneId);
   }, [selectedDetailCne?.cneId, fetchActivityProgress]);
 
-  const loadData = async (): Promise<UpcomingClass[] | undefined> => {
+  const loadData = async (): Promise<CNERecord[] | undefined> => {
     setLoading(true);
     try {
       const [clsRes, areasRes] = await Promise.all([
-        ApiService.getUpcomingClasses(),
+        ApiService.getCNERecords(),
         ApiService.getAreas()
       ]);
 
@@ -414,7 +414,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
     setIsSubmitting(true);
     try {
       // The Schedule New CNE workflow MUST ALWAYS submit cneType: 'CENTRAL'
-      const res = await ApiService.addUpcomingClass({
+      const res = await ApiService.createCNE({
         topic: newTopic.trim(),
         area: newArea,
         cneType: 'CENTRAL',
@@ -488,7 +488,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
     }
   };
 
-  const handleOpenEditModal = (cls: UpcomingClass) => {
+  const handleOpenEditModal = (cls: CNERecord) => {
     setEditingCne(cls);
     setEditTopic(cls.topic || '');
     setEditArea(cls.area || '');
@@ -588,7 +588,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
     try {
       // NOTE: CNE ID is permanently immutable and cannot be changed or overwritten.
       const targetCneId = editingCne.cneId || editingCne.classId || '';
-      const res = await ApiService.updateUpcomingClass(targetCneId, {
+      const res = await ApiService.updateCNE(targetCneId, {
         topic: editTopic.trim(),
         area: editArea,
         cneType: editCneType,
@@ -608,7 +608,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
 
       if (res.success) {
         success('Upcoming CNE workshop updated successfully.', 'CNE Updated');
-        const updatedRecord: UpcomingClass = {
+        const updatedRecord: CNERecord = {
           ...editingCne,
           cneId: targetCneId,
           topic: editTopic.trim(),
@@ -644,7 +644,7 @@ export const UpcomingClasses: React.FC<UpcomingClassesProps> = ({
     }
   };
 
-  const getResourcePersonsDisplay = (cls: UpcomingClass) => {
+  const getResourcePersonsDisplay = (cls: CNERecord) => {
     const internalNames = (cls.resourcePersonEmpId || '')
       .split(',')
       .map((id) => id.trim())

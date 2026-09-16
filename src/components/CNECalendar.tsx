@@ -13,7 +13,7 @@ import {
   Loader2,
   RefreshCw
 } from 'lucide-react';
-import { CNERecord, UpcomingClass } from '../types';
+import { CNERecord } from '../types';
 import { ApiService } from '../services/api';
 import { formatCneDateDisplay, formatCneDateTimeDisplay } from '../utils';
 

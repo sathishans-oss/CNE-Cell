@@ -125,11 +125,6 @@ export interface CNERecord {
   updatedBy?: string;
 }
 
-/**
- * Unified alias for CNERecord
- */
-export type UpcomingClass = CNERecord;
-
 export interface CNEActivityProgress {
   cneId: string;
   materialStatus: 'Added' | 'Not Added';

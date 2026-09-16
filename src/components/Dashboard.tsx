@@ -15,7 +15,7 @@ import {
   GraduationCap,
   Loader2
 } from 'lucide-react';
-import { CNERecord, GalleryItem, SessionUser, UpcomingClass } from '../types';
+import { CNERecord, GalleryItem, SessionUser } from '../types';
 import { ApiService } from '../services/api';
 import { generateAnnualCNEPdf } from '../services/pdfGenerator';
 import { useToast } from './Toast';
@@ -33,7 +33,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onOpenAddCNE
 }) => {
   const [cneRecords, setCneRecords] = useState<CNERecord[]>([]);
-  const [upcomingClasses, setUpcomingClasses] = useState<UpcomingClass[]>([]);
+  const [upcomingClasses, setUpcomingClasses] = useState<CNERecord[]>([]);
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
