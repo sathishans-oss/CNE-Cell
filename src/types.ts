@@ -211,6 +211,25 @@ export interface CNELearningResourceMetadata {
   updatedAt?: string;
   updatedBy?: string;
   hasFile?: boolean;
+  indexingStatus?: 'SUCCESS' | 'FAILED' | 'PENDING';
+  indexingErrorCode?: string;
+  indexingMessage?: string;
+  chunksCount?: number;
+}
+
+export interface CNEReferenceIndexChunk {
+  indexId: string;
+  sourceType: 'UPLOADED_CNE';
+  cneId: string;
+  driveFileId: string;
+  resourceTitle: string;
+  topic: string;
+  sectionHeading: string;
+  chunkIndex: number;
+  chunkText: string;
+  clinicalKeywords: string;
+  extractionStatus: 'SUCCESS' | 'FAILED';
+  updatedAt: string;
 }
 
 export interface CNELearningResourceExtractedContent {

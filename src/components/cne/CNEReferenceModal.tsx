@@ -216,6 +216,10 @@ export const CNEReferenceModal: React.FC<CNEReferenceModalProps> = ({
 
         setExistingResource(uploadRes.data || null);
         setSelectedFile(null);
+
+        if (uploadRes.data?.indexingStatus === 'FAILED') {
+          warning(uploadRes.data?.indexingMessage || 'Unable to extract readable text from the uploaded material. The file has been saved, but its content could not be indexed.');
+        }
       }
 
       // 2. Save unified textual content if entered
