@@ -10,7 +10,8 @@ import {
   BarChart3,
   Shield,
   FileText,
-  BookOpen
+  BookOpen,
+  Library
 } from 'lucide-react';
 import { SessionUser, ViewMode } from '../types';
 
@@ -46,6 +47,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 
   const adminTabs = [
     { id: 'admin-cne' as ViewMode, label: 'CNE Data Master', icon: Database },
+    { id: 'admin-reference-library' as ViewMode, label: 'Nursing Reference Library', icon: Library },
     { id: 'admin-content' as ViewMode, label: 'Admin Content', icon: FileText },
     { id: 'admin-reports' as ViewMode, label: 'Report and Stats', icon: BarChart3 },
     { id: 'admin-roles' as ViewMode, label: 'Role', icon: ShieldCheck },

@@ -19,12 +19,17 @@ import {
   CNEReferenceMaterial,
   CNELearningResourceMetadata,
   CNELearningResourceExtractedContent,
+  CNENursingReferenceResource,
+  CNENursingReferenceDriveFile,
   CNEAiQuotaInfo,
   CNEParticipant,
   CNEParticipantsSummary,
   CNEActivityProgress,
   PostTestSubmissionResult,
-  SheetAuditItem
+  SheetAuditItem,
+  CNETopicEvidenceResult,
+  CNETopicEvidenceChunk,
+  Phase4DValidationResult
 } from '../types';
 const STORAGE_KEYS = {
   SESSION: 'cne_session_user'
@@ -928,6 +933,107 @@ export class ApiService {
       mimeType: string;
       fileBase64: string;
     }>('downloadLearningResource', { cneId });
+  }
+
+  /**
+   * Phase 4B: List all registered nursing reference library resources (Open RN)
+   * and available Drive files in the approved Open RN reference folder.
+   */
+  static async listNursingReferenceResources(): Promise<ApiResponse<{
+    resources: CNENursingReferenceResource[];
+    driveFiles: CNENursingReferenceDriveFile[];
+  }>> {
+    return this.executeAction<{
+      resources: CNENursingReferenceResource[];
+      driveFiles: CNENursingReferenceDriveFile[];
+    }>('listNursingReferenceResources');
+  }
+
+  /**
+   * Phase 4B: Index an approved Open RN nursing reference resource by Drive File ID.
+   * Strictly Admin-only.
+   */
+  static async indexNursingReferenceResource(params: {
+    driveFileId: string;
+    resourceTitle?: string;
+    authorOrganization?: string;
+    license?: string;
+    version?: string;
+    reindex?: boolean;
+  }): Promise<ApiResponse<{
+    resourceId: string;
+    chunksCount: number;
+    alreadyIndexed?: boolean;
+    message?: string;
+  }>> {
+    return this.executeAction<{
+      resourceId: string;
+      chunksCount: number;
+      alreadyIndexed?: boolean;
+      message?: string;
+    }>('indexNursingReferenceResource', params);
+  }
+
+  /**
+   * Phase 4B: Upload an Open RN reference resource into the approved Drive folder and index it.
+   * Strictly Admin-only.
+   */
+  static async uploadNursingReferenceResource(params: {
+    fileName: string;
+    base64Data: string;
+    resourceTitle: string;
+    authorOrganization?: string;
+    license?: string;
+    version?: string;
+  }): Promise<ApiResponse<{
+    resourceId: string;
+    chunksCount: number;
+    message?: string;
+  }>> {
+    return this.executeAction<{
+      resourceId: string;
+      chunksCount: number;
+      message?: string;
+    }>('uploadNursingReferenceResource', params);
+  }
+
+  /**
+   * Phase 4B: Surgically remove and unindex a nursing reference library resource.
+   * Strictly Admin-only.
+   */
+  static async deleteNursingReferenceResource(params: {
+    driveFileId: string;
+  }): Promise<ApiResponse<{
+    deletedChunksCount: number;
+    message?: string;
+  }>> {
+    return this.executeAction<{
+      deletedChunksCount: number;
+      message?: string;
+    }>('deleteNursingReferenceResource', params);
+  }
+
+  /**
+   * Phase 4C: Local Topic-Relevance Retrieval
+   * Retrieves deterministic ranked evidence chunks from CNE_Reference_Index.
+   * Priority 1: UPLOADED_CNE chunks for the given CNE ID.
+   * Priority 2: LOCAL_REFERENCE_LIB chunks from active Open RN reference resources.
+   */
+  static async retrieveCNETopicEvidence(params: {
+    cneId: string;
+    topic?: string;
+  }): Promise<ApiResponse<CNETopicEvidenceResult>> {
+    return this.executeAction<CNETopicEvidenceResult>('retrieveCNETopicEvidence', params);
+  }
+
+  /**
+   * Phase 4D: Local Retrieval Validation Diagnostic (Admin-only)
+   * Runs retrieveCNETopicEvidence() across 10 representative topics and returns a structured validation report.
+   */
+  static async runLocalRetrievalValidation(params?: {
+    cneId?: string;
+  }): Promise<ApiResponse<Phase4DValidationResult>> {
+    return this.executeAction<Phase4DValidationResult>('runLocalRetrievalValidation', params || {});
   }
 
   /**

@@ -9,6 +9,7 @@ export type ViewMode =
   | 'learning-resources'
   | 'gallery'
   | 'admin-cne'
+  | 'admin-reference-library'
   | 'admin-areas'
   | 'admin-roles'
   | 'admin-content'
@@ -219,7 +220,7 @@ export interface CNELearningResourceMetadata {
 
 export interface CNEReferenceIndexChunk {
   indexId: string;
-  sourceType: 'UPLOADED_CNE';
+  sourceType: 'UPLOADED_CNE' | 'LOCAL_REFERENCE_LIB';
   cneId: string;
   driveFileId: string;
   resourceTitle: string;
@@ -230,6 +231,31 @@ export interface CNEReferenceIndexChunk {
   clinicalKeywords: string;
   extractionStatus: 'SUCCESS' | 'FAILED';
   updatedAt: string;
+}
+
+export interface CNENursingReferenceResource {
+  resourceId: string;
+  sourceType: 'LOCAL_REFERENCE_LIB';
+  resourceTitle: string;
+  driveFileId: string;
+  authorOrganization: string;
+  license: string;
+  version: string;
+  fileType: string;
+  active: boolean;
+  indexedAt: string;
+  updatedAt: string;
+}
+
+export interface CNENursingReferenceDriveFile {
+  driveFileId: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  lastUpdated: string;
+  isIndexed: boolean;
+  resourceId: string | null;
+  resourceTitle: string;
 }
 
 export interface CNELearningResourceExtractedContent {
@@ -398,4 +424,59 @@ export interface CoordinatorDeskInfo {
   note: string;
   coordinators: string[];
   email: string;
+}
+
+export interface CNETopicEvidenceChunk {
+  indexId: string;
+  sourceType: 'UPLOADED_CNE' | 'LOCAL_REFERENCE_LIB';
+  resourceTitle: string;
+  sectionHeading: string;
+  chunkIndex: number;
+  chunkText: string;
+  relevanceScore: number;
+}
+
+export interface CNETopicEvidenceResult {
+  cneId: string;
+  topic: string;
+  totalEvidenceChunks: number;
+  uploadedCount: number;
+  libraryCount: number;
+  evidence: CNETopicEvidenceChunk[];
+}
+
+export interface Phase4DTopicValidationReport {
+  queryTopic: string;
+  uploadedCount: number;
+  libraryCount: number;
+  totalResults: number;
+  top5EvidenceChunks: Array<{
+    sourceType: 'UPLOADED_CNE' | 'LOCAL_REFERENCE_LIB';
+    resourceTitle: string;
+    sectionHeading: string;
+    relevanceScore: number;
+  }>;
+  clinicallyRelevant: boolean;
+  falsePositiveMatches: string[];
+}
+
+export interface Phase4DValidationResult {
+  cneIdTested: string;
+  timestamp: string;
+  topicReports: Phase4DTopicValidationReport[];
+  verifications: {
+    sourceOrderingVerified: boolean;
+    unauthorizedForbiddenVerified: boolean;
+    crossCNEIsolationVerified: boolean;
+    inactiveLibraryExcludedVerified: boolean;
+    nonexistentTopicReturnsInsufficient: boolean;
+    noExternalOrDriveApiUsed: boolean;
+  };
+  summary: {
+    totalTopicsTested: number;
+    allSourceOrderingValid: boolean;
+    unauthorizedAccessBlocked: boolean;
+    nonexistentTopicBlocked: boolean;
+    falsePositiveCount: number;
+  };
 }

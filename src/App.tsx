@@ -19,6 +19,7 @@ import { AdminAreas } from './components/AdminAreas';
 import { AdminRoles } from './components/AdminRoles';
 import { AdminReports } from './components/AdminReports';
 import { AdminContent } from './components/AdminContent';
+import { AdminReferenceLibrary } from './components/AdminReferenceLibrary';
 
 const AppContent: React.FC = () => {
   const [user, setUser] = useState<SessionUser | null>(() => ApiService.getSessionUser());
@@ -49,7 +50,7 @@ const AppContent: React.FC = () => {
   const handleNavigate = (view: ViewMode) => {
     // If not logged in and attempting to access staff/admin protected views, prompt login
     if (!user || !user.employeeId) {
-      if (['my-cne', 'admin-cne', 'admin-areas', 'admin-roles', 'admin-reports'].includes(view)) {
+      if (['my-cne', 'admin-cne', 'admin-reference-library', 'admin-areas', 'admin-roles', 'admin-content', 'admin-reports'].includes(view)) {
         info('Please log in with your Employee ID to access this section.', 'Authentication Required');
         setIsLoginOpen(true);
         return;
@@ -119,6 +120,10 @@ const AppContent: React.FC = () => {
               user={user}
               isOpenAddModalDefault={openAddCneOnAdmin}
             />
+          )}
+
+          {activeView === 'admin-reference-library' && user?.role === 'ADMIN' && (
+            <AdminReferenceLibrary user={user} />
           )}
 
           {activeView === 'admin-areas' && user?.role === 'ADMIN' && (
