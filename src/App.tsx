@@ -14,7 +14,6 @@ import { CNECalendar } from './components/CNECalendar';
 import { UpcomingClasses } from './components/UpcomingClasses';
 import { LearningResourcesPage } from './components/cne/LearningResourcesPage';
 import { Gallery } from './components/Gallery';
-import { AdminCNEData } from './components/AdminCNEData';
 import { AdminAreas } from './components/AdminAreas';
 import { AdminRoles } from './components/AdminRoles';
 import { AdminReports } from './components/AdminReports';
@@ -28,7 +27,6 @@ const AppContent: React.FC = () => {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
-  const [openAddCneOnAdmin, setOpenAddCneOnAdmin] = useState(false);
 
   const { success, info } = useToast();
 
@@ -49,7 +47,7 @@ const AppContent: React.FC = () => {
   const handleNavigate = (view: ViewMode) => {
     // If not logged in and attempting to access staff/admin protected views, prompt login
     if (!user || !user.employeeId) {
-      if (['my-cne', 'admin-cne', 'admin-areas', 'admin-roles', 'admin-content', 'admin-reports'].includes(view)) {
+      if (['my-cne', 'admin-areas', 'admin-roles', 'admin-content', 'admin-reports'].includes(view)) {
         info('Please log in with your Employee ID to access this section.', 'Authentication Required');
         setIsLoginOpen(true);
         return;
@@ -57,11 +55,6 @@ const AppContent: React.FC = () => {
     }
     setActiveView(view);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleOpenAddCNE = () => {
-    setOpenAddCneOnAdmin(true);
-    setActiveView('admin-cne');
   };
 
   return (
@@ -111,13 +104,6 @@ const AppContent: React.FC = () => {
           {user && user.employeeId && activeView === 'gallery' && <Gallery user={user} />}
 
           {/* Admin Protected Views */}
-          {activeView === 'admin-cne' && user?.role === 'ADMIN' && (
-            <AdminCNEData
-              user={user}
-              isOpenAddModalDefault={openAddCneOnAdmin}
-            />
-          )}
-
           {activeView === 'admin-areas' && user?.role === 'ADMIN' && (
             <AdminAreas user={user} />
           )}

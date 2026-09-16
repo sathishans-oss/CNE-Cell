@@ -200,6 +200,7 @@ export const INITIAL_ROLES: RoleMapping[] = [
 
 export const INITIAL_CNE_RECORDS: CNERecord[] = [
   {
+    cneId: "b41c5020",
     dataId: "b41c5020",
     area: "243B(IPD)-(Ophthal)",
     fromDate: "2026-03-01",
@@ -211,10 +212,12 @@ export const INITIAL_CNE_RECORDS: CNERecord[] = [
     modeOfTeaching: "Lecture Cum Discussion",
     staffEmpIds: ["AIIMSRDNS0013", "AIIMSRANS00046", "RSNHO000841", "RSNHO000890", "RSNHO000912"],
     staffCount: 13,
+    status: "Completed",
     remarks: "Practical demo included eye drop angle technique",
     createdAt: "2026-03-01T10:00:00Z"
   },
   {
+    cneId: "CNE-2026-000102",
     dataId: "CNE-2026-000102",
     area: "235A(CCU)-(PICU)",
     fromDate: "2026-02-18",
@@ -226,10 +229,12 @@ export const INITIAL_CNE_RECORDS: CNERecord[] = [
     modeOfTeaching: "Hands-on Workshop",
     staffEmpIds: ["AIIMSRDNS0013", "RSNHO000841", "RSNHO000890", "RSNHO000955"],
     staffCount: 18,
+    status: "Completed",
     remarks: "Simulation lab practicals on pediatric mannequins",
     createdAt: "2026-02-18T14:30:00Z"
   },
   {
+    cneId: "CNE-2026-000103",
     dataId: "CNE-2026-000103",
     area: "313(ED)-(Yellow & Red Area)",
     fromDate: "2026-02-05",
@@ -241,10 +246,12 @@ export const INITIAL_CNE_RECORDS: CNERecord[] = [
     modeOfTeaching: "Lecture Cum Discussion",
     staffEmpIds: ["AIIMSRDNS0013", "AIIMSRANS00046", "RSNHO000912", "RSNHO000955"],
     staffCount: 22,
+    status: "Completed",
     remarks: "ED workflow optimization",
     createdAt: "2026-02-05T09:15:00Z"
   },
   {
+    cneId: "CNE-2026-000104",
     dataId: "CNE-2026-000104",
     area: "264A(CCU)-(Neuro Surgery)",
     fromDate: "2026-01-22",
@@ -256,10 +263,12 @@ export const INITIAL_CNE_RECORDS: CNERecord[] = [
     modeOfTeaching: "Clinical Case Discussion",
     staffEmpIds: ["AIIMSRDNS0013", "RSNHO000841", "RSNHO000890"],
     staffCount: 15,
+    status: "Completed",
     remarks: "EVD drainage & wave analysis",
     createdAt: "2026-01-22T11:00:00Z"
   },
   {
+    cneId: "CNE-2026-000105",
     dataId: "CNE-2026-000105",
     area: "ICN&Quality Nursing(OPD)",
     fromDate: "2026-01-10",
@@ -271,10 +280,12 @@ export const INITIAL_CNE_RECORDS: CNERecord[] = [
     modeOfTeaching: "Hands-on Workshop",
     staffEmpIds: ["AIIMSRDNS0001", "AIIMSRDNS0002", "AIIMSRDNS0013", "AIIMSRANS00046", "RSNHO000841", "RSNHO000890", "RSNHO000912", "RSNHO000955"],
     staffCount: 45,
+    status: "Completed",
     remarks: "Institutional annual quality infection control update",
     createdAt: "2026-01-10T14:00:00Z"
   },
   {
+    cneId: "CNE-2025-000089",
     dataId: "CNE-2025-000089",
     area: "254A(IPD)-(Cardiology)",
     fromDate: "2025-11-14",
@@ -286,6 +297,7 @@ export const INITIAL_CNE_RECORDS: CNERecord[] = [
     modeOfTeaching: "Lecture Cum Discussion",
     staffEmpIds: ["AIIMSRDNS0013", "RSNHO000841", "RSNHO000912"],
     staffCount: 20,
+    status: "Completed",
     remarks: "Interactive strip readings",
     createdAt: "2025-11-14T10:30:00Z"
   }

@@ -8,7 +8,6 @@ export type ViewMode =
   | 'upcoming'
   | 'learning-resources'
   | 'gallery'
-  | 'admin-cne'
   | 'admin-areas'
   | 'admin-roles'
   | 'admin-content'
@@ -85,55 +84,51 @@ export interface RoleMapping {
 
 export type RoleConfig = RoleMapping;
 
+/**
+ * Authoritative Unified CNE Record
+ * Represents a CNE program/session stored directly in the single authoritative 'CNE Schedule' sheet.
+ */
 export interface CNERecord {
-  dataId: string;
+  cneId: string;
+  classId?: string; // Backward-compatibility alias for cneId
+  dataId?: string; // Backward-compatibility alias for cneId
+  topic: string;
   area: string;
   fromDate: string;
+  date?: string; // Date alias for fromDate
   toDate?: string;
-  duration: string; // e.g. "1:00:00" or "01:30"
-  topic: string;
+  time?: string;
+  duration: string; // Duration in HH:MM:SS format
   resourcePersonEmpId: string;
   resourcePersonName?: string;
   externalResourcePersons?: string[]; // Outside resource persons without employee ID
   modeOfTeaching: string;
-  staffEmpIds: string[]; // List of internal employee IDs
-  staffNames?: string[]; // Populated when authorized
-  externalStaffParticipants?: string[]; // Outside staff participants without employee ID
-  staffCount: number;
-  remarks?: string;
-  createdAt?: string;
-  updatedAt?: string;
-  updatedBy?: string;
-  cneType?: 'CENTRAL' | 'DEPARTMENTAL';
-}
-
-export interface UpcomingClass {
-  cneId: string;
-  classId?: string; // Optional backward-compatibility alias
-  dataId?: string;
-  topic: string;
-  area: string;
-  date: string; // From Date & Time (or legacy date)
-  toDate?: string; // To Date & Time
-  time?: string; // Optional legacy time
-  duration: string; // Duration in HH:MM:SS format
-  resourcePersonEmpId: string;
-  resourcePersonName?: string;
-  externalResourcePersons?: string[]; // Outside resource persons
-  modeOfTeaching: string;
   description?: string;
   maxParticipants?: number;
   currentApplicationsCount?: number;
-  status: 'Scheduled' | 'Completed' | 'Canceled';
+  status: 'Scheduled' | 'Completed' | 'Canceled' | 'Draft' | 'Pending';
+  cneType?: 'CENTRAL' | 'DEPARTMENTAL';
   proposedByEmpId?: string;
   proposedByName?: string;
   adminRemarks?: string;
-  createdAt?: string;
-  cneType?: 'CENTRAL' | 'DEPARTMENTAL';
+  remarks?: string;
+  staffEmpIds?: string[]; // List of internal employee IDs
+  staffNames?: string[]; // Populated when authorized
+  externalStaffParticipants?: string[]; // Outside staff participants without employee ID
+  staffCount?: number;
   finalizedQuestionsCount?: number;
   isLocked?: boolean;
   qrToken?: string;
+  createdAt?: string;
+  createdBy?: string;
+  updatedAt?: string;
+  updatedBy?: string;
 }
+
+/**
+ * Unified alias for CNERecord
+ */
+export type UpcomingClass = CNERecord;
 
 export interface CNEActivityProgress {
   cneId: string;

@@ -23,7 +23,6 @@ export const CNECalendar: React.FC = () => {
   const [currentDate, setCurrentDate] = useState<Date>(new Date(2026, 8, 1)); // Sep 2026 or current
   const [viewMode, setViewMode] = useState<CalendarViewMode>('month');
   const [cneRecords, setCneRecords] = useState<CNERecord[]>([]);
-  const [upcomingClasses, setUpcomingClasses] = useState<UpcomingClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
 
@@ -34,12 +33,8 @@ export const CNECalendar: React.FC = () => {
   const loadEvents = async () => {
     setLoading(true);
     try {
-      const [recordsRes, upcomingRes] = await Promise.all([
-        ApiService.getCNERecords(),
-        ApiService.getUpcomingClasses()
-      ]);
+      const recordsRes = await ApiService.getCNERecords();
       if (recordsRes.success && recordsRes.data) setCneRecords(recordsRes.data);
-      if (upcomingRes.success && upcomingRes.data) setUpcomingClasses(upcomingRes.data);
     } catch (e) {
       console.error(e);
     } finally {
@@ -47,44 +42,24 @@ export const CNECalendar: React.FC = () => {
     }
   };
 
-  // Combine CNE records and Upcoming Classes into unified calendar events
+  // Unified calendar events from single authoritative CNE Schedule
   const allEvents = useMemo(() => {
-    const list: any[] = [];
-
-    cneRecords.forEach((r) => {
-      list.push({
-        id: `rec-${r.dataId}`,
-        title: r.topic,
-        area: r.area,
-        date: r.fromDate,
-        toDate: r.toDate,
-        time: 'Completed Session',
-        duration: r.duration,
-        instructor: r.resourcePersonName || r.resourcePersonEmpId,
-        mode: r.modeOfTeaching,
-        type: 'RECORD',
-        raw: r
-      });
-    });
-
-    upcomingClasses.forEach((c) => {
-      list.push({
-        id: `cls-${c.cneId || c.classId}`,
-        title: c.topic,
-        area: c.area,
-        date: c.date,
-        toDate: c.toDate,
-        time: c.time,
-        duration: c.duration,
-        instructor: c.resourcePersonName || c.resourcePersonEmpId,
-        mode: c.modeOfTeaching,
-        type: 'UPCOMING',
-        raw: c
-      });
-    });
-
-    return list;
-  }, [cneRecords, upcomingClasses]);
+    return cneRecords.map((r) => ({
+      id: `cne-${r.cneId}`,
+      title: r.topic,
+      area: r.area,
+      date: r.fromDate || r.date,
+      toDate: r.toDate,
+      time: r.time || (r.status === 'Completed' ? 'Completed Session' : 'Scheduled'),
+      duration: r.duration,
+      instructor: r.resourcePersonName || r.resourcePersonEmpId,
+      mode: r.modeOfTeaching,
+      type: r.status === 'Completed' ? 'RECORD' : 'UPCOMING',
+      status: r.status,
+      cneType: r.cneType || 'CENTRAL',
+      raw: r
+    }));
+  }, [cneRecords]);
 
   // Calendar math for Monthly View
   const year = currentDate.getFullYear();

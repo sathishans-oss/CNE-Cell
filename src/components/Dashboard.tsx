@@ -47,14 +47,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      const [recordsRes, upcomingRes, galleryRes] = await Promise.all([
+      const [recordsRes, galleryRes] = await Promise.all([
         ApiService.getCNERecords(),
-        ApiService.getUpcomingClasses(),
         ApiService.getGallery()
       ]);
 
-      if (recordsRes.success && recordsRes.data) setCneRecords(recordsRes.data);
-      if (upcomingRes.success && upcomingRes.data) setUpcomingClasses(upcomingRes.data);
+      if (recordsRes.success && recordsRes.data) {
+        const allRecords = recordsRes.data;
+        setCneRecords(allRecords);
+        setUpcomingClasses(allRecords.filter((r) => r.status === 'Scheduled'));
+      }
       if (galleryRes.success && galleryRes.data) setGallery(galleryRes.data);
     } catch (e) {
       console.error('Error loading dashboard data', e);
@@ -214,7 +216,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
               <button
                 id="btn-dash-view-all-cne"
-                onClick={() => onNavigate(isAdmin ? 'admin-cne' : 'my-cne')}
+                onClick={() => onNavigate(isAdmin ? 'upcoming' : 'my-cne')}
                 className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 cursor-pointer"
               >
                 <span>View All</span>

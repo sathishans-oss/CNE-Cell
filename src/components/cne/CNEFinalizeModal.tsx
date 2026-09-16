@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CheckCircle, AlertTriangle, X, Loader2, Award, Users, Calendar } from 'lucide-react';
-import { UpcomingClass, CNEParticipantsSummary } from '../../types';
+import { CNERecord, CNEParticipantsSummary } from '../../types';
 import { ApiService } from '../../services/api';
 import { useToast } from '../Toast';
 import { formatCneDateRangeDisplay } from '../../utils';
 
 interface CNEFinalizeModalProps {
-  cne: UpcomingClass;
+  cne: CNERecord;
   isAuthorized: boolean;
   onClose: () => void;
   onCompleted: () => void;
@@ -60,7 +60,7 @@ export const CNEFinalizeModal: React.FC<CNEFinalizeModalProps> = ({
     try {
       const res = await ApiService.finalizeCNE(cneId, remarks.trim());
       if (res.success) {
-        success(`CNE successfully finalized! Master record created with ID: ${res.data?.dataId || 'Data Master'}`);
+        success('CNE session completed and permanently recorded in CNE Schedule!');
         onCompleted();
         onClose();
       } else {
@@ -209,8 +209,8 @@ export const CNEFinalizeModal: React.FC<CNEFinalizeModalProps> = ({
             {/* Right Column: Guidance & Remarks Form */}
             <div className="md:col-span-6 flex flex-col justify-between space-y-4">
               <div className="space-y-3">
-                <div className="p-3.5 bg-blue-50/60 rounded-xl border border-blue-200 text-slate-700 text-xs leading-relaxed">
-                  <strong>Master Record Generation:</strong> Finalizing will update the session status to <strong className="text-emerald-700">COMPLETED</strong> and permanently record all participant staff IDs, evaluation scores, and contact hours in the institutional <strong>CNE Data Master</strong>.
+                <div className="p-3.5 bg-emerald-50/60 rounded-xl border border-emerald-200 text-slate-700 text-xs leading-relaxed">
+                  <strong>Complete CNE Record:</strong> Finalizing will update the session status to <strong className="text-emerald-700">COMPLETED</strong> in <strong>CNE Schedule</strong> and permanently record all participant staff IDs, evaluation scores, and contact hours directly in the authoritative CNE record.
                 </div>
 
                 <div>
@@ -238,12 +238,12 @@ export const CNEFinalizeModal: React.FC<CNEFinalizeModalProps> = ({
                   {isSubmitting ? (
                     <>
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Archiving into Master...</span>
+                      <span>Finalizing CNE Record...</span>
                     </>
                   ) : (
                     <>
                       <CheckCircle className="w-3.5 h-3.5" />
-                      <span>Finalize &amp; Record CNE</span>
+                      <span>Finalize &amp; Complete CNE</span>
                     </>
                   )}
                 </button>

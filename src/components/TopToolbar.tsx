@@ -4,7 +4,6 @@ import {
   Award,
   Calendar,
   Sparkles,
-  Database,
   MapPin,
   ShieldCheck,
   BarChart3,
@@ -159,25 +158,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
               </div>
 
               <nav className="flex items-center gap-1 sm:gap-1.5" aria-label="Admin Navigation">
-                {/* 1. CNE Data Master */}
-                <button
-                  id="top-tab-admin-cne"
-                  type="button"
-                  onClick={() => {
-                    setIsControlCenterOpen(false);
-                    onSelectView('admin-cne');
-                  }}
-                  className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                    activeView === 'admin-cne'
-                      ? 'bg-purple-700 text-white shadow-sm ring-1 ring-purple-400'
-                      : 'text-slate-300 hover:bg-purple-950/50 hover:text-purple-200'
-                  }`}
-                >
-                  <Database className={`w-3.5 h-3.5 ${activeView === 'admin-cne' ? 'text-purple-200' : 'text-purple-400'}`} />
-                  <span>CNE Data Master</span>
-                </button>
-
-                {/* 2. Control Center Dropdown */}
+                {/* Control Center Dropdown */}
                 <div ref={controlCenterRef} className="relative inline-block text-left">
                   <button
                     ref={controlCenterBtnRef}
