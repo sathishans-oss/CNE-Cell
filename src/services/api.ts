@@ -750,7 +750,7 @@ export class ApiService {
     cneMaterial?: string;
     referenceMaterial?: string;
     syllabus?: string;
-    generationSource?: 'MATERIAL' | 'EXTERNAL';
+    generationSource?: 'MATERIAL';
   }): Promise<ApiResponse<CNEQuestion[]>> {
     try {
       const session = this.getSessionUser();
@@ -824,7 +824,7 @@ export class ApiService {
     return this.executeAction<CNEAiQuotaInfo>('getAiQuota', { cneId });
   }
 
-  static async reserveAiQuota(cneId: string, generationSource?: 'MATERIAL' | 'EXTERNAL'): Promise<ApiResponse<{
+  static async reserveAiQuota(cneId: string, generationSource?: 'MATERIAL'): Promise<ApiResponse<{
     reservationToken: string;
     cneId: string;
     attemptsUsed: number;
@@ -872,6 +872,7 @@ export class ApiService {
     resourcePersonName?: string;
     unifiedContent?: string;
     referenceText?: string;
+    visibleToUsers?: boolean;
   }): Promise<ApiResponse<CNELearningResourceMetadata>> {
     return this.executeAction<CNELearningResourceMetadata>('uploadLearningResource', params);
   }
@@ -960,6 +961,7 @@ export class ApiService {
     license?: string;
     version?: string;
     reindex?: boolean;
+    visibleToUsers?: boolean;
   }): Promise<ApiResponse<{
     resourceId: string;
     chunksCount: number;
@@ -985,6 +987,7 @@ export class ApiService {
     authorOrganization?: string;
     license?: string;
     version?: string;
+    visibleToUsers?: boolean;
   }): Promise<ApiResponse<{
     resourceId: string;
     chunksCount: number;
@@ -1011,6 +1014,52 @@ export class ApiService {
       deletedChunksCount: number;
       message?: string;
     }>('deleteNursingReferenceResource', params);
+  }
+
+  /**
+   * Securely download or stream a Nursing Reference Library file.
+   */
+  static async downloadNursingReferenceResource(params: {
+    driveFileId?: string;
+    resourceId?: string;
+  }): Promise<ApiResponse<{
+    resourceId?: string;
+    resourceTitle: string;
+    authorOrganization?: string;
+    fileName: string;
+    fileType: string;
+    mimeType: string;
+    fileBase64: string;
+  }>> {
+    return this.executeAction<{
+      resourceId?: string;
+      resourceTitle: string;
+      authorOrganization?: string;
+      fileName: string;
+      fileType: string;
+      mimeType: string;
+      fileBase64: string;
+    }>('downloadNursingReferenceResource', params);
+  }
+
+  /**
+   * Toggle or set the visibility of a CNE Learning Material or Nursing Reference Library resource for users.
+   * Strictly Admin-only.
+   */
+  static async setResourceVisibility(params: {
+    resourceType: 'CNE_LEARNING_MATERIAL' | 'NURSING_REFERENCE_LIB';
+    id: string;
+    visibleToUsers: boolean;
+  }): Promise<ApiResponse<{
+    id: string;
+    resourceType: string;
+    visibleToUsers: boolean;
+  }>> {
+    return this.executeAction<{
+      id: string;
+      resourceType: string;
+      visibleToUsers: boolean;
+    }>('setResourceVisibility', params);
   }
 
   /**

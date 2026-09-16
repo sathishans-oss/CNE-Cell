@@ -18,9 +18,7 @@ import {
   History,
   ChevronDown,
   ChevronUp,
-  ArrowRight,
-  Globe,
-  ExternalLink
+  ArrowRight
 } from 'lucide-react';
 import { UpcomingClass, CNEQuestion, CNEAiQuotaInfo } from '../../types';
 import { ApiService } from '../../services/api';
@@ -56,7 +54,6 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
 
   // Real-time stage progress state for AI generation
   const [generationStage, setGenerationStage] = useState<string>('');
-  const [activeGenerationSource, setActiveGenerationSource] = useState<'MATERIAL' | 'EXTERNAL'>('MATERIAL');
 
   // Authoritative AI Quota & Material State
   const [quotaInfo, setQuotaInfo] = useState<CNEAiQuotaInfo | null>(null);
@@ -105,13 +102,12 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
     quotaInfo && (quotaInfo.status === 'USED' || quotaInfo.attemptsUsed >= 1)
   );
 
-  const handleGenerateAi = async (sourceMode: 'MATERIAL' | 'EXTERNAL' = 'MATERIAL') => {
+  const handleGenerateAi = async () => {
     if (generatingRef.current || isGenerating || isLocked || !isAuthorized) return;
 
     // Immediate synchronous lock and UI state
     generatingRef.current = true;
     setIsGenerating(true);
-    setActiveGenerationSource(sourceMode);
 
     // 1. One-time allowance check
     if (isAiGenerationUsed) {
@@ -123,20 +119,12 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
     }
 
     try {
-      // Stage 1: Reading/retrieving source material
-      if (sourceMode === 'EXTERNAL') {
-        setGenerationStage('Searching reliable external clinical sources (Europe PMC / PubMed Central)');
-      } else {
-        setGenerationStage('Reading and analyzing learning resource');
-      }
+      // Stage 1: Reading learning material
+      setGenerationStage('Reading and analyzing learning resource');
 
       // Stage 2: Preparing CNE session questions & quota reservation
-      setGenerationStage(
-        sourceMode === 'EXTERNAL'
-          ? 'Preparing CNE questions & quota reservation'
-          : 'Preparing CNE session questions & quota reservation'
-      );
-      const reserveRes = await ApiService.reserveAiQuota(cneId, sourceMode);
+      setGenerationStage('Preparing CNE session questions & quota reservation');
+      const reserveRes = await ApiService.reserveAiQuota(cneId, 'MATERIAL');
       if (!reserveRes.success || !reserveRes.data?.reservationToken) {
         error(reserveRes.message || 'Failed to reserve AI generation allowance.');
         if (reserveRes.data) {
@@ -148,18 +136,14 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
       const reservationToken = reserveRes.data.reservationToken;
 
       // Stage 3: Generating 5 MCQs
-      setGenerationStage(
-        sourceMode === 'EXTERNAL'
-          ? 'Synthesizing 5 clinical MCQs grounded in retrieved external literature'
-          : 'Generating 5 MCQs grounded in material'
-      );
+      setGenerationStage('Generating 5 MCQs grounded in material');
       let aiRes: any;
       try {
         aiRes = await ApiService.generateAiQuestions({
           cneId: cneId,
           topic: cne.topic,
           reservationToken: reservationToken,
-          generationSource: sourceMode
+          generationSource: 'MATERIAL'
         });
       } catch (genErr: any) {
         // Exception during Gemini generation: release reservation so allowance is not consumed
@@ -175,16 +159,14 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
         try {
           await ApiService.releaseAiQuota(cneId, reservationToken);
         } catch (rErr) {}
-        if (sourceMode === 'MATERIAL' && (aiRes?.errorCode === 'MATERIAL_REQUIRED' || aiRes?.errorCode === 'NO_EXTRACTABLE_CONTENT')) {
+        if (aiRes?.errorCode === 'MATERIAL_REQUIRED' || aiRes?.errorCode === 'NO_EXTRACTABLE_CONTENT' || aiRes?.errorCode === 'INSUFFICIENT_TOPIC_MATERIAL') {
           setHasMaterial(false);
         }
         error(aiRes?.message || 'AI question generation failed: Expected exactly 5 complete MCQs. Allowance was not consumed.');
         return;
       }
 
-      if (sourceMode === 'MATERIAL') {
-        setHasMaterial(true);
-      }
+      setHasMaterial(true);
 
       // Stage 4: Finalizing questions
       setGenerationStage('Finalizing questions');
@@ -202,11 +184,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
         } catch {
           setQuestions(aiRes.data);
         }
-        success(
-          sourceMode === 'EXTERNAL'
-            ? 'Successfully generated and saved exactly 5 clinical MCQs from verified external sources. Post-test is ready.'
-            : 'Successfully generated and saved exactly 5 clinical MCQs via AI. Post-test is ready.'
-        );
+        success('Successfully generated and saved exactly 5 clinical MCQs via AI. Post-test is ready.');
         if (onUpdated) onUpdated();
       } else {
         error(
@@ -478,7 +456,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
             <div className="flex items-center gap-2">
               <FileWarning className="w-4 h-4 text-amber-600 shrink-0" />
               <span>
-                <strong>Learning Material Missing or Document Unreadable:</strong> Learning material is required before AI questions can be generated from given material. You can still use <strong>Generate Questions from External Sources</strong> or enter CNE Class Content in the Reference Material modal.
+                <strong>Learning Material Missing or Document Unreadable:</strong> Learning material is required before AI questions can be generated. Please upload CNE learning material or enter content in the Reference Material modal.
               </span>
             </div>
           </div>
@@ -497,8 +475,8 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
               </div>
               <p className="text-slate-600 text-[11px]">
                 {isAiGenerationUsed
-                  ? 'The single AI generation allowance has already been completed for this CNE (both AI options locked). Use manual question tools to adjust questions.'
-                  : 'Select either generation option below. Using either option consumes this CNE’s single AI allowance.'}
+                  ? 'The single AI generation allowance has already been completed for this CNE. Use manual question tools to adjust questions.'
+                  : 'Synthesize exactly 5 clinical MCQs grounded strictly in CNE learning material. Consumes this CNE’s single AI allowance.'}
               </p>
             </div>
 
@@ -516,10 +494,10 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                 </button>
               )}
 
-              {/* Option A: Generate MCQs from Given Material */}
+              {/* Generate MCQs from Given Material */}
               <button
                 type="button"
-                onClick={() => handleGenerateAi('MATERIAL')}
+                onClick={() => handleGenerateAi()}
                 disabled={isGenerating || generatingRef.current || isSaving || isAiGenerationUsed || hasMaterial === false}
                 title={
                   isAiGenerationUsed
@@ -536,7 +514,7 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                     : 'bg-purple-600 hover:bg-purple-700 text-white cursor-pointer disabled:opacity-50'
                 }`}
               >
-                {isGenerating && activeGenerationSource === 'MATERIAL' ? (
+                {isGenerating ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                     <span>Generating from Material...</span>
@@ -550,42 +528,6 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                   <>
                     <Sparkles className="w-3.5 h-3.5" />
                     <span>Generate MCQs from Given Material</span>
-                  </>
-                )}
-              </button>
-
-              {/* Option B: Generate Questions from External Sources */}
-              <button
-                type="button"
-                onClick={() => handleGenerateAi('EXTERNAL')}
-                disabled={isGenerating || generatingRef.current || isSaving || isAiGenerationUsed || !cne.topic}
-                title={
-                  isAiGenerationUsed
-                    ? 'AI generation already completed for this CNE (Locked)'
-                    : !cne.topic
-                    ? 'CNE Topic is required for external source retrieval'
-                    : 'Generate 5 clinical MCQs from verified online sources (PubMed/Europe PMC/clinical guidelines)'
-                }
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-xs shadow-xs transition-colors ${
-                  isAiGenerationUsed
-                    ? 'bg-slate-200 text-slate-500 cursor-not-allowed border border-slate-300'
-                    : 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer disabled:opacity-50'
-                }`}
-              >
-                {isGenerating && activeGenerationSource === 'EXTERNAL' ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Searching External Sources...</span>
-                  </>
-                ) : isAiGenerationUsed ? (
-                  <>
-                    <Lock className="w-3.5 h-3.5 text-slate-400" />
-                    <span>From External Sources (Used)</span>
-                  </>
-                ) : (
-                  <>
-                    <Globe className="w-3.5 h-3.5" />
-                    <span>Generate Questions from External Sources</span>
                   </>
                 )}
               </button>
@@ -624,31 +566,20 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
               </div>
               <div>
                 <h4 className="text-sm font-bold text-purple-950">
-                  {activeGenerationSource === 'EXTERNAL'
-                    ? 'Synthesizing MCQs from Reliable External Literature'
-                    : 'Synthesizing Standardized Clinical MCQs'}
+                  Synthesizing Standardized Clinical MCQs
                 </h4>
                 <p className="text-xs font-semibold text-purple-700 mt-1">
                   {generationStage || 'Processing...'}
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1 text-[10px]">
-                {(activeGenerationSource === 'EXTERNAL'
-                  ? [
-                      'Searching external literature',
-                      'Retrieving clinical evidence',
-                      'Preparing quota reservation',
-                      'Synthesizing 5 MCQs',
-                      'Finalizing questions'
-                    ]
-                  : [
-                      'Learning resource received',
-                      'Reading & analyzing resource',
-                      'Preparing quota reservation',
-                      'Generating 5 MCQs',
-                      'Finalizing questions'
-                    ]
-                ).map((stg, i) => {
+                {[
+                  'Learning resource received',
+                  'Reading & analyzing resource',
+                  'Preparing quota reservation',
+                  'Generating 5 MCQs',
+                  'Finalizing questions'
+                ].map((stg, i) => {
                   const isCurrent = generationStage.toLowerCase().includes(stg.toLowerCase().slice(0, 7));
                   return (
                     <span
@@ -717,25 +648,6 @@ export const CNEQuestionsModal: React.FC<CNEQuestionsModalProps> = ({
                             <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 max-w-[240px] truncate" title={`Source: ${q.authoritativeSource}`}>
                               <BookOpen className="w-2.5 h-2.5 text-slate-500 shrink-0" />
                               <span className="truncate">{q.authoritativeSource}</span>
-                            </span>
-                          )}
-
-                          {q.sourceUrl && (
-                            <a
-                              href={q.sourceUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors"
-                              title={`Open verified external source: ${q.sourceUrl}`}
-                            >
-                              <ExternalLink className="w-2.5 h-2.5 shrink-0" />
-                              <span>Online Source</span>
-                            </a>
-                          )}
-
-                          {q.sourceRetrievedAt && (
-                            <span className="inline-flex items-center text-[9px] text-slate-400" title={`Retrieved: ${q.sourceRetrievedAt}`}>
-                              [{q.sourceRetrievedAt}]
                             </span>
                           )}
                         </div>
