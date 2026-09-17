@@ -18,7 +18,6 @@ import {
   Trash2,
   CheckCircle2,
   Layers,
-  ShieldCheck,
   HardDrive
 } from 'lucide-react';
 import {
@@ -504,50 +503,10 @@ export const LearningResourcesPage: React.FC<LearningResourcesPageProps> = ({
 
   return (
     <div id="cne-unified-learning-resources-page" className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      {/* Page Header */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 sm:p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-teal-700 mb-1">
-            <BookOpen className="w-4 h-4 text-teal-600" />
-            <span>Clinical Nursing Education Repository</span>
-          </div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-            Learning Resources
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-3xl leading-relaxed">
-            Consolidated clinical curriculum repository — browse session handouts, presentation slides, and accredited Open RN clinical reference textbooks.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0 flex-wrap">
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={() => setIsAddModalOpen(true)}
-              className="flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold text-xs shadow-xs cursor-pointer transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Resource</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Admin Information Note */}
-      {isAdmin && (
-        <div className="bg-teal-50/70 border border-teal-200 rounded-xl p-3.5 flex items-center justify-between gap-3 text-xs text-teal-900">
-          <div className="flex items-center gap-2.5">
-            <ShieldCheck className="w-4 h-4 text-teal-700 shrink-0" />
-            <span>
-              <strong>Admin Control Active:</strong> Manage learning materials and Open RN library reference textbooks from this single screen. Hiding a resource removes it from user view but preserves full AI index grounding.
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Category Tabs Bar */}
-      <div className="flex items-center justify-between border-b border-slate-200 pb-2 overflow-x-auto no-scrollbar gap-3">
-        <div className="flex items-center gap-2">
+      {/* Filters, Search & Action Toolbar */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-3.5 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        {/* Category Tabs */}
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar shrink-0">
           <button
             type="button"
             onClick={() => setActiveCategory('ALL')}
@@ -613,34 +572,15 @@ export const LearningResourcesPage: React.FC<LearningResourcesPageProps> = ({
           </button>
         </div>
 
-        {/* Visibility Filter for Admins */}
-        {isAdmin && (
-          <div className="flex items-center gap-1.5 shrink-0 text-xs">
-            <span className="text-slate-400 font-semibold hidden sm:inline">Visibility:</span>
-            <select
-              value={visibilityFilter}
-              onChange={(e) => setVisibilityFilter(e.target.value as any)}
-              className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-700 focus:bg-white focus:ring-1 focus:ring-teal-500"
-            >
-              <option value="ALL">All Visibility States</option>
-              <option value="VISIBLE">Visible to Users Only</option>
-              <option value="HIDDEN">Hidden from Users Only</option>
-            </select>
-          </div>
-        )}
-      </div>
-
-      {/* Search Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4">
-        {/* Search Input */}
-        <div className="relative w-full">
+        {/* Search Bar */}
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by title, speaker/author, or file name..."
-            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+            className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
           />
           {searchQuery && (
             <button
@@ -648,6 +588,35 @@ export const LearningResourcesPage: React.FC<LearningResourcesPageProps> = ({
               className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* Visibility Filter & Admin Controls */}
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          {isAdmin && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-slate-400 font-semibold hidden sm:inline">Visibility:</span>
+              <select
+                value={visibilityFilter}
+                onChange={(e) => setVisibilityFilter(e.target.value as any)}
+                className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-xs text-slate-700 focus:bg-white focus:ring-1 focus:ring-teal-500 cursor-pointer"
+              >
+                <option value="ALL">All Visibility States</option>
+                <option value="VISIBLE">Visible to Users Only</option>
+                <option value="HIDDEN">Hidden from Users Only</option>
+              </select>
+            </div>
+          )}
+
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setIsAddModalOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold text-xs shadow-xs cursor-pointer transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Resource</span>
             </button>
           )}
         </div>

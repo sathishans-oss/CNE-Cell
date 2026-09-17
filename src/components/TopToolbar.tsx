@@ -42,7 +42,10 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
       badge: upcomingCount > 0 ? upcomingCount : undefined
     },
     { id: 'my-cne' as ViewMode, label: 'My CNE Records', icon: Award },
-    { id: 'learning-resources' as ViewMode, label: 'Learning Resources', icon: BookOpen }
+    { id: 'learning-resources' as ViewMode, label: 'Learning Resources', icon: BookOpen },
+    ...(isAdmin
+      ? [{ id: 'admin-reports' as ViewMode, label: 'Report and Stats', icon: BarChart3 }]
+      : [])
   ];
 
   // Control Center state & logic for Admins
@@ -124,7 +127,10 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
                   key={tab.id}
                   id={`top-tab-${tab.id}`}
                   type="button"
-                  onClick={() => onSelectView(tab.id)}
+                  onClick={() => {
+                    setIsControlCenterOpen(false);
+                    onSelectView(tab.id);
+                  }}
                   className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                     isActive
                       ? 'bg-teal-600 text-white shadow-sm'
@@ -233,24 +239,6 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
                     </div>
                   )}
                 </div>
-
-                {/* 3. Report and Stats */}
-                <button
-                  id="top-tab-admin-reports"
-                  type="button"
-                  onClick={() => {
-                    setIsControlCenterOpen(false);
-                    onSelectView('admin-reports');
-                  }}
-                  className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-                    activeView === 'admin-reports'
-                      ? 'bg-purple-700 text-white shadow-sm ring-1 ring-purple-400'
-                      : 'text-slate-300 hover:bg-purple-950/50 hover:text-purple-200'
-                  }`}
-                >
-                  <BarChart3 className={`w-3.5 h-3.5 ${activeView === 'admin-reports' ? 'text-purple-200' : 'text-purple-400'}`} />
-                  <span>Report and Stats</span>
-                </button>
               </nav>
             </div>
           )}

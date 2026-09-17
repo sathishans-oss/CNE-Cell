@@ -180,7 +180,7 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
           <SpecialtyModulesWidget accentColor="teal" />
         </main>
 
-        {/* Right Column (5 cols: Impact, Circulars, Guidelines, Desk, Quick Links, Certification) */}
+        {/* Right Column (5 cols: Impact, Circulars, Quick Links, Guidelines, Desk, Certification) */}
         <aside className="lg:col-span-5 space-y-6">
           <InstitutionalImpactWidget
             totalCompletedClasses={impactStats?.totalCompletedClasses ?? 0}
@@ -196,14 +196,14 @@ export const CneHomePage: React.FC<CneHomePageProps> = ({
             onSelectNews={(news) => setSelectedNews(news)}
             accentColor="teal"
           />
-          <GuidelinesCard accentColor="teal" />
-          <CoordinatorDeskCard accentColor="teal" />
           <QuickLinksWidget
             quickLinks={quickLinks}
             onNavigate={onNavigate}
             onQuickLinkClick={handleQuickLinkClick}
             accentColor="teal"
           />
+          <GuidelinesCard accentColor="teal" />
+          <CoordinatorDeskCard accentColor="teal" />
           <CertificationWorkflowWidget accentColor="teal" />
         </aside>
       </div>
