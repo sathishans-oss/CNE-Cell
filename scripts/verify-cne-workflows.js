@@ -66,7 +66,7 @@ console.log('✓ Test 7: AddUnscheduledCneModal implements comprehensive submiss
 
 // --- Test 8: CNE Schedule Page (CNESchedule) Integration ---
 assert(cneScheduleTs.includes("import { AddUnscheduledCneModal } from './cne/AddUnscheduledCneModal';"), "CNESchedule must import AddUnscheduledCneModal");
-assert(cneScheduleTs.includes("id=\"btn-admin-add-unscheduled-cne\""), "CNESchedule must contain Unscheduled CNE button");
+assert(cneScheduleTs.includes('id="btn-choice-unscheduled-cne"'), "CNESchedule must contain Unscheduled CNE option in Admin choice modal");
 assert(cneScheduleTs.includes("<AddUnscheduledCneModal"), "CNESchedule must mount AddUnscheduledCneModal");
 console.log('✓ Test 8: CNE Schedule page cleanly integrates Unscheduled CNE action and modal');
 
@@ -88,6 +88,23 @@ assert(learningResPageTs.includes("deleteLearningResource"), "LearningResourcesP
 assert(addResourceModalTs.includes("NURSING_REFERENCE_LIB"), "AddResourceModal must support Nursing Reference Library");
 console.log('✓ Test 10: Learning Resources management workflow fully verified');
 
+// --- Test 11: Unified Schedule CNE button and Role Enforcement ---
+assert(cneScheduleTs.includes('id="btn-schedule-cne"'), "CNESchedule must declare unified Schedule CNE button with id btn-schedule-cne");
+assert(cneScheduleTs.includes('<span>Schedule CNE</span>'), "CNESchedule must render Schedule CNE label");
+assert(!cneScheduleTs.includes('id="btn-schedule-departmental-cne"'), "Separate Departmental CNE button must be replaced by unified button");
+assert(!cneScheduleTs.includes('id="btn-admin-add-upcoming-class"'), "Separate Central CNE button must be replaced by unified button");
+assert(!cneScheduleTs.includes('id="btn-admin-add-unscheduled-cne"'), "Separate toolbar Unscheduled CNE button must be removed");
+assert(cneScheduleTs.includes('id="btn-choice-departmental-cne"'), "Admin choice UI must offer Departmental CNE option");
+assert(cneScheduleTs.includes('id="btn-choice-central-cne"'), "Admin choice UI must offer Central CNE option");
+assert(cneScheduleTs.includes('id="btn-choice-unscheduled-cne"'), "Admin choice UI must offer Unscheduled CNE option");
+assert(cneScheduleTs.includes('<span>Unscheduled CNE Data</span>'), "Admin choice UI must display 'Unscheduled CNE Data' label");
+
+// Verify server-side authorization enforcement for Central vs Departmental
+assert(codeGs.includes("cneType === 'CENTRAL' && !isAdmin"), "Code.gs must enforce that Central CNE requires Admin role");
+assert(codeGs.includes("Only Administrators can create Central CNE programs"), "Code.gs must reject non-admins from creating Central CNE");
+assert(gasTs.includes("cneType === 'CENTRAL' && !isAdmin"), "googleAppsScript.ts must enforce Central CNE authorization");
+console.log('✓ Test 11: Unified Schedule CNE button, Admin choice modal, and server-side role enforcement verified');
+
 console.log('\n========================================================');
-console.log('ALL CNE WORKFLOWS & REGRESSION TESTS PASSED (10/10)!');
+console.log('ALL CNE WORKFLOWS & REGRESSION TESTS PASSED (11/11)!');
 console.log('========================================================');

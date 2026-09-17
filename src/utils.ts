@@ -89,6 +89,68 @@ export function formatCneDateRangeDisplay(fromDate?: string | null, toDate?: str
   return `${formattedFrom} - ${formattedTo}`;
 }
 
+/**
+ * Safely parses any supported CNE date representation (ISO, YYYY-MM-DD, DD-MMM-YYYY, DD/MM/YYYY, Date)
+ * into a canonical "YYYY-MM-DD" string for reliable chronological comparison and range filtering.
+ * Returns null if the date is missing, empty, or unparseable.
+ */
+export function parseToIsoDateString(val?: string | Date | null): string | null {
+  if (!val) return null;
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return null;
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, '0');
+    const d = String(val.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const s = String(val).trim();
+  if (!s) return null;
+
+  // 1. Direct YYYY-MM-DD or YYYY/MM/DD prefix (e.g. 2026-09-10 or 2026-09-10T08:00:00)
+  const ymdMatch = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (ymdMatch) {
+    const y = ymdMatch[1];
+    const m = ymdMatch[2].padStart(2, '0');
+    const d = ymdMatch[3].padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  // 2. DD-MMM-YYYY (e.g. 10-Sep-2026)
+  const dmmmMatch = s.match(/^(\d{1,2})[-\s/]([A-Za-z]{3})[-\s/](\d{4})/);
+  if (dmmmMatch) {
+    const monthMap: Record<string, string> = {
+      jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+      jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12'
+    };
+    const mStr = monthMap[dmmmMatch[2].toLowerCase()];
+    if (mStr) {
+      const d = dmmmMatch[1].padStart(2, '0');
+      const y = dmmmMatch[3];
+      return `${y}-${mStr}-${d}`;
+    }
+  }
+
+  // 3. DD-MM-YYYY or DD/MM/YYYY (e.g. 10/09/2026)
+  const dmyMatch = s.match(/^(\d{1,2})[-\s/](\d{1,2})[-\s/](\d{4})/);
+  if (dmyMatch) {
+    const d = dmyMatch[1].padStart(2, '0');
+    const m = dmyMatch[2].padStart(2, '0');
+    const y = dmyMatch[3];
+    return `${y}-${m}-${d}`;
+  }
+
+  // 4. Date constructor fallback
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  return null;
+}
+
 const MONTH_NAMES_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /**
